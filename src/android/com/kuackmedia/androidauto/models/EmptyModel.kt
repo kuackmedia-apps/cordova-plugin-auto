@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class EmptyModel(
-  val id: String?,
+  override val id: String = "0",
+  override val itemStyle: String = "grid",
   override val itemType: String = "empty"
 ) : MediaItem()

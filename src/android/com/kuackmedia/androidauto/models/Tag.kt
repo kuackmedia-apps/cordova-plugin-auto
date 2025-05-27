@@ -4,13 +4,14 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class Tag(
-  val id: Long,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "grid",
   val name: String,
   val description: String,
   val isGenre: Boolean,
   val isStation: Boolean,
-  val images: List<CoverImage>,       // reuses your Image model
-  override val itemType: String,
+  val images: List<CoverImage>,
   val updateDate: Long,
   val imageUpdateDate: Long,
   val amount: Any?,

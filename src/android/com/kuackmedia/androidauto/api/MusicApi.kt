@@ -6,7 +6,12 @@ import com.kuackmedia.androidauto.models.HistoryResponse
 import com.kuackmedia.androidauto.models.PingResponse
 import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.PlaylistTracks
+import com.kuackmedia.androidauto.models.TrackRequest
+import com.kuackmedia.androidauto.models.TrackResponse
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Headers
+import retrofit2.http.POST
 import retrofit2.http.Path
 
 interface MusicApi {
@@ -24,6 +29,10 @@ interface MusicApi {
 
   @GET("playlist/PlayListTracks/{playListId}")
   suspend fun getPlayListTracks(@Path("playListId") playListId: String): PlaylistTracks
+
+  @Headers("Content-type: application/json")
+  @POST("track-url")
+  suspend fun getTrackUrl(@Body trackRequest: TrackRequest): TrackResponse
 
   @GET("auth/ping")
   suspend fun ping(): PingResponse

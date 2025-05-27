@@ -53,7 +53,7 @@ object CurrentMedia {
     val queueJsonObjects = items
       ?.map { it.data }
       ?.filter { it !is EmptyModel }
-      ?.map { MediaItemFactory.parseMediaItems(it)!! }
+      ?.map { MediaItemFactory.parseMediaItems(context, it)!! }
       ?.mapIndexed { index, track ->
         MediaSessionCompat.QueueItem(track.description, index.toLong())
       }

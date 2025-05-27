@@ -13,7 +13,9 @@ data class HistoryResponse(
 
 @JsonClass(generateAdapter = true)
 data class HistoryData(
-  val id: Long? = 0,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "grid",
   val ttl: Long? = null,
   val upc: String? = null,
   val title: String? = null,
@@ -23,7 +25,6 @@ data class HistoryData(
   val images: List<CoverImage>? = null,
   val artists: List<Artist>? = null,
   val album: AlbumSummary? = null,
-  override val itemType: String,
   val subTitle: String? = null,
   val tracksQty: Int? = null,
   val releaseDate: String? = null,

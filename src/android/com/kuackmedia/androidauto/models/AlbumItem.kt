@@ -4,7 +4,9 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class AlbumItem(
-  val id: Int,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "grid",
   val upc: String,
   val title: String,
   val subTitle: String?,
@@ -15,5 +17,4 @@ data class AlbumItem(
   val artists: List<Artist>,
   val score: Double?,
   val imageColorInfo: ImageColorInfo?,
-  override val itemType: String,
 ) : MediaItem()

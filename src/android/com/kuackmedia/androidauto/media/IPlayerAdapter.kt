@@ -12,7 +12,7 @@ interface IPlayerAdapter {
   fun skipToNext()
   fun skipToPrevious()
   fun seekTo(position: Long)
-  fun setCurrentTrack(track: MediaBrowserCompat.MediaItem?)
+  fun setCurrentTrack(track: String)
   val currentPosition: Long
 }
 

@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.util.Log
+import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.models.AlbumItem
 import com.kuackmedia.androidauto.models.Artist
 import com.kuackmedia.androidauto.models.CoverImage
@@ -19,19 +20,32 @@ import java.io.File
 
 
 object MediaItemFactory {
-  fun parseMediaItems(mediaItem: MediaItem): MediaBrowserCompat.MediaItem? {
+  fun parseMediaItems(context: Context, mediaItem: MediaItem): MediaBrowserCompat.MediaItem? {
     var result: MediaBrowserCompat.MediaItem? = null
+    val mediaId = "item_" + mediaItem.itemType + "_" + mediaItem.id
+    var extras = Bundle()
+
+    extras.putString("media_type", mediaItem.itemType)
+    if (mediaItem.itemStyle == "grid") {
+      extras.putInt(
+        MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_GRID_ITEM
+      )
+    } else {
+      extras.putInt(
+        MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+      )
+    }
+
     when (mediaItem.itemType) {
       "playlist" -> {
         val playlist = mediaItem as PlayListItem
-        val extras = Bundle().apply {
-          putString("media_type", "playlist")
-        }
 
         result = buildMediaItem(
           title = playlist.name,
           subtitle = if (mediaItem.curator != null) mediaItem.curator.name else "Playlist",
-          mediaId = playlist.id.toString(),
+          mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = Uri.parse(playlist.images[0].url),
           extras = extras
@@ -40,13 +54,11 @@ object MediaItemFactory {
 
       "album" -> {
         val album = mediaItem as AlbumItem
-        val extras = Bundle().apply {
-          putString("media_type", "album") // or "album", "track", etc.
-        }
+
         result = buildMediaItem(
           title = album.title,
           subtitle = getArtistsNames(album.artists),
-          mediaId = album.id.toString(),
+          mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = Uri.parse(album.images[0].url),
           extras = extras
@@ -55,13 +67,11 @@ object MediaItemFactory {
 
       "artist" -> {
         val artist = mediaItem as Artist
-        val extras = Bundle().apply {
-          putString("media_type", "artist") // or "album", "track", etc.
-        }
+
         result = this.buildMediaItem(
           title = artist.name,
           subtitle = "Artist",
-          mediaId = artist.id.toString(),
+          mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = Uri.parse(getImageUrl(artist.images)),
           extras = extras
@@ -70,13 +80,11 @@ object MediaItemFactory {
 
       "tag" -> {
         val tag = mediaItem as Tag
-        val extras = Bundle().apply {
-          putString("media_type", "tag") // or "album", "track", etc.
-        }
+
         result = this.buildMediaItem(
           title = tag.name,
           subtitle = tag.description,
-          mediaId = tag.id.toString(),
+          mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = Uri.parse(getImageUrl(tag.images)),
           extras = extras
@@ -85,13 +93,11 @@ object MediaItemFactory {
 
       "track" -> {
         val track = mediaItem as Track
-        val extras = Bundle().apply {
-          putString("media_type", "track") // or "album", "track", etc.
-        }
+
         result = this.buildMediaItem(
           title = track.name,
           subtitle = getArtistsNames(track.artists),
-          mediaId = track.id.toString(),
+          mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = if(track.album != null) Uri.parse(getImageUrl(track.album.images)) else null,
           extras = extras
@@ -143,10 +149,21 @@ object MediaItemFactory {
   }
 
   private fun getImageUrl(images: List<CoverImage>?): String? {
-    if (images !== null && images.isNotEmpty()) {
-      val image = images.first()
-      return image.url
-    } else return null
+    if (images != null && images.isNotEmpty()) {
+      val image = images.last()
+      val imageType = image.type
+      if (imageType == "create_svg") {
+        val imageArray = image.list
+        //extract first string url element of imageArray
+        if (imageArray != null && imageArray.isNotEmpty()) {
+          val urlImage = imageArray.first()
+          return urlImage
+        }
+      } else {
+        return image.url
+      }
+    }
+    return null
   }
 
   private fun getArtistsNames(artists: List<Artist>): String {

@@ -5,7 +5,9 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class AlbumTracks(
-  val id: Long,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "list",
   val upc: String,
   val title: String,
   @Json(name = "subTitle") val subTitle: String?,
@@ -17,6 +19,5 @@ data class AlbumTracks(
   val images: List<CoverImage>,
   val artists: List<Artist>,
   val tracks: TracksContainer,
-  override val itemType: String,
-  val imageColorInfo: Any?              // null in your payload
+  val imageColorInfo: Any?
 ) : MediaItem()

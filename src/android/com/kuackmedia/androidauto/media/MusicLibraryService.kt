@@ -56,7 +56,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       )
 
     mediaSession = MediaSessionCompat(this, TAG).apply {
-      setCallback(MediaSessionCallback(playerAdapter, this))
+      setCallback(MediaSessionCallback(playerAdapter, this, applicationContext))
     }
 
     if(this.currentQueue.isNotEmpty()) {
@@ -65,7 +65,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
       if(this.currentTrack !== null) {
         Log.i(TAG, "Setting current track")
-        playerAdapter.setCurrentTrack(this.currentTrack);
+        playerAdapter.setCurrentTrack(
+          this.currentTrack?.description?.extras?.getString("media_uri").toString());
 
         mediaSession.setMetadata(
           MediaMetadataCompat.Builder()
@@ -116,7 +117,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     } else {
       serviceScope.launch {
         try {
-          val remoteChildren = MediaItemTree.getRemoteChildren(parentId)
+          val remoteChildren = MediaItemTree.getRemoteChildren(applicationContext, parentId)
           result.sendResult(remoteChildren)
         } catch (e: Exception) {
           Log.e("MusicService", "Error loading children", e)

@@ -2,19 +2,27 @@ package com.kuackmedia.androidauto.api
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.kuackmedia.androidauto.models.MediaItem
+import com.kuackmedia.androidauto.tree.MediaItemJsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
-const val URL = "http://192.168.1.7:3344/api/"
+const val URL = "http://192.168.0.103:3344/api/"
 
 object ServiceFactory {
   fun create(context: Context): MusicApi {
     context.getSharedPreferences("auth", Context.MODE_PRIVATE)
 
+    val mediaItemAdapter = MediaItemJsonAdapter(
+      Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
+    )
     val moshi = Moshi.Builder()
-      .add(KotlinJsonAdapterFactory()) // This is crucial for Kotlin classes
+      .add(MediaItem::class.java, mediaItemAdapter)
+      .add(KotlinJsonAdapterFactory())
       .build()
 
     return Retrofit.Builder()

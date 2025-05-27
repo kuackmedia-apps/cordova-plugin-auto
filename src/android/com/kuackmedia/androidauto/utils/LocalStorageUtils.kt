@@ -4,7 +4,10 @@ import android.content.Context
 import android.net.Uri
 import android.support.v4.media.MediaBrowserCompat
 import android.util.Log
+import com.kuackmedia.androidauto.api.ServiceFactory
+import com.kuackmedia.androidauto.models.TrackRequest
 import java.io.File
+import kotlin.String
 
 object LocalStorageUtils {
   private const val TAG = "LocalStorageUtils"
@@ -52,20 +55,28 @@ object LocalStorageUtils {
     return iconFile.absolutePath
   }
 
-  // Devuelve la URI claramente según disponibilidad local o remota
-//  fun getTrackUri(trackId: String?): Uri? {
-//    val trackName = trackId + ".mp3"
-//    val trackFile = File(context!!.getFilesDir(), "playerTracks/" + trackName)
-//    //file:///data/user/0/com.algar.nomomusica/files/playerTracks/12180191.mp3
-//    Log.i(TAG, "getTrackUri " + trackName)
-//    if (trackFile.exists()) {
-//      Log.i(TAG, "Using local track: " + trackFile.getAbsolutePath())
-//      return Uri.fromFile(trackFile)
-//    } else {
-//      val remoteTrackFile = File(context!!.getFilesDir(), "playerTracks/49234.mp3")
-//      Log.i(TAG, "Using remote track: " + remoteTrackFile.getAbsolutePath())
-//      return Uri.fromFile(remoteTrackFile)
-//    }
-//  }
+  suspend fun getTrackUri(context: Context, trackId: String?): Uri? {
+    val trackName = "$trackId.mp3"
+    val trackFile: File = File(context.filesDir, "playerTracks/$trackName")
+    //file:///data/user/0/com.algar.nomomusica/files/playerTracks/12180191.mp3
+    Log.i(TAG, "getTrackUri $trackName")
+    if (trackFile.exists()) {
+      Log.i(TAG, "Using local track: " + trackFile.absolutePath)
+      return Uri.fromFile(trackFile)
+    } else {
+      Log.i(TAG, "Using remote track: $trackId")
+      val api = ServiceFactory.create(context)
+      val payload = TrackRequest(
+        idAlbumTrack = "",
+        idTrack = trackId!!,
+        forceDevice = false,
+        useCloudFront =  true,
+        forcePreview = false,
+        extraLife = false,
+      )
+      Log.i(TAG, "[LocalStorageUtils] Track payload: $payload")
+      return Uri.parse(api.getTrackUrl(payload).url)
+    }
+  }
 
 }

@@ -13,7 +13,9 @@ data class TracksContainer(
 
 @JsonClass(generateAdapter = true)
 data class Track(
-  val id: Long,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "list",
   val idAlbumTrack: Long?,
   val isrc: String?,
   val name: String,
@@ -25,7 +27,6 @@ data class Track(
   val artists: List<Artist>,
   val volume: Int?,
   val number: Int?,
-  override val itemType: String,
   val hasRelatedTracks: Boolean,
   val score: Double?,                   // null in your payload
   val imageColorInfo: ImageColorInfo?,

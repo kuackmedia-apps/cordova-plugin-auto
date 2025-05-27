@@ -104,7 +104,7 @@ object MediaItemTree {
         val items: List<RecentListened>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it.data !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it.data)!! }
+          ?.map { MediaItemFactory.parseMediaItems(context, it.data)!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -132,7 +132,7 @@ object MediaItemTree {
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
 
             it.items.forEach {
-              val categoryMediaItem = MediaItemFactory.parseMediaItems(it)!!
+              val categoryMediaItem = MediaItemFactory.parseMediaItems(context, it)!!
               treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
               titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
               treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
@@ -147,7 +147,7 @@ object MediaItemTree {
         val items: List<MediaItem>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it)!! }
+          ?.map { MediaItemFactory.parseMediaItems(context, it)!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -239,23 +239,29 @@ object MediaItemTree {
     return treeNodes[id]?.getChildren() ?: listOf()
   }
 
-  suspend fun getRemoteChildren(parentId: String): List<MediaBrowserCompat.MediaItem> {
+  suspend fun getRemoteChildren(context: Context, parentId: String): List<MediaBrowserCompat.MediaItem> {
     val parent = getItem(parentId)
     val mediaType = parent?.description?.extras?.getString("media_type")
+    var result: List<MediaBrowserCompat.MediaItem> = emptyList()
 
     Log.i(TAG, "Trying to load remote children for $parentId - $mediaType")
 
     when (mediaType) {
       "playlist" -> {
-        this.musicApi.getPlayListTracks(parentId)
+        result = this.musicApi.getPlayListTracks(parentId).tracks.items.mapNotNull {
+          MediaItemFactory.parseMediaItems(context, it.track)
+        }
       }
 
       "album" -> {
-        this.musicApi.getAlbumTracks(parentId)
+        result =  this.musicApi.getAlbumTracks(parentId).tracks.items.mapNotNull {
+          MediaItemFactory.parseMediaItems(context, it)
+        }
       }
     }
 
-    return emptyList()
+    Log.i(TAG, "Remote children for $parentId - $mediaType size is ${result.size}")
+    return result
   }
 
   private fun normalizeSearchText(text: CharSequence?): String {

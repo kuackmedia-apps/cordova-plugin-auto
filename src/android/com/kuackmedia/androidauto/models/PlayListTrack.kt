@@ -5,13 +5,14 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class PlaylistTracks(
-  val id: Long,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "grid",
   val name: String,
   val curator: Curator?,
   val tags: List<Tag>,
   val images: List<CoverImage>,
   val tracks: PlaylistTrackContainer,
-  override val itemType: String,
 ) : MediaItem()
 
 @JsonClass(generateAdapter = true)
@@ -24,9 +25,10 @@ data class PlaylistTrackContainer(
 
 @JsonClass(generateAdapter = true)
 data class PlaylistTrack(
-  val id: Long,
+  override val id: String,
+  override val itemType: String,
+  override val itemStyle: String = "list",
   val order: Int,
   val createdAt: String,
   val track: Track,
-  override val itemType: String
 ) : MediaItem()

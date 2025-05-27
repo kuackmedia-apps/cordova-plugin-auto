@@ -64,8 +64,9 @@ class MediaPlayerAdapter(service: MusicLibraryService) : IPlayerAdapter {
     mediaPlayer.seekTo(position.toInt())
   }
 
-  override fun setCurrentTrack(track: MediaBrowserCompat.MediaItem?){
-    mediaPlayer.setDataSource(track?.description?.mediaUri?.path);
+  override fun setCurrentTrack(trackUri: String){
+    mediaPlayer.reset()
+    mediaPlayer.setDataSource(trackUri);
     mediaPlayer.prepareAsync();
   }
 
