@@ -1,0 +1,4492 @@
+[
+  {
+    "id": 118,
+    "data": {
+      "id": 118,
+      "ttl": 1747084722644,
+      "name": "Chill & Jazz",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/118_48.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 40,
+      "createDate": 1734018378,
+      "updateDate": 1715974057,
+      "imageColorInfo": {
+        "hex": "#c99b4d",
+        "rgb": "rgb(201,155,77)",
+        "hexa": "#c99b4dff",
+        "rgba": "rgba(201,155,77,1)",
+        "value": [
+          201,
+          155,
+          77,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747077524556
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1747077524556,
+      1747363906168
+    ],
+    "lastDateListened": 1747363906168
+  },
+  {
+    "type": "PLAYLIST",
+    "id": 5060,
+    "data": {
+      "id": 5060,
+      "name": "Especial Chico Buarque",
+      "active": true,
+      "followers": 0,
+      "tracksQty": 51,
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "user": null,
+      "updateDate": 1737148548,
+      "createDate": 1734018732,
+      "images": [
+        {
+          "type": "url",
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/5060_48.png",
+          "size": 240
+        }
+      ],
+      "itemType": "playlist",
+      "imageColorInfo": {
+        "value": [
+          129,
+          109,
+          107,
+          255
+        ],
+        "rgb": "rgb(129,109,107)",
+        "rgba": "rgba(129,109,107,1)",
+        "hex": "#816d6b",
+        "hexa": "#816d6bff",
+        "isDark": true,
+        "isLight": false
+      },
+      "ttl": 1747266803293,
+      "owner": null,
+      "lastDateListened": 1747324170633
+    },
+    "lastDateListened": 1747324170633,
+    "listenedDates": [
+      1747259612507,
+      1747323119386,
+      1747324170633
+    ]
+  },
+  {
+    "id": 31142,
+    "data": {
+      "id": 31142,
+      "ttl": 1742529472749,
+      "name": "Regina Spektor",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": null,
+      "lastDateListened": 1747260733859
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1742522279173,
+      1742522696267,
+      1742524068019,
+      1742835783123,
+      1742845180733,
+      1742858380810,
+      1742858470560,
+      1742910196093,
+      1742942151550,
+      1742942244746,
+      1742948599562,
+      1743007093060,
+      1743038926988,
+      1743251728810,
+      1743441746462,
+      1743452113261,
+      1743452565566,
+      1743452734594,
+      1743452922551,
+      1743452936426,
+      1743453004249,
+      1743459639328,
+      1743509789546,
+      1743510927257,
+      1743511206896,
+      1743511667703,
+      1743513174966,
+      1743519990370,
+      1743520371763,
+      1743520820231,
+      1743520998363,
+      1743521306170,
+      1743521611686,
+      1743521620416,
+      1743524846683,
+      1743525208418,
+      1743525787988,
+      1743536766959,
+      1743607111936,
+      1743608244695,
+      1743632991920,
+      1743792974984,
+      1744033468544,
+      1744046368605,
+      1744049406348,
+      1744121355838,
+      1744121386987,
+      1744121408899,
+      1744121411305,
+      1744121651631,
+      1744124097216,
+      1744202955559,
+      1744218856735,
+      1744224628813,
+      1744654890604,
+      1744655393688,
+      1746227296365,
+      1746296315365,
+      1746469908311,
+      1746547704147,
+      1746548587936,
+      1746708698019,
+      1746708916674,
+      1746709132849,
+      1746709335171,
+      1747076579540,
+      1747076981875,
+      1747260733859
+    ],
+    "lastDateListened": 1747260733859
+  },
+  {
+    "id": 54,
+    "data": {
+      "id": 54,
+      "from": "history",
+      "name": "Clássica",
+      "rank": 1,
+      "amount": null,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/tags/54_48_76.png",
+          "size": 260,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "isGenre": true,
+      "itemType": "tag",
+      "sortDate": 1747182451533,
+      "isStation": true,
+      "updateDate": 1722863666,
+      "description": "El punto de partida perfecto para quien quiera comenzar a explorar este género",
+      "imageColorInfo": {
+        "hex": "#7d5d4d",
+        "rgb": "rgb(125,93,77)",
+        "hexa": "#7d5d4d9b",
+        "rgba": "rgba(125,93,77,0.6078431372549019)",
+        "value": [
+          125,
+          93,
+          77,
+          155
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "imageUpdateDate": 1722863666,
+      "lastDateListened": 1747182451533
+    },
+    "type": "TAG_RADIO",
+    "listenedDates": [
+      1742345506174,
+      1742345551617,
+      1743038958131,
+      1743474346518,
+      1743474351243,
+      1743509782434,
+      1743538301891,
+      1743557592167,
+      1743596019176,
+      1743596296103,
+      1743613721387,
+      1743624992093,
+      1743786199980,
+      1743989771272,
+      1744059005011,
+      1744081057303,
+      1744156768406,
+      1744333421891,
+      1744333492157,
+      1744373717562,
+      1744379102866,
+      1744416909761,
+      1744480901715,
+      1744598557506,
+      1744654986527,
+      1744674382160,
+      1744676505370,
+      1747182451533
+    ],
+    "lastDateListened": 1747182451533
+  },
+  {
+    "id": 105,
+    "data": {
+      "id": 105,
+      "ttl": 1741959939450,
+      "name": "Sinfonía para el Alma",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/105.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 50,
+      "createDate": 1734018377,
+      "updateDate": 1669224517,
+      "imageColorInfo": {
+        "hex": "#878684",
+        "rgb": "rgb(135,134,132)",
+        "hexa": "#878684ff",
+        "rgba": "rgba(135,134,132,1)",
+        "value": [
+          135,
+          134,
+          132,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747168992366
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1741952743829,
+      1741971454467,
+      1741975939371,
+      1742235941856,
+      1742235980134,
+      1742235988662,
+      1742236553433,
+      1742383347093,
+      1742383645658,
+      1742386479588,
+      1742390364965,
+      1742390417460,
+      1742393111674,
+      1742394846801,
+      1742395160601,
+      1744223616065,
+      1744223676302,
+      1744297982544,
+      1744395770508,
+      1744403411291,
+      1744560113028,
+      1747079045323,
+      1747079053012,
+      1747084704364,
+      1747168992366
+    ],
+    "lastDateListened": 1747168992366
+  },
+  {
+    "id": 2782761,
+    "data": {
+      "id": 2782761,
+      "ttl": 1747086448457,
+      "upc": "054391939531",
+      "title": "One Little Soldier (From \"Bombshell\" the Original Motion Picture Soundtrack)",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/2782761.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/2782761.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/2782761.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/2782761.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:03:41",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747167889248
+        }
+      ],
+      "idalbum": 2782761,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 1,
+      "releaseDate": "2019-11-29 00:00:00",
+      "releaseType": "Single",
+      "imageColorInfo": null,
+      "lastDateListened": 1747167889248
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1747079249606,
+      1747083351971,
+      1747159767075,
+      1747167889248
+    ],
+    "lastDateListened": 1747167889248
+  },
+  {
+    "id": 37480,
+    "data": {
+      "id": 37480,
+      "ttl": 1743783534001,
+      "name": "Novas do Sertanejo",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/37480_48.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 88,
+      "createDate": 1734019235,
+      "updateDate": 1743775309,
+      "imageColorInfo": {
+        "hex": "#a986a3",
+        "rgb": "rgb(169,134,163)",
+        "hexa": "#a986a3ff",
+        "rgba": "rgba(169,134,163,1)",
+        "value": [
+          169,
+          134,
+          163,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747164637570
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1743776334015,
+      1747079060332,
+      1747083626767,
+      1747085391416,
+      1747164637570
+    ],
+    "lastDateListened": 1747164637570
+  },
+  {
+    "id": 1448554,
+    "data": {
+      "id": 1448554,
+      "ttl": 1747086470918,
+      "upc": "054391947260",
+      "title": "Birdsong",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/1448554.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/1448554.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/1448554.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/1448554.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:01:41",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747145912912
+        }
+      ],
+      "idalbum": 1448554,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 1,
+      "releaseDate": "2018-11-09 00:00:00",
+      "releaseType": "Single",
+      "imageColorInfo": null,
+      "lastDateListened": 1747145912912
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1747079271825,
+      1747083767553,
+      1747145912912
+    ],
+    "lastDateListened": 1747145912912
+  },
+  {
+    "id": 260742,
+    "data": {
+      "id": 260742,
+      "isrc": null,
+      "name": "Saiba",
+      "album": {
+        "id": 260907,
+        "upc": null,
+        "score": null,
+        "title": "Adriana Partimpim",
+        "active": null,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/260907.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/260907.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/260907.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/260907.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": null,
+        "itemType": "album",
+        "subTitle": null,
+        "tracksQty": null,
+        "releaseDate": null,
+        "imageColorInfo": null
+      },
+      "score": 66.88014431783822,
+      "active": true,
+      "indice": 0,
+      "length": "00:03:01",
+      "number": null,
+      "volume": null,
+      "artists": [
+        {
+          "id": 26323,
+          "name": "Adriana Partimpim",
+          "role": "MainArtist",
+          "itemType": "artist",
+          "lastDateListened": 1747095009956
+        }
+      ],
+      "audioId": "289f4bd1-a1d0-dffc-e279-1ae7ef75e277",
+      "context": {
+        "id": 37480,
+        "type": "PLAYLIST",
+        "name": "Novas do Sertanejo"
+      },
+      "version": null,
+      "explicit": false,
+      "itemType": "track",
+      "isPreview": false,
+      "idAlbumTrack": 3048766,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1747095009956,
+      "isOffline": false
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1741219056163,
+      1741308173239,
+      1741741448561,
+      1741822369002,
+      1741898346150,
+      1741908131115,
+      1741998668383,
+      1742082564494,
+      1742343160543,
+      1742515674940,
+      1742572973039,
+      1742690621419,
+      1742861906809,
+      1742946647868,
+      1743031966827,
+      1743466664587,
+      1743474348779,
+      1743509576968,
+      1743551945135,
+      1743639965757,
+      1743988634927,
+      1743989032127,
+      1744156333518,
+      1744156737214,
+      1744331364599,
+      1744331447503,
+      1744415061779,
+      1744560127142,
+      1744560743379,
+      1744563928125,
+      1744564065164,
+      1744591557848,
+      1744674107877,
+      1744675825764,
+      1747095009956
+    ],
+    "lastDateListened": 1747095009956
+  },
+  {
+    "id": 625,
+    "data": {
+      "id": 625,
+      "ttl": 1741530900276,
+      "name": "Música para Leitura",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/625_48.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 48,
+      "createDate": 1734018405,
+      "updateDate": 1738342606,
+      "imageColorInfo": {
+        "hex": "#868785",
+        "rgb": "rgb(134,135,133)",
+        "hexa": "#868785ff",
+        "rgba": "rgba(134,135,133,1)",
+        "value": [
+          134,
+          135,
+          133,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747083687536
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1741523701259,
+      1741540693778,
+      1741626380788,
+      1741654552614,
+      1741659006416,
+      1741874439360,
+      1741874482832,
+      1741874603243,
+      1741875255161,
+      1741888468965,
+      1741888694609,
+      1743039331260,
+      1743267729966,
+      1744028530487,
+      1744028803778,
+      1744029802910,
+      1744201010690,
+      1744204099610,
+      1744204436086,
+      1744204605985,
+      1744218111785,
+      1744218135736,
+      1744373371097,
+      1744376013845,
+      1744632310564,
+      1744655236789,
+      1744661089152,
+      1744661774803,
+      1744661846061,
+      1747081216662,
+      1747083687536
+    ],
+    "lastDateListened": 1747083687536
+  },
+  {
+    "id": 12034437,
+    "data": {
+      "id": 12034437,
+      "ttl": 1746287098554,
+      "upc": "093624874553",
+      "title": "Home, before and after",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/12034437.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/12034437.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/12034437.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/12034437.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:47:16",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747079399389
+        }
+      ],
+      "idalbum": 12034437,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 10,
+      "releaseDate": "2022-06-24 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1747079399389
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1746279899933,
+      1746556782296,
+      1746701616584,
+      1746708809323,
+      1746708936402,
+      1746709212072,
+      1746716230664,
+      1746721549286,
+      1746795055038,
+      1747059864007,
+      1747077566390,
+      1747079399389
+    ],
+    "lastDateListened": 1747079399389
+  },
+  {
+    "id": 635410,
+    "data": {
+      "id": 635410,
+      "ttl": 1747086436984,
+      "upc": "4050538260199",
+      "title": "Regina Spektor Live On Soundstage",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/635410.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/635410.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/635410.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/635410.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:00:00",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": null,
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747079239045
+        }
+      ],
+      "idalbum": 635410,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 18,
+      "releaseDate": "2017-06-16 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1747079239045
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1747079239045
+    ],
+    "lastDateListened": 1747079239045
+  },
+  {
+    "id": 292,
+    "data": {
+      "id": 292,
+      "ttl": 1747084838909,
+      "name": "Kids Lullaby Pac",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/292.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 7,
+        "name": "Kids"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 41,
+      "createDate": 1734018386,
+      "updateDate": 1603911163,
+      "imageColorInfo": {
+        "hex": "#c4bbbc",
+        "rgb": "rgb(196,187,188)",
+        "hexa": "#c4bbbcff",
+        "rgba": "rgba(196,187,188,1)",
+        "value": [
+          196,
+          187,
+          188,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747077666886
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1747077666886
+    ],
+    "lastDateListened": 1747077666886
+  },
+  {
+    "id": 135,
+    "data": {
+      "id": 135,
+      "from": "history",
+      "name": "Jazz",
+      "rank": 1,
+      "amount": null,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/tags/135_48_76.png",
+          "size": 260,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "isGenre": true,
+      "itemType": "tag",
+      "sortDate": 1747077639549,
+      "isStation": true,
+      "updateDate": 1722866558,
+      "description": "",
+      "imageColorInfo": {
+        "hex": "#a0c3ec",
+        "rgb": "rgb(160,195,236)",
+        "hexa": "#a0c3ecc1",
+        "rgba": "rgba(160,195,236,0.7568627450980392)",
+        "value": [
+          160,
+          195,
+          236,
+          193
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "imageUpdateDate": 1722866558,
+      "lastDateListened": 1747077639549
+    },
+    "type": "TAG_RADIO",
+    "listenedDates": [
+      1744244396240,
+      1744330198623,
+      1747077639549
+    ],
+    "lastDateListened": 1747077639549
+  },
+  {
+    "id": 12934614,
+    "data": {
+      "id": 12934614,
+      "ttl": 1744131358774,
+      "upc": "054391869166",
+      "title": "Back of a Truck",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/12934614.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/12934614.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/12934614.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/12934614.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:05:34",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747077577719
+        }
+      ],
+      "idalbum": 12934614,
+      "itemType": "album",
+      "subTitle": "Papa's Bootlegs, Live in New York",
+      "tracksQty": 1,
+      "releaseDate": "2022-08-05 00:00:00",
+      "releaseType": "Single",
+      "imageColorInfo": null,
+      "lastDateListened": 1747077577719
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744124159970,
+      1744218356682,
+      1744655043612,
+      1747077577719
+    ],
+    "lastDateListened": 1747077577719
+  },
+  {
+    "id": 3330,
+    "data": {
+      "id": 3330,
+      "ttl": 1744730690909,
+      "name": "Toquinho",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/3330.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#9d7a6b",
+        "rgb": "rgb(157,122,107)",
+        "hexa": "#9d7a6bff",
+        "rgba": "rgba(157,122,107,1)",
+        "value": [
+          157,
+          122,
+          107,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747077518280
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1744723493873,
+      1747077024626,
+      1747077518280
+    ],
+    "lastDateListened": 1747077518280
+  },
+  {
+    "id": 2376,
+    "data": {
+      "id": 2376,
+      "ttl": 1747084398734,
+      "name": "João Gilberto",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/2376.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#676767",
+        "rgb": "rgb(103,103,103)",
+        "hexa": "#676767ff",
+        "rgba": "rgba(103,103,103,1)",
+        "value": [
+          103,
+          103,
+          103,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1747077511913
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1747077204145,
+      1747077511913
+    ],
+    "lastDateListened": 1747077511913
+  },
+  {
+    "id": 61211,
+    "data": {
+      "id": 61211,
+      "ttl": 1747084524188,
+      "name": "Stacey Kent",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/61211.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#868785",
+        "rgb": "rgb(134,135,133)",
+        "hexa": "#868785ff",
+        "rgba": "rgba(134,135,133,1)",
+        "value": [
+          134,
+          135,
+          133,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747077326359
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1747077326359
+    ],
+    "lastDateListened": 1747077326359
+  },
+  {
+    "id": 3305,
+    "data": {
+      "id": 3305,
+      "ttl": 1747084470004,
+      "name": "Vinícius de Moraes",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/3305.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#988a8b",
+        "rgb": "rgb(152,138,139)",
+        "hexa": "#988a8bff",
+        "rgba": "rgba(152,138,139,1)",
+        "value": [
+          152,
+          138,
+          139,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747077273428
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1747077273428
+    ],
+    "lastDateListened": 1747077273428
+  },
+  {
+    "id": 3543,
+    "data": {
+      "id": 3543,
+      "ttl": 1747084413498,
+      "name": "Tom Jobim",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/3543.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#8b8880",
+        "rgb": "rgb(139,136,128)",
+        "hexa": "#8b8880ff",
+        "rgba": "rgba(139,136,128,1)",
+        "value": [
+          139,
+          136,
+          128,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747077225396
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1747077225396
+    ],
+    "lastDateListened": 1747077225396
+  },
+  {
+    "id": 28155480,
+    "data": {
+      "id": 28155480,
+      "ttl": 1744733322418,
+      "upc": "198391956966",
+      "title": "Novas Cores, Eternas Canções (Bônus Track)",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/28155480.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/28155480.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/28155480.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/28155480.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:54:18",
+      "artists": [
+        {
+          "id": 3330,
+          "name": "Toquinho",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/3330.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747077014458
+        }
+      ],
+      "idalbum": 28155480,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 20,
+      "releaseDate": "2024-05-10 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1747077014458
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744726123535,
+      1746198328177,
+      1747076014633,
+      1747077014458
+    ],
+    "lastDateListened": 1747077014458
+  },
+  {
+    "id": 1839,
+    "data": {
+      "id": 1839,
+      "ttl": 1747083819927,
+      "name": "Bosa Nova Covers 2025",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/1839.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 9,
+        "name": "Filtr"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 90,
+      "createDate": 1734018513,
+      "updateDate": 1742836770,
+      "imageColorInfo": {
+        "hex": "#774e33",
+        "rgb": "rgb(119,78,51)",
+        "hexa": "#774e33ff",
+        "rgba": "rgba(119,78,51,1)",
+        "value": [
+          119,
+          78,
+          51,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1747076625132
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1747076625132
+    ],
+    "lastDateListened": 1747076625132
+  },
+  {
+    "id": 11454,
+    "data": {
+      "id": 11454,
+      "ttl": 1743641294582,
+      "name": "Frank Sinatra",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/11454.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#907d70",
+        "rgb": "rgb(144,125,112)",
+        "hexa": "#907d70ff",
+        "rgba": "rgba(144,125,112,1)",
+        "value": [
+          144,
+          125,
+          112,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747076569327
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1743634100469,
+      1743689815653,
+      1743689820505,
+      1743701234039,
+      1743701234231,
+      1743701234544,
+      1743701282886,
+      1743776211268,
+      1743776215253,
+      1743776296188,
+      1744121454447,
+      1744121904011,
+      1744121907837,
+      1744122127168,
+      1744124056696,
+      1746664654850,
+      1746664654866,
+      1746664654934,
+      1746708655939,
+      1747076568944,
+      1747076569327
+    ],
+    "lastDateListened": 1747076569327
+  },
+  {
+    "id": 182088,
+    "data": {
+      "id": 182088,
+      "ttl": 1744049242783,
+      "upc": "093624976448",
+      "title": "Far",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/182088.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/182088.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/182088.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/182088.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:46:52",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1747060328029
+        }
+      ],
+      "idalbum": 182088,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 13,
+      "releaseDate": "2009-06-19 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1747060328029
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744042045425,
+      1744047451889,
+      1744053954917,
+      1744057475585,
+      1744120199217,
+      1746718852109,
+      1746723325363,
+      1747060328029
+    ],
+    "lastDateListened": 1747060328029
+  },
+  {
+    "id": 1314,
+    "data": {
+      "id": 1314,
+      "ttl": 1746987688823,
+      "name": "Rock Argentino",
+      "user": null,
+      "owner": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/1314_48.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 50,
+      "createDate": 1734018466,
+      "updateDate": 1668524372,
+      "imageColorInfo": {
+        "hex": "#7d908c",
+        "rgb": "rgb(125,144,140)",
+        "hexa": "#7d908cff",
+        "rgba": "rgba(125,144,140,1)",
+        "value": [
+          125,
+          144,
+          140,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1747059227429
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1746980491978,
+      1747059227429
+    ],
+    "lastDateListened": 1747059227429
+  },
+  {
+    "id": 55504,
+    "data": {
+      "id": 55504,
+      "ttl": 1746887464271,
+      "upc": "00602537596379",
+      "title": "Nothing But The Best (2008 Remastered)",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/55504.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/55504.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/55504.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/55504.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "01:14:15",
+      "artists": [
+        {
+          "id": 11454,
+          "name": "Frank Sinatra",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/11454.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1746880266921
+        }
+      ],
+      "idalbum": 55504,
+      "itemType": "album",
+      "subTitle": "2008 Remastered",
+      "tracksQty": 22,
+      "releaseDate": "2008-05-13 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1746880266921
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1746880266921
+    ],
+    "lastDateListened": 1746880266921
+  },
+  {
+    "id": 15649088,
+    "data": {
+      "id": 15649088,
+      "ttl": 1744729642660,
+      "upc": "197187368990",
+      "title": "Tarde Em Itapuã",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/15649088.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/15649088.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/15649088.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/15649088.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:03:01",
+      "artists": [
+        {
+          "id": 2034,
+          "name": "Caetano Veloso",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/2034.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1746724734306
+        },
+        {
+          "id": 3330,
+          "name": "Toquinho",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/3330.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1746724734306
+        }
+      ],
+      "idalbum": 15649088,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 1,
+      "releaseDate": "2022-11-18 00:00:00",
+      "releaseType": "Single",
+      "imageColorInfo": null,
+      "lastDateListened": 1746724734306
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744722443593,
+      1746224430213,
+      1746226802630,
+      1746722908481,
+      1746724734306
+    ],
+    "lastDateListened": 1746724734306
+  },
+  {
+    "id": 2224326,
+    "data": {
+      "id": 2224326,
+      "ttl": 1746233308366,
+      "upc": "7730965800379",
+      "title": "Automática",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/2224326.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/2224326.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/2224326.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/2224326.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:36:17",
+      "artists": [
+        {
+          "id": 1259824,
+          "name": "Astroboy",
+          "role": null,
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/38181303.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/38181303.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/38181303.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/38181303.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1746721947295
+        }
+      ],
+      "idalbum": 2224326,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 12,
+      "releaseDate": "2004-01-01 00:00:00",
+      "releaseType": null,
+      "imageColorInfo": null,
+      "lastDateListened": 1746721947295
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1746226131011,
+      1746279731428,
+      1746279749990,
+      1746474357057,
+      1746708757223,
+      1746721947295
+    ],
+    "lastDateListened": 1746721947295
+  },
+  {
+    "id": 102418868,
+    "data": {
+      "id": 102418868,
+      "isrc": "GBARL2301803",
+      "name": "Slipping Through My Fingers",
+      "album": {
+        "id": 24577235,
+        "upc": "196871693813",
+        "score": null,
+        "title": "Slipping Through My Fingers",
+        "active": true,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/24577235.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/24577235.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/24577235.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/24577235.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": null,
+        "itemType": "album",
+        "subTitle": null,
+        "tracksQty": 1,
+        "releaseDate": "2023-12-15 00:00:00",
+        "imageColorInfo": null
+      },
+      "score": null,
+      "active": true,
+      "indice": 0,
+      "length": "00:04:23",
+      "number": 1,
+      "volume": 1,
+      "artists": [
+        {
+          "id": 97468,
+          "name": "Declan McKenna",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/97468.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1746665342015
+        }
+      ],
+      "audioId": "9fd7b2e1-1d69-a549-6f7e-70e97c1ebefb",
+      "context": {
+        "type": "MIX",
+        "options": {
+          "id": "mix_35462_1927_8755_13788",
+          "artists": [
+            {
+              "id": 35462,
+              "from": "history",
+              "name": "The Lumineers",
+              "rank": 1,
+              "images": [
+                {
+                  "url": "https://statics.kuackmedia.com/artists/35462.png",
+                  "size": 640,
+                  "type": "url",
+                  "imageType": "image/png"
+                }
+              ],
+              "sortDate": 1743633711462,
+              "lastDateListened": 1743633711462
+            },
+            {
+              "id": 1927,
+              "name": "Snow Patrol",
+              "role": null,
+              "score": null,
+              "active": true,
+              "images": [
+                {
+                  "url": "https://statics.kuackmedia.com/artists/1927.png",
+                  "size": 640,
+                  "type": "url",
+                  "imageType": "image/png"
+                }
+              ],
+              "itemType": "artist",
+              "imageColorInfo": {
+                "hex": "#7f7f75",
+                "rgb": "rgb(127,127,117)",
+                "hexa": "#7f7f75ff",
+                "rgba": "rgba(127,127,117,1)",
+                "value": [
+                  127,
+                  127,
+                  117,
+                  255
+                ],
+                "isDark": true,
+                "isLight": false
+              }
+            },
+            {
+              "id": 8755,
+              "name": "Vanessa Carlton",
+              "role": null,
+              "score": null,
+              "active": true,
+              "images": [
+                {
+                  "url": "https://statics.kuackmedia.com/covers/48/20096452.jpg",
+                  "size": 48,
+                  "type": "url",
+                  "imageType": "image/jpeg"
+                },
+                {
+                  "url": "https://statics.kuackmedia.com/covers/100/20096452.jpg",
+                  "size": 100,
+                  "type": "url",
+                  "imageType": "image/jpeg"
+                },
+                {
+                  "url": "https://statics.kuackmedia.com/covers/180/20096452.jpg",
+                  "size": 180,
+                  "type": "url",
+                  "imageType": "image/jpeg"
+                },
+                {
+                  "url": "https://statics.kuackmedia.com/covers/640/20096452.jpg",
+                  "size": 640,
+                  "type": "url",
+                  "imageType": "image/jpeg"
+                }
+              ],
+              "itemType": "artist",
+              "imageColorInfo": {
+                "hex": "#9d7e59",
+                "rgb": "rgb(157,126,89)",
+                "hexa": "#9d7e59ff",
+                "rgba": "rgba(157,126,89,1)",
+                "value": [
+                  157,
+                  126,
+                  89,
+                  255
+                ],
+                "isDark": false,
+                "isLight": true
+              }
+            },
+            {
+              "id": 13788,
+              "name": "Britney Spears",
+              "role": null,
+              "score": null,
+              "active": true,
+              "images": [
+                {
+                  "url": "https://statics.kuackmedia.com/artists/13788.png",
+                  "size": 640,
+                  "type": "url",
+                  "imageType": "image/png"
+                }
+              ],
+              "itemType": "artist",
+              "imageColorInfo": {
+                "hex": "#d09b80",
+                "rgb": "rgb(208,155,128)",
+                "hexa": "#d09b80ff",
+                "rgba": "rgba(208,155,128,1)",
+                "value": [
+                  208,
+                  155,
+                  128,
+                  255
+                ],
+                "isDark": false,
+                "isLight": true
+              }
+            }
+          ],
+          "onClose": false,
+          "mixLevel": "level-medium",
+          "mixPriority": 1,
+          "disableSearch": false,
+          "drawerClassName": "",
+          "onSelectCallback": false,
+          "emptySelectionText": "Selecione artistas",
+          "initialArtistsList": [],
+          "disableHeaderUpdate": false,
+          "noMoveSelectedToTop": false,
+          "updateRelatedArtistsAtTheEnd": false
+        }
+      },
+      "version": null,
+      "explicit": false,
+      "itemType": "track",
+      "isOffline": true,
+      "idAlbumTrack": 120815841,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1746665342015
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1746665342015
+    ],
+    "lastDateListened": 1746665342015
+  },
+  {
+    "id": "mix_35462_1927_8755_13788",
+    "data": {
+      "options": {
+        "id": "mix_35462_1927_8755_13788",
+        "artists": [
+          {
+            "id": 35462,
+            "from": "history",
+            "name": "The Lumineers",
+            "rank": 1,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/artists/35462.png",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/png"
+              }
+            ],
+            "sortDate": 1743633711462,
+            "lastDateListened": 1743633711462
+          },
+          {
+            "id": 1927,
+            "name": "Snow Patrol",
+            "role": null,
+            "score": null,
+            "active": true,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/artists/1927.png",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/png"
+              }
+            ],
+            "itemType": "artist",
+            "imageColorInfo": {
+              "hex": "#7f7f75",
+              "rgb": "rgb(127,127,117)",
+              "hexa": "#7f7f75ff",
+              "rgba": "rgba(127,127,117,1)",
+              "value": [
+                127,
+                127,
+                117,
+                255
+              ],
+              "isDark": true,
+              "isLight": false
+            }
+          },
+          {
+            "id": 8755,
+            "name": "Vanessa Carlton",
+            "role": null,
+            "score": null,
+            "active": true,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/covers/48/20096452.jpg",
+                "size": 48,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/100/20096452.jpg",
+                "size": 100,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/180/20096452.jpg",
+                "size": 180,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/640/20096452.jpg",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/jpeg"
+              }
+            ],
+            "itemType": "artist",
+            "imageColorInfo": {
+              "hex": "#9d7e59",
+              "rgb": "rgb(157,126,89)",
+              "hexa": "#9d7e59ff",
+              "rgba": "rgba(157,126,89,1)",
+              "value": [
+                157,
+                126,
+                89,
+                255
+              ],
+              "isDark": false,
+              "isLight": true
+            }
+          },
+          {
+            "id": 13788,
+            "name": "Britney Spears",
+            "role": null,
+            "score": null,
+            "active": true,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/artists/13788.png",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/png"
+              }
+            ],
+            "itemType": "artist",
+            "imageColorInfo": {
+              "hex": "#d09b80",
+              "rgb": "rgb(208,155,128)",
+              "hexa": "#d09b80ff",
+              "rgba": "rgba(208,155,128,1)",
+              "value": [
+                208,
+                155,
+                128,
+                255
+              ],
+              "isDark": false,
+              "isLight": true
+            }
+          }
+        ],
+        "onClose": false,
+        "mixLevel": "level-medium",
+        "mixPriority": 1,
+        "disableSearch": false,
+        "drawerClassName": "",
+        "onSelectCallback": false,
+        "emptySelectionText": "Selecione artistas",
+        "initialArtistsList": [],
+        "disableHeaderUpdate": false,
+        "noMoveSelectedToTop": false,
+        "updateRelatedArtistsAtTheEnd": false
+      }
+    },
+    "type": "MIX",
+    "listenedDates": [
+      1746665251073,
+      1746665290961,
+      1746665296312,
+      1746665298761,
+      1746665302305,
+      1746665304555,
+      1746665308990
+    ],
+    "lastDateListened": 1746665308990
+  },
+  {
+    "id": 2224271,
+    "data": {
+      "id": 2224271,
+      "ttl": 1746233192473,
+      "upc": "7730965800614",
+      "title": "Astroboy",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/2224271.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/2224271.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/2224271.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/2224271.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:21:51",
+      "artists": [
+        {
+          "id": 1259824,
+          "name": "Astroboy",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/38181303.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/38181303.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/38181303.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/38181303.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1746227165894
+        }
+      ],
+      "idalbum": 2224271,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 7,
+      "releaseDate": "2003-01-01 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1746227165894
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1746226001369,
+      1746227165894
+    ],
+    "lastDateListened": 1746227165894
+  },
+  {
+    "id": 244756,
+    "data": {
+      "id": 244756,
+      "isrc": null,
+      "name": "Estrellas",
+      "album": {
+        "id": 218886,
+        "upc": null,
+        "score": null,
+        "title": "Otras Canciones",
+        "active": null,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/218886.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/218886.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/218886.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/218886.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": null,
+        "itemType": "album",
+        "subTitle": null,
+        "tracksQty": null,
+        "releaseDate": null,
+        "imageColorInfo": null
+      },
+      "score": null,
+      "active": true,
+      "indice": 0,
+      "length": "00:02:09",
+      "number": null,
+      "volume": null,
+      "artists": [
+        {
+          "id": 17856,
+          "name": "Attaque 77",
+          "role": "MainArtist",
+          "itemType": "artist",
+          "lastDateListened": 1746225942277
+        }
+      ],
+      "context": {
+        "id": 1647784,
+        "type": "TRACK_RADIO",
+        "trackData": {
+          "id": 1647784,
+          "isrc": null,
+          "name": "Estrella por estrella",
+          "album": {
+            "id": 209024,
+            "upc": null,
+            "score": null,
+            "title": "Aqui que no hay luz",
+            "active": null,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/covers/48/209024.jpg",
+                "size": 48,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/100/209024.jpg",
+                "size": 100,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/180/209024.jpg",
+                "size": 180,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/640/209024.jpg",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/jpeg"
+              }
+            ],
+            "artists": null,
+            "itemType": "album",
+            "subTitle": null,
+            "tracksQty": null,
+            "releaseDate": null,
+            "imageColorInfo": null
+          },
+          "score": null,
+          "active": true,
+          "indice": 0,
+          "length": "00:03:13",
+          "number": null,
+          "volume": null,
+          "artists": [
+            {
+              "id": 155998,
+              "name": "Los Confidentes",
+              "role": "MainArtist",
+              "itemType": "artist"
+            }
+          ],
+          "audioId": "ef68e112-dde8-dd1e-7460-b6475eba50c9",
+          "version": null,
+          "explicit": false,
+          "itemType": "track",
+          "isOffline": true,
+          "idAlbumTrack": 2460124,
+          "hasRelatedTracks": false
+        }
+      },
+      "version": "Cinco Estrellas",
+      "explicit": false,
+      "itemType": "track",
+      "idAlbumTrack": 2574180,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1746225942277
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1746225942277
+    ],
+    "lastDateListened": 1746225942277
+  },
+  {
+    "id": 1647784,
+    "data": {
+      "id": 1647784,
+      "isrc": null,
+      "name": "Estrella por estrella",
+      "album": {
+        "id": 209024,
+        "upc": null,
+        "score": null,
+        "title": "Aqui que no hay luz",
+        "active": null,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/209024.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/209024.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/209024.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/209024.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": null,
+        "itemType": "album",
+        "subTitle": null,
+        "tracksQty": null,
+        "releaseDate": null,
+        "imageColorInfo": null
+      },
+      "score": null,
+      "active": true,
+      "indice": 0,
+      "length": "00:03:13",
+      "number": null,
+      "volume": null,
+      "artists": [
+        {
+          "id": 155998,
+          "name": "Los Confidentes",
+          "role": "MainArtist",
+          "itemType": "artist",
+          "lastDateListened": 1746225929790
+        }
+      ],
+      "context": {
+        "id": 4787772,
+        "type": "TRACK_RADIO",
+        "trackData": {
+          "id": 4787772,
+          "isrc": null,
+          "name": "Estrellita Dónde Estás",
+          "album": {
+            "id": 686324,
+            "upc": null,
+            "score": null,
+            "title": "Canciones Infantiles Y Música Para Niños",
+            "active": null,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/covers/48/686324.jpg",
+                "size": 48,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/100/686324.jpg",
+                "size": 100,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/180/686324.jpg",
+                "size": 180,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/640/686324.jpg",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/jpeg"
+              }
+            ],
+            "artists": null,
+            "itemType": "album",
+            "subTitle": null,
+            "tracksQty": null,
+            "releaseDate": null,
+            "imageColorInfo": null
+          },
+          "score": null,
+          "active": true,
+          "indice": 0,
+          "length": "00:02:18",
+          "number": null,
+          "volume": null,
+          "artists": [
+            {
+              "id": 490139,
+              "name": "Estrellita Dónde Estás",
+              "role": null,
+              "itemType": "artist"
+            }
+          ],
+          "audioId": "82937cde-13c1-6d7d-e872-56c0fefc5246",
+          "loadImg": true,
+          "version": null,
+          "explicit": false,
+          "itemType": "track",
+          "isOffline": false,
+          "isPreview": false,
+          "idAlbumTrack": 6274428,
+          "hasRelatedTracks": false
+        }
+      },
+      "version": null,
+      "explicit": false,
+      "itemType": "track",
+      "idAlbumTrack": 2460124,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1746225929790
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1746225929790
+    ],
+    "lastDateListened": 1746225929790
+  },
+  {
+    "id": 4787772,
+    "data": {
+      "id": 4787772,
+      "isrc": null,
+      "name": "Estrellita Dónde Estás",
+      "album": {
+        "id": 686324,
+        "upc": null,
+        "score": null,
+        "title": "Canciones Infantiles Y Música Para Niños",
+        "active": null,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/686324.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/686324.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/686324.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/686324.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": null,
+        "itemType": "album",
+        "subTitle": null,
+        "tracksQty": null,
+        "releaseDate": null,
+        "imageColorInfo": null
+      },
+      "score": null,
+      "active": true,
+      "indice": 0,
+      "length": "00:02:18",
+      "number": null,
+      "volume": null,
+      "artists": [
+        {
+          "id": 490139,
+          "name": "Estrellita Dónde Estás",
+          "role": null,
+          "itemType": "artist",
+          "lastDateListened": 1746224982699
+        }
+      ],
+      "context": {
+        "id": 15649088,
+        "name": "Tarde Em Itapuã",
+        "type": "ALBUM",
+        "title": "Tarde Em Itapuã",
+        "subTitle": null
+      },
+      "version": null,
+      "explicit": false,
+      "itemType": "track",
+      "idAlbumTrack": 6274428,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1746224982699
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1746224982699
+    ],
+    "lastDateListened": 1746224982699
+  },
+  {
+    "id": 3724,
+    "data": {
+      "id": 3724,
+      "ttl": 1744729667081,
+      "name": "Bossa Nova Dinner",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/3724.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 9,
+        "name": "Filtr"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 71,
+      "createDate": 1734018653,
+      "updateDate": 1590766332,
+      "imageColorInfo": {
+        "hex": "#966a3b",
+        "rgb": "rgb(150,106,59)",
+        "hexa": "#966a3bff",
+        "rgba": "rgba(150,106,59,1)",
+        "value": [
+          150,
+          106,
+          59,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1746198375953
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1744728640308,
+      1746198375953
+    ],
+    "lastDateListened": 1746198375953
+  },
+  {
+    "id": 4341,
+    "data": {
+      "id": 4341,
+      "ttl": 1741795544146,
+      "name": "Festa na Piscina",
+      "user": null,
+      "owner": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/4341.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 87,
+      "createDate": 1734018691,
+      "updateDate": 1738961977,
+      "imageColorInfo": {
+        "hex": "#94887b",
+        "rgb": "rgb(148,136,123)",
+        "hexa": "#94887bff",
+        "rgba": "rgba(148,136,123,1)",
+        "value": [
+          148,
+          136,
+          123,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1744667516947
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1741788346839,
+      1741790448030,
+      1741874132854,
+      1741886813328,
+      1741887254720,
+      1741887310404,
+      1744223715115,
+      1744427915230,
+      1744491311526,
+      1744560788519,
+      1744661124112,
+      1744661789032,
+      1744661969815,
+      1744667516947
+    ],
+    "lastDateListened": 1744667516947
+  },
+  {
+    "id": 2034,
+    "data": {
+      "id": 2034,
+      "ttl": 1744572267540,
+      "name": "Caetano Veloso",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/2034.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#cbc3c3",
+        "rgb": "rgb(203,195,195)",
+        "hexa": "#cbc3c3ff",
+        "rgba": "rgba(203,195,195,1)",
+        "value": [
+          203,
+          195,
+          195,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1744662397213
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1744565072143,
+      1744661184014,
+      1744662397213
+    ],
+    "lastDateListened": 1744662397213
+  },
+  {
+    "id": 9942,
+    "data": {
+      "id": 9942,
+      "ttl": 1744571536501,
+      "name": "Dias de Chuva",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/9942.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 50,
+      "createDate": 1734018763,
+      "updateDate": 1741028011,
+      "imageColorInfo": {
+        "hex": "#456772",
+        "rgb": "rgb(69,103,114)",
+        "hexa": "#456772ff",
+        "rgba": "rgba(69,103,114,1)",
+        "value": [
+          69,
+          103,
+          114,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744661822895
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1744564389692,
+      1744661147640,
+      1744661822895
+    ],
+    "lastDateListened": 1744661822895
+  },
+  {
+    "id": 1751,
+    "data": {
+      "id": 1751,
+      "ttl": 1744663489584,
+      "name": "Pagode 2025",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/1751.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 8,
+        "name": "Digster"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 97,
+      "createDate": 1734018502,
+      "updateDate": 1742826924,
+      "imageColorInfo": {
+        "hex": "#9057aa",
+        "rgb": "rgb(144,87,170)",
+        "hexa": "#9057aaff",
+        "rgba": "rgba(144,87,170,1)",
+        "value": [
+          144,
+          87,
+          170,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744656496469
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1744656496469
+    ],
+    "lastDateListened": 1744656496469
+  },
+  {
+    "id": 3186,
+    "data": {
+      "id": 3186,
+      "ttl": 1744663500943,
+      "name": "Sad Hipster",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/3186.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 8,
+        "name": "Digster"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 49,
+      "createDate": 1734018630,
+      "updateDate": 1566577851,
+      "imageColorInfo": {
+        "hex": "#635745",
+        "rgb": "rgb(99,87,69)",
+        "hexa": "#635745ff",
+        "rgba": "rgba(99,87,69,1)",
+        "value": [
+          99,
+          87,
+          69,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744656302257
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1744656302257
+    ],
+    "lastDateListened": 1744656302257
+  },
+  {
+    "id": 3124,
+    "data": {
+      "id": 3124,
+      "ttl": 1744435922700,
+      "name": "Blues",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/3124.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 33,
+      "createDate": 1734018626,
+      "updateDate": 1677076156,
+      "imageColorInfo": {
+        "hex": "#4f6881",
+        "rgb": "rgb(79,104,129)",
+        "hexa": "#4f6881ff",
+        "rgba": "rgba(79,104,129,1)",
+        "value": [
+          79,
+          104,
+          129,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744656265695
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1744468530953,
+      1744469289838,
+      1744564421205,
+      1744564707420,
+      1744575801123,
+      1744575808509,
+      1744656265695
+    ],
+    "lastDateListened": 1744656265695
+  },
+  {
+    "id": 32337259,
+    "data": {
+      "id": 32337259,
+      "ttl": 1744568678646,
+      "upc": "196872400793",
+      "title": "Coração Partido (Corazón Partío)",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/32337259.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/32337259.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/32337259.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/32337259.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:03:15",
+      "artists": [
+        {
+          "id": 1037973,
+          "name": "Grupo Menos É Mais",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/1037973.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744656219266
+        }
+      ],
+      "idalbum": 32337259,
+      "itemType": "album",
+      "subTitle": "Ao Vivo",
+      "tracksQty": 1,
+      "releaseDate": "2024-08-29 00:00:00",
+      "releaseType": "Single",
+      "imageColorInfo": null,
+      "lastDateListened": 1744656219266
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744561480370,
+      1744561675070,
+      1744656219266
+    ],
+    "lastDateListened": 1744656219266
+  },
+  {
+    "id": 1712,
+    "data": {
+      "id": 1712,
+      "ttl": 1743782928740,
+      "name": "Nova MPB 2025",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/1712.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 8,
+        "name": "Digster"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 99,
+      "createDate": 1734018499,
+      "updateDate": 1742828326,
+      "imageColorInfo": {
+        "hex": "#b96891",
+        "rgb": "rgb(185,104,145)",
+        "hexa": "#b96891ff",
+        "rgba": "rgba(185,104,145,1)",
+        "value": [
+          185,
+          104,
+          145,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1744654626393
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1743776229313,
+      1744121394492,
+      1744124044626,
+      1744218603843,
+      1744218981221,
+      1744218993089,
+      1744654626393
+    ],
+    "lastDateListened": 1744654626393
+  },
+  {
+    "id": 158,
+    "data": {
+      "id": 158,
+      "from": "history",
+      "name": "MPB",
+      "rank": 2,
+      "amount": null,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/tags/158_48_76.png",
+          "size": 260,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "isGenre": true,
+      "itemType": "tag",
+      "sortDate": 1744583169413,
+      "isStation": true,
+      "updateDate": 1730406082,
+      "description": "",
+      "imageColorInfo": {
+        "hex": "#c9897d",
+        "rgb": "rgb(201,137,125)",
+        "hexa": "#c9897dc1",
+        "rgba": "rgba(201,137,125,0.7568627450980392)",
+        "value": [
+          201,
+          137,
+          125,
+          193
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "imageUpdateDate": 1722866693,
+      "lastDateListened": 1744583169413
+    },
+    "type": "TAG_RADIO",
+    "listenedDates": [
+      1744564338744,
+      1744564540631,
+      1744564864117,
+      1744565736367,
+      1744583169413
+    ],
+    "lastDateListened": 1744583169413
+  },
+  {
+    "id": 124902141,
+    "data": {
+      "id": 124902141,
+      "isrc": "BRRGE2400589",
+      "name": "Coração Partido (Corazón Partío)",
+      "album": {
+        "id": 32337259,
+        "upc": "196872400793",
+        "score": null,
+        "title": "Coração Partido (Corazón Partío)",
+        "active": true,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/32337259.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/32337259.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/32337259.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/32337259.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": [
+          {
+            "id": 1037973,
+            "name": "Grupo Menos É Mais",
+            "role": "MainArtist",
+            "score": null,
+            "active": true,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/artists/1037973.png",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/png"
+              }
+            ],
+            "itemType": "artist",
+            "imageColorInfo": null
+          }
+        ],
+        "itemType": "album",
+        "subTitle": "Ao Vivo",
+        "tracksQty": 1,
+        "releaseDate": "2024-08-29 00:00:00",
+        "imageColorInfo": null
+      },
+      "score": null,
+      "active": true,
+      "indice": 0,
+      "length": "00:03:15",
+      "number": 1,
+      "volume": 1,
+      "artists": [
+        {
+          "id": 1037973,
+          "name": "Grupo Menos É Mais",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/1037973.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744576879221
+        },
+        {
+          "id": 19275872,
+          "name": "Alejandro Sanz - Vs. Ricardus",
+          "role": "Composer",
+          "score": null,
+          "active": true,
+          "images": [],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744576879221
+        }
+      ],
+      "version": "Ao Vivo",
+      "explicit": false,
+      "itemType": "track",
+      "idAlbumTrack": 146165057,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1744576879221
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1744561500498,
+      1744561734040,
+      1744562454763,
+      1744564557481,
+      1744576879221
+    ],
+    "lastDateListened": 1744576879221
+  },
+  {
+    "id": 108,
+    "data": {
+      "id": 108,
+      "from": "history",
+      "name": "Blues",
+      "rank": 1,
+      "amount": null,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/tags/108_48_76.png",
+          "size": 260,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "isGenre": true,
+      "itemType": "tag",
+      "sortDate": 1744564548327,
+      "isStation": true,
+      "updateDate": 1722863604,
+      "description": "",
+      "imageColorInfo": {
+        "hex": "#868785",
+        "rgb": "rgb(134,135,133)",
+        "hexa": "#868785ff",
+        "rgba": "rgba(134,135,133,1)",
+        "value": [
+          134,
+          135,
+          133,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "imageUpdateDate": 1722863604,
+      "lastDateListened": 1744564548327
+    },
+    "type": "TAG_RADIO",
+    "listenedDates": [
+      1740921726016,
+      1741487620641,
+      1741493544804,
+      1742004209992,
+      1742006358352,
+      1742395991558,
+      1742396120542,
+      1742396393927,
+      1742592335787,
+      1743262428357,
+      1743620465630,
+      1743630746095,
+      1744428723232,
+      1744464990664,
+      1744466123875,
+      1744484005745,
+      1744500639170,
+      1744564409624,
+      1744564548327
+    ],
+    "lastDateListened": 1744564548327
+  },
+  {
+    "id": 135390923,
+    "data": {
+      "id": 135390923,
+      "isrc": "BCM9A2400071",
+      "name": "Oh Garota Eu Quero Você Só Pra Mim",
+      "album": {
+        "id": 35872765,
+        "upc": "734691617260",
+        "score": null,
+        "title": "Oh Garota Eu Quero Você Só Pra Mim",
+        "active": true,
+        "images": [
+          {
+            "url": "https://statics.kuackmedia.com/covers/48/35872765.jpg",
+            "size": 48,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/100/35872765.jpg",
+            "size": 100,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/180/35872765.jpg",
+            "size": 180,
+            "type": "url",
+            "imageType": "image/jpeg"
+          },
+          {
+            "url": "https://statics.kuackmedia.com/covers/640/35872765.jpg",
+            "size": 640,
+            "type": "url",
+            "imageType": "image/jpeg"
+          }
+        ],
+        "artists": [],
+        "idalbum": 35872765,
+        "itemType": "album",
+        "subTitle": null,
+        "tracksQty": 1,
+        "releaseDate": "2024-12-17 00:00:00",
+        "imageColorInfo": null
+      },
+      "score": null,
+      "active": true,
+      "indice": 0,
+      "length": "00:02:46",
+      "number": 1,
+      "volume": 1,
+      "artists": [
+        {
+          "id": 846270,
+          "name": "Oruam",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/846270.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744564030860
+        },
+        {
+          "id": 78114,
+          "name": "Zé Felipe",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/78114.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744564030860
+        },
+        {
+          "id": 839657,
+          "name": "MC Rodrigo do CN",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/36913462.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/36913462.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/36913462.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/36913462.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744564030860
+        }
+      ],
+      "audioId": "b34c945d-05b0-0ea3-ef9a-89bcc20b3948",
+      "context": {
+        "id": 260742,
+        "type": "TRACK_RADIO",
+        "trackData": {
+          "id": 260742,
+          "isrc": null,
+          "name": "Saiba",
+          "album": {
+            "id": 260907,
+            "upc": null,
+            "score": null,
+            "title": "Adriana Partimpim",
+            "active": null,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/covers/48/260907.jpg",
+                "size": 48,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/100/260907.jpg",
+                "size": 100,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/180/260907.jpg",
+                "size": 180,
+                "type": "url",
+                "imageType": "image/jpeg"
+              },
+              {
+                "url": "https://statics.kuackmedia.com/covers/640/260907.jpg",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/jpeg"
+              }
+            ],
+            "artists": null,
+            "itemType": "album",
+            "subTitle": null,
+            "tracksQty": null,
+            "releaseDate": null,
+            "imageColorInfo": null
+          },
+          "score": 66.88014431783822,
+          "active": true,
+          "indice": 0,
+          "length": "00:03:01",
+          "number": null,
+          "volume": null,
+          "artists": [
+            {
+              "id": 26323,
+              "name": "Adriana Partimpim",
+              "role": "MainArtist",
+              "itemType": "artist",
+              "lastDateListened": 1744560743379
+            }
+          ],
+          "audioId": "31622c3a-4f3d-39b7-60ed-dd8338edc129",
+          "version": null,
+          "explicit": false,
+          "itemType": "track",
+          "isPreview": false,
+          "idAlbumTrack": 3048766,
+          "hasRelatedTracks": false,
+          "lastDateListened": 1744560743379
+        }
+      },
+      "version": null,
+      "explicit": false,
+      "itemType": "track",
+      "isOffline": true,
+      "playlistId": 4341,
+      "idAlbumTrack": 157890357,
+      "playlistName": "Festa na Piscina",
+      "playlistTrackId": 15256900,
+      "hasRelatedTracks": false,
+      "lastDateListened": 1744564030860
+    },
+    "type": "RADIO_TRACK",
+    "listenedDates": [
+      1744561160578,
+      1744564030860
+    ],
+    "lastDateListened": 1744564030860
+  },
+  {
+    "id": 24135404,
+    "data": {
+      "id": 24135404,
+      "ttl": 1744131260419,
+      "upc": "00602458365511",
+      "title": "Platinum",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/24135404.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/24135404.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/24135404.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/24135404.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "02:34:03",
+      "artists": [
+        {
+          "id": 11454,
+          "name": "Frank Sinatra",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/artists/11454.png",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/png"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744560098506
+        }
+      ],
+      "idalbum": 24135404,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 44,
+      "releaseDate": "2023-10-27 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1744560098506
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744124061522,
+      1744124066199,
+      1744124068677,
+      1744218523896,
+      1744222183923,
+      1744222328647,
+      1744222633021,
+      1744223020596,
+      1744223045824,
+      1744231400364,
+      1744298110524,
+      1744374731852,
+      1744378091518,
+      1744418706354,
+      1744500644202,
+      1744560098506
+    ],
+    "lastDateListened": 1744560098506
+  },
+  {
+    "id": 4506,
+    "data": {
+      "id": 4506,
+      "ttl": 1744435143336,
+      "name": "Joaquin Sabina",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/artists/4506.png",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/png"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#666666",
+        "rgb": "rgb(102,102,102)",
+        "hexa": "#666666ff",
+        "rgba": "rgba(102,102,102,1)",
+        "value": [
+          102,
+          102,
+          102,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744427947798
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1744427947485,
+      1744427947798
+    ],
+    "lastDateListened": 1744427947798
+  },
+  {
+    "id": 74,
+    "data": {
+      "id": 74,
+      "ttl": 1739909168777,
+      "name": "Rainy Days",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/74.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 40,
+      "createDate": 1734018373,
+      "updateDate": 1739830265,
+      "imageColorInfo": {
+        "hex": "#6d6a66",
+        "rgb": "rgb(109,106,102)",
+        "hexa": "#6d6a66ff",
+        "rgba": "rgba(109,106,102,1)",
+        "value": [
+          109,
+          106,
+          102,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744376720001
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1739902036840,
+      1740140170903,
+      1741004014947,
+      1741006599092,
+      1741017883796,
+      1741021024532,
+      1741092019552,
+      1741092206693,
+      1741092993677,
+      1741093914895,
+      1741099072039,
+      1741102492715,
+      1741116947345,
+      1741292698779,
+      1741346721333,
+      1741367720802,
+      1741460041431,
+      1742096446830,
+      1742096447000,
+      1742096706101,
+      1742096712643,
+      1742229017440,
+      1742229060985,
+      1742230850015,
+      1742232098488,
+      1742233422620,
+      1742233753702,
+      1742382752460,
+      1742388984471,
+      1742389065460,
+      1742390066855,
+      1742391123121,
+      1742391131079,
+      1742391742097,
+      1742393602279,
+      1744223114615,
+      1744223515519,
+      1744327732008,
+      1744375786295,
+      1744376720001
+    ],
+    "lastDateListened": 1744376720001
+  },
+  {
+    "id": 2870386,
+    "data": {
+      "id": 2870386,
+      "ttl": 1742530045156,
+      "upc": "093624894889",
+      "title": "Bombshell (Original Music from the Motion Picture Soundtrack)",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/2870386.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/2870386.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/2870386.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/2870386.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:46:47",
+      "artists": [
+        {
+          "id": 31142,
+          "name": "Regina Spektor",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/35604915.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/35604915.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/35604915.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/35604915.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744223088635
+        },
+        {
+          "id": 52777,
+          "name": "Theodore Shapiro",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/33750357.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/33750357.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/33750357.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/33750357.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744223088635
+        }
+      ],
+      "idalbum": 2870386,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 20,
+      "releaseDate": "2019-12-13 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1744223088635
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1742522848073,
+      1742522863662,
+      1744223088635
+    ],
+    "lastDateListened": 1744223088635
+  },
+  {
+    "id": 52187,
+    "data": {
+      "id": 52187,
+      "ttl": 1741117503696,
+      "name": "Tan Biónica",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/33186348.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/33186348.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/33186348.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/33186348.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "itemType": "artist",
+      "imageColorInfo": {
+        "hex": "#5e5d5e",
+        "rgb": "rgb(94,93,94)",
+        "hexa": "#5e5d5eff",
+        "rgba": "rgba(94,93,94,1)",
+        "value": [
+          94,
+          93,
+          94,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744218689899
+    },
+    "type": "ARTIST",
+    "listenedDates": [
+      1741110308345,
+      1741362954328,
+      1741366044573,
+      1741903409668,
+      1741912953370,
+      1741958242532,
+      1741960481591,
+      1741961562567,
+      1741966187446,
+      1741966356004,
+      1741968417929,
+      1741977924928,
+      1741979775859,
+      1741979852759,
+      1741982266453,
+      1741983486066,
+      1741983510482,
+      1742235887199,
+      1742236937549,
+      1742237841050,
+      1742237870189,
+      1742239235825,
+      1742239997833,
+      1742308273279,
+      1742317121185,
+      1742320724202,
+      1742320828748,
+      1743633914282,
+      1744218689899
+    ],
+    "lastDateListened": 1744218689899
+  },
+  {
+    "id": 296,
+    "data": {
+      "id": 296,
+      "ttl": 1743641249949,
+      "name": "Sing",
+      "user": null,
+      "owner": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/296.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 7,
+        "name": "Kids"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 14,
+      "createDate": 1734018386,
+      "updateDate": 1595552525,
+      "imageColorInfo": {
+        "hex": "#a4948a",
+        "rgb": "rgb(164,148,138)",
+        "hexa": "#a4948aff",
+        "rgba": "rgba(164,148,138,1)",
+        "value": [
+          164,
+          148,
+          138,
+          255
+        ],
+        "isDark": false,
+        "isLight": true
+      },
+      "lastDateListened": 1744217439924
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1743634056014,
+      1743691809674,
+      1743697108845,
+      1743700171911,
+      1743700279869,
+      1743776039414,
+      1744150218510,
+      1744203494897,
+      1744217439924
+    ],
+    "lastDateListened": 1744217439924
+  },
+  {
+    "id": 260907,
+    "data": {
+      "id": 260907,
+      "ttl": 1744049083972,
+      "upc": "828765920926",
+      "title": "Adriana Partimpim",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/260907.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/260907.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/260907.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/260907.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:30:08",
+      "artists": [
+        {
+          "id": 26323,
+          "name": "Adriana Partimpim",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/33873213.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/33873213.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/33873213.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/33873213.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1744041885794
+        }
+      ],
+      "idalbum": 260907,
+      "itemType": "album",
+      "subTitle": null,
+      "tracksQty": 10,
+      "releaseDate": "2004-06-17 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1744041885794
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1744041885794
+    ],
+    "lastDateListened": 1744041885794
+  },
+  {
+    "id": 11,
+    "data": {
+      "id": 11,
+      "ttl": 1743708516126,
+      "name": "Back to the 90s",
+      "user": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/11.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 40,
+      "createDate": 1734018367,
+      "updateDate": 1730748467,
+      "imageColorInfo": {
+        "hex": "#524638",
+        "rgb": "rgb(82,70,56)",
+        "hexa": "#524638ff",
+        "rgba": "rgba(82,70,56,1)",
+        "value": [
+          82,
+          70,
+          56,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1744031732252
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1743701321219,
+      1743776372397,
+      1743776381151,
+      1743776385371,
+      1744028935883,
+      1744031732252
+    ],
+    "lastDateListened": 1744031732252
+  },
+  {
+    "id": "mix_11454",
+    "data": {
+      "options": {
+        "id": "mix_11454",
+        "type": "mix",
+        "artists": [
+          {
+            "id": 11454,
+            "from": "history",
+            "name": "Frank Sinatra",
+            "rank": 1,
+            "images": [
+              {
+                "url": "https://statics.kuackmedia.com/artists/11454.png",
+                "size": 640,
+                "type": "url",
+                "imageType": "image/png"
+              }
+            ],
+            "sortDate": 1743776296188,
+            "lastDateListened": 1743776296188
+          }
+        ],
+        "mixLevel": "level-low",
+        "mixPriority": 1
+      }
+    },
+    "type": "MIX",
+    "listenedDates": [
+      1743798526938
+    ],
+    "lastDateListened": 1743798526938
+  },
+  {
+    "id": 7693951,
+    "data": {
+      "id": 7693951,
+      "ttl": 1741138961448,
+      "upc": "00602557297782",
+      "title": "Sing Quem Canta Seus Males Espanta (Trilha Sonora Original Do Filme)",
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/covers/48/7693951.jpg",
+          "size": 48,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/100/7693951.jpg",
+          "size": 100,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/180/7693951.jpg",
+          "size": 180,
+          "type": "url",
+          "imageType": "image/jpeg"
+        },
+        {
+          "url": "https://statics.kuackmedia.com/covers/640/7693951.jpg",
+          "size": 640,
+          "type": "url",
+          "imageType": "image/jpeg"
+        }
+      ],
+      "lenght": "00:48:23",
+      "artists": [
+        {
+          "id": 30,
+          "name": "Various Artists",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/294916.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/294916.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/294916.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/294916.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1743776222592
+        },
+        {
+          "id": 659319,
+          "name": "Various Artists",
+          "role": "MainArtist",
+          "score": null,
+          "active": true,
+          "images": [
+            {
+              "url": "https://statics.kuackmedia.com/covers/48/294916.jpg",
+              "size": 48,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/100/294916.jpg",
+              "size": 100,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/180/294916.jpg",
+              "size": 180,
+              "type": "url",
+              "imageType": "image/jpeg"
+            },
+            {
+              "url": "https://statics.kuackmedia.com/covers/640/294916.jpg",
+              "size": 640,
+              "type": "url",
+              "imageType": "image/jpeg"
+            }
+          ],
+          "itemType": "artist",
+          "imageColorInfo": null,
+          "lastDateListened": 1743776222592
+        }
+      ],
+      "idalbum": 7693951,
+      "itemType": "album",
+      "subTitle": "Trilha Sonora Original Do Filme",
+      "tracksQty": 16,
+      "releaseDate": "2016-12-09 00:00:00",
+      "releaseType": "Album",
+      "imageColorInfo": null,
+      "lastDateListened": 1743776222592
+    },
+    "type": "ALBUM",
+    "listenedDates": [
+      1741131763578,
+      1741908952794,
+      1741955604628,
+      1741955836899,
+      1741982143438,
+      1741988362875,
+      1742004662230,
+      1742004717181,
+      1742235542199,
+      1742384308064,
+      1742384831810,
+      1743633930963,
+      1743699782825,
+      1743776222592
+    ],
+    "lastDateListened": 1743776222592
+  },
+  {
+    "id": 4215,
+    "data": {
+      "id": 4215,
+      "ttl": 1743641266642,
+      "name": "Sing the 70s",
+      "user": null,
+      "owner": null,
+      "active": true,
+      "images": [
+        {
+          "url": "https://statics.kuackmedia.com/master_cms/playlists/4215.png",
+          "size": 240,
+          "type": "url"
+        }
+      ],
+      "curator": {
+        "id": 1,
+        "name": "NomoMusic"
+      },
+      "itemType": "playlist",
+      "followers": 0,
+      "tracksQty": 28,
+      "createDate": 1734018681,
+      "updateDate": 1730748096,
+      "imageColorInfo": {
+        "hex": "#7b6a5e",
+        "rgb": "rgb(123,106,94)",
+        "hexa": "#7b6a5eff",
+        "rgba": "rgba(123,106,94,1)",
+        "value": [
+          123,
+          106,
+          94,
+          255
+        ],
+        "isDark": true,
+        "isLight": false
+      },
+      "lastDateListened": 1743701299024
+    },
+    "type": "PLAYLIST",
+    "listenedDates": [
+      1743634067925,
+      1743696962516,
+      1743701299024
+    ],
+    "lastDateListened": 1743701299024
+  }
+]
