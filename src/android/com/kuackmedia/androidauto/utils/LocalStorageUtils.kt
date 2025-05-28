@@ -75,7 +75,9 @@ object LocalStorageUtils {
         extraLife = false,
       )
       Log.i(TAG, "[LocalStorageUtils] Track payload: $payload")
-      return Uri.parse(api.getTrackUrl(payload).url)
+      val url = api.getTrackUrl(payload).url
+      Log.i(TAG, "[LocalStorageUtils] Track URL: $url")
+      return Uri.parse(url)
     }
   }
 

@@ -1,77 +1,115 @@
 package com.kuackmedia.androidauto.media
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
-import android.support.v4.media.MediaBrowserCompat
+import android.net.Uri
+import android.util.Log
 
 
 /**
  * A simple PlayerAdapter that wraps Android's MediaPlayer.
  */
-class MediaPlayerAdapter(service: MusicLibraryService) : IPlayerAdapter {
+class MediaPlayerAdapter() : IPlayerAdapter {
 
+  private val TAG = "MediaPlayerAdapter"
   private val mediaPlayer = MediaPlayer()
-  private val playlist = mutableListOf<String>()
-  private var currentIndex = 0
+  private var currentTrackUri: Uri? = null
 
   override val currentPosition: Long
     get() = mediaPlayer.currentPosition.toLong()
 
   init {
+    Log.i(TAG, "MediaPlayerAdapter init")
     mediaPlayer.setAudioAttributes(
       AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
         .build()
     )
+    mediaPlayer.setOnErrorListener { mp, what, extra ->
+      Log.e(TAG, "MediaPlayer error: what=$what, extra=$extra")
+      true
+    }
+
+    mediaPlayer.setOnInfoListener { mp, what, extra ->
+      Log.i(TAG, "MediaPlayer info: what=$what, extra=$extra")
+      false
+    }
+
+    mediaPlayer.setOnPreparedListener { mp ->
+      {
+        Log.i(TAG, "[playCurrentTrack] Starting player")
+        mp?.start()
+      }
+    }
+  }
+
+  override fun listenOnTrackFinished(callback: () -> Unit) {
     mediaPlayer.setOnCompletionListener {
-      // auto-advance when a track finishes
-      skipToNext()
+      callback()
     }
   }
 
   override fun play() {
-    if (!mediaPlayer.isPlaying) {
-      mediaPlayer.start()
+    Log.i(TAG, "[MediaPlayerAdapter] Play was executed")
+    if (mediaPlayer.isPlaying) {
+      mediaPlayer.stop()
+      mediaPlayer.reset()
+    }
+    mediaPlayer.start()
+  }
+
+  override fun playCurrentTrack(context: Context) {
+    try {
+      if (mediaPlayer.isPlaying) {
+        mediaPlayer.stop()
+        mediaPlayer.reset()
+      }
+
+      if (this.currentTrackUri != null) {
+        mediaPlayer.reset()
+
+        val url = this.currentTrackUri.toString()
+
+        mediaPlayer.run {
+          Log.i(TAG, "[playCurrentTrack] Setting data source $url")
+          mediaPlayer.setDataSource(url)
+          mediaPlayer.prepareAsync()
+          Log.i(TAG, "[playCurrentTrack] Prepare was completed")
+        }
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "Error en playTrack", e)
     }
   }
 
   override fun pause() {
+    Log.i(TAG, "[MediaPlayerAdapter] Pause was executed")
     if (mediaPlayer.isPlaying) {
       mediaPlayer.pause()
     }
   }
 
-  override fun skipToNext() {
-    if (playlist.isEmpty()) return
-    currentIndex = (currentIndex + 1) % playlist.size
-    mediaPlayer.reset()
-    mediaPlayer.setDataSource(playlist[currentIndex])
-    mediaPlayer.prepare()  // or prepareAsync() with a listener
-    mediaPlayer.start()
-  }
-
-  override fun skipToPrevious() {
-    if (playlist.isEmpty()) return
-    currentIndex = if (currentIndex == 0) playlist.lastIndex else currentIndex - 1
-    mediaPlayer.reset()
-    mediaPlayer.setDataSource(playlist[currentIndex])
-    mediaPlayer.prepare()
-    mediaPlayer.start()
+  override fun stop() {
+    Log.i(TAG, "[MediaPlayerAdapter] Stop was executed")
+    if (mediaPlayer.isPlaying) {
+      mediaPlayer.stop()
+    }
   }
 
   override fun seekTo(position: Long) {
     mediaPlayer.seekTo(position.toInt())
+    mediaPlayer.start()
   }
 
-  override fun setCurrentTrack(trackUri: String){
-    mediaPlayer.reset()
-    mediaPlayer.setDataSource(trackUri);
-    mediaPlayer.prepareAsync();
+  override fun setCurrentTrack(trackUri: Uri?){
+    this.currentTrackUri = trackUri
   }
 
   /** Release when your service is destroyed */
-  fun release() {
+  override fun release() {
+    Log.i(TAG, "[MediaPlayerAdapter] Release was executed")
     mediaPlayer.release()
   }
 }

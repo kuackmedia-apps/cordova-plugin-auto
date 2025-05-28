@@ -23,6 +23,7 @@ class MediaSessionCallback(
   private val context: Context
 ) : MediaSessionCompat.Callback() {
   val TAG = "MediaSessionCallback"
+  var currentQueueIndex = 0
 
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
     Log.i(TAG, "[onPlayFromMediaId] Start $mediaId")
@@ -34,7 +35,20 @@ class MediaSessionCallback(
       try {
         val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, dataMediaId)
         withContext(Dispatchers.Main) {
-          playTrack(id, trackUrl)
+          Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
+          mediaPlayer.setCurrentTrack(trackUrl)
+          mediaPlayer.playCurrentTrack(context)
+          updateState(PlaybackStateCompat.STATE_PLAYING)
+
+          val metadata = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, extras?.getString("title"))
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras?.getString("artist"))
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras?.getString("album"))
+            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, extras?.getString("image"))
+            .build()
+
+          mediaSession.setMetadata(metadata)
         }
       } catch (e: Exception) {
         Log.e("MediaSession", "Failed to load track URI", e)
@@ -48,29 +62,53 @@ class MediaSessionCallback(
     mediaSession.isActive = true
   }
 
+  override fun onStop() {
+    mediaPlayer.stop()
+    mediaPlayer.seekTo(0)
+
+    mediaSession.isActive = false
+
+    updateState(PlaybackStateCompat.STATE_STOPPED)
+  }
+
   override fun onPause() {
     mediaPlayer.pause()
     updateState(PlaybackStateCompat.STATE_PAUSED)
   }
 
   override fun onSkipToNext() {
-    mediaPlayer.skipToNext()
+    val nextItem = getNextQueueItem()?.description
+    onPlayFromMediaId(
+      mediaId = nextItem?.mediaId,
+      extras = nextItem?.extras
+    )
     updateState(PlaybackStateCompat.STATE_PLAYING)
   }
 
   override fun onSkipToPrevious() {
-    mediaPlayer.skipToPrevious()
+    val previousItem = getPreviousQueueItem()?.description
+    onPlayFromMediaId(
+      mediaId = previousItem?.mediaId,
+      extras = previousItem?.extras
+    )
     updateState(PlaybackStateCompat.STATE_PLAYING)
   }
 
-  override fun onSeekTo(pos: Long) {
-    mediaPlayer.seekTo(pos)
-    updateState(PlaybackStateCompat.STATE_PLAYING, pos)
-  }
+//  override fun onSeekTo(pos: Long) {
+//    mediaPlayer.seekTo(pos)
+//    updateState(PlaybackStateCompat.STATE_PLAYING, pos)
+//  }
 
   override fun onSkipToQueueItem(id: Long) {
-    mediaPlayer.skipToNext()
-    updateState(PlaybackStateCompat.STATE_PLAYING)
+    val nextItemUri = mediaSession.controller.queue[id.toInt()].description
+    if(nextItemUri != null) {
+      onPlayFromMediaId(
+        mediaId = nextItemUri.mediaId,
+        extras = nextItemUri.extras
+      )
+      currentQueueIndex = id.toInt()
+      updateState(PlaybackStateCompat.STATE_PLAYING)
+    }
   }
 
   private fun updateState(
@@ -93,26 +131,24 @@ class MediaSessionCallback(
     mediaSession.setPlaybackState(pb)
   }
 
-  fun playTrack(mediaId: String, url: Uri?) {
-    val metadata = MediaMetadataCompat.Builder()
-      .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
-      .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Track $mediaId")
-      .build()
-
-    mediaSession.setMetadata(metadata)
-
-    try {
-      mediaPlayer.setCurrentTrack(url.toString())
-      mediaPlayer.play()
-    } catch (e: Exception) {
-      Log.e("MediaPlayer", "Playback error", e)
+  fun getNextQueueItem(): MediaSessionCompat.QueueItem? {
+    val queue = mediaSession.controller.queue
+    return if (queue != null && currentQueueIndex + 1 < queue.size) {
+      currentQueueIndex += 1
+      queue[currentQueueIndex]
+    } else {
+      null
     }
+  }
 
-    mediaSession.setPlaybackState(
-      PlaybackStateCompat.Builder()
-        .setState(PlaybackStateCompat.STATE_PLAYING, 0L, 1f)
-        .build()
-    )
+  fun getPreviousQueueItem(): MediaSessionCompat.QueueItem? {
+    val queue = mediaSession.controller.queue
+    return if (queue != null && currentQueueIndex - 1 > 0) {
+      currentQueueIndex -= 1
+      queue[currentQueueIndex]
+    } else {
+      null
+    }
   }
 }
 

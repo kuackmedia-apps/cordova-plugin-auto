@@ -15,6 +15,8 @@ import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.apache.cordova.media.AudioHandler.TAG
 import java.io.File
 
@@ -93,13 +95,25 @@ object MediaItemFactory {
 
       "track" -> {
         val track = mediaItem as Track
+        val imageUri = if(track.album != null) getImageUrl(track.album.images) else null
+        extras.putString("title", track.name)
+        extras.putString("artist", getArtistsNames(track.artists))
+        extras.putString("album", track.album?.title)
+        extras.putString("image", imageUri)
+
+        val mediaItemAdapter = MediaItemJsonAdapter(
+          Moshi.Builder()
+            .add(KotlinJsonAdapterFactory())
+            .build()
+        )
+        extras.putString("track", mediaItemAdapter.toJson(track))
 
         result = this.buildMediaItem(
           title = track.name,
           subtitle = getArtistsNames(track.artists),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
-          imageUri = if(track.album != null) Uri.parse(getImageUrl(track.album.images)) else null,
+          imageUri = Uri.parse(imageUri),
           extras = extras
         )
       }

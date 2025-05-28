@@ -1,5 +1,6 @@
 package com.kuackmedia.androidauto.media
 
+import android.net.Uri
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
@@ -45,7 +46,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
     val musicApi = ServiceFactory.create(applicationContext)
 
-    playerAdapter = MediaPlayerAdapter(this)
+    playerAdapter = MediaPlayerAdapter()
     MediaItemTree.initialize(applicationContext, musicApi)
 
     this.currentQueue = CurrentMedia.getCurrentQueue(applicationContext)!!
@@ -55,8 +56,14 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         this.currentQueue
       )
 
-    mediaSession = MediaSessionCompat(this, TAG).apply {
-      setCallback(MediaSessionCallback(playerAdapter, this, applicationContext))
+    if (!::mediaSession.isInitialized) {
+      mediaSession = MediaSessionCompat(this, TAG)
+      mediaSession.setFlags(
+        MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+          MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+      )
+      mediaSession.isActive = true
+      mediaSession.setCallback(MediaSessionCallback(playerAdapter, mediaSession, applicationContext))
     }
 
     if(this.currentQueue.isNotEmpty()) {
@@ -66,7 +73,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       if(this.currentTrack !== null) {
         Log.i(TAG, "Setting current track")
         playerAdapter.setCurrentTrack(
-          this.currentTrack?.description?.extras?.getString("media_uri").toString());
+          Uri.parse(this.currentTrack?.description?.extras?.getString("media_uri")));
 
         mediaSession.setMetadata(
           MediaMetadataCompat.Builder()
@@ -130,6 +137,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
   override fun onDestroy() {
     Log.i(TAG, "onDestroy called")
     mediaSession.release()
+    playerAdapter.release()
     super.onDestroy()
   }
 
