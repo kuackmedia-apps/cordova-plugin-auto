@@ -5,6 +5,7 @@ import android.content.res.AssetManager
 import android.support.v4.media.MediaBrowserCompat
 import android.util.Log
 import com.kuackmedia.androidauto.api.MusicApi
+import com.kuackmedia.androidauto.media.QueueManager
 import com.kuackmedia.androidauto.models.AutoNavigationExplorer
 import com.kuackmedia.androidauto.models.EmptyModel
 import com.kuackmedia.androidauto.models.MediaItem
@@ -104,7 +105,7 @@ object MediaItemTree {
         val items: List<RecentListened>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it.data !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(context, it.data)!! }
+          ?.map { MediaItemFactory.parseMediaItems(it.data)!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -132,7 +133,7 @@ object MediaItemTree {
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
 
             it.items.forEach {
-              val categoryMediaItem = MediaItemFactory.parseMediaItems(context, it)!!
+              val categoryMediaItem = MediaItemFactory.parseMediaItems(it)!!
               treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
               titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
               treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
@@ -147,7 +148,7 @@ object MediaItemTree {
         val items: List<MediaItem>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(context, it)!! }
+          ?.map { MediaItemFactory.parseMediaItems(it)!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -239,7 +240,7 @@ object MediaItemTree {
     return treeNodes[id]?.getChildren() ?: listOf()
   }
 
-  suspend fun getRemoteChildren(context: Context, parentId: String): List<MediaBrowserCompat.MediaItem> {
+  suspend fun getRemoteChildren(parentId: String): List<MediaBrowserCompat.MediaItem> {
     val parent = getItem(parentId)
     val mediaType = parent?.description?.extras?.getString("media_type")
     var result: List<MediaBrowserCompat.MediaItem> = emptyList()
@@ -249,17 +250,16 @@ object MediaItemTree {
     when (mediaType) {
       "playlist" -> {
         result = this.musicApi.getPlayListTracks(parentId).tracks.items.mapNotNull {
-          MediaItemFactory.parseMediaItems(context, it.track)
+          MediaItemFactory.parseMediaItems(it.track)
         }
       }
 
       "album" -> {
         result =  this.musicApi.getAlbumTracks(parentId).tracks.items.mapNotNull {
-          MediaItemFactory.parseMediaItems(context, it)
+          MediaItemFactory.parseMediaItems(it)
         }
       }
     }
-
     Log.i(TAG, "Remote children for $parentId - $mediaType size is ${result.size}")
     return result
   }

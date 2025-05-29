@@ -12,10 +12,15 @@ interface IPlayerAdapter {
   fun playCurrentTrack(context: Context)
   fun pause()
   fun stop()
-  fun listenOnTrackFinished(callback: () -> Unit)
+  fun reset()
   fun seekTo(position: Long)
   fun setCurrentTrack(track: Uri?)
   fun release()
+  fun isPlaying(): Boolean
+  fun isPreparing(): Boolean
+  fun setOnCompletionListener(handlePlaybackCompletion: () -> Unit)
+  fun setOnPreparedListener(handlePlaybackCompletion: () -> Unit)
+  fun setOnErrorListener(handleError: ( what: Int, extra: Int) -> Unit)
   val currentPosition: Long
 }
 

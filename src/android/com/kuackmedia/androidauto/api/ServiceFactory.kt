@@ -9,7 +9,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
-const val URL = "http://192.168.0.103:3344/api/"
+const val URL = "http://192.168.0.106:3344/api/"
 
 object ServiceFactory {
   fun create(context: Context): MusicApi {

@@ -17,12 +17,12 @@ import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import org.apache.cordova.media.AudioHandler.TAG
 import java.io.File
 
 
 object MediaItemFactory {
-  fun parseMediaItems(context: Context, mediaItem: MediaItem): MediaBrowserCompat.MediaItem? {
+  private const val TAG: String = "MediaItemFactory"
+  fun parseMediaItems(mediaItem: MediaItem): MediaBrowserCompat.MediaItem? {
     var result: MediaBrowserCompat.MediaItem? = null
     val mediaId = "item_" + mediaItem.itemType + "_" + mediaItem.id
     var extras = Bundle()

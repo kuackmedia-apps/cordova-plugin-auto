@@ -10,6 +10,7 @@ import androidx.media.MediaBrowserServiceCompat
 import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.api.ServiceFactory
 import com.kuackmedia.androidauto.tree.MediaItemTree
+import com.kuackmedia.androidauto.utils.MediaUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,7 +50,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     playerAdapter = MediaPlayerAdapter()
     MediaItemTree.initialize(applicationContext, musicApi)
 
-    this.currentQueue = CurrentMedia.getCurrentQueue(applicationContext)!!
+    this.currentQueue = QueueManager.getCurrentQueue(applicationContext)!!
     this.currentTrack =
       CurrentMedia.getCurrentTrackFromQueue(
         this.currentTrackName!!,
@@ -62,7 +63,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
           MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
       )
-      mediaSession.isActive = true
       mediaSession.setCallback(MediaSessionCallback(playerAdapter, mediaSession, applicationContext))
     }
 
@@ -72,25 +72,24 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
       if(this.currentTrack !== null) {
         Log.i(TAG, "Setting current track")
-        playerAdapter.setCurrentTrack(
-          Uri.parse(this.currentTrack?.description?.extras?.getString("media_uri")));
+        val trackUrl = this.currentTrack?.description?.extras?.getString("media_uri")
+        playerAdapter.setCurrentTrack(Uri.parse(trackUrl))
+        playerAdapter.playCurrentTrack(applicationContext)
 
-        mediaSession.setMetadata(
-          MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID,
-              this.currentTrack!!.description.mediaId
-            )
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE,
-              this.currentTrack!!.description.title.toString())
-            .putString(
-              MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,
-              this.currentTrack!!.description.iconUri.toString())
-            .build()
-        )
+        val duration = MediaUtils.getMp3Duration(trackUrl!!)
+
+        val metadata = MediaMetadataCompat.Builder()
+          .putString(MediaMetadataCompat.METADATA_KEY_TITLE, this.currentTrack!!.description.title.toString())
+          //.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras?.getString("artist"))
+          //.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras?.getString("album"))
+          .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, this.currentTrack!!.description.mediaId)
+          .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, this.currentTrack!!.description.iconUri.toString())
+          .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+          .build()
+
+        mediaSession.setMetadata(metadata)
       }
     }
-
-    mediaSession.setActive(true)
 
     setSessionToken(mediaSession.sessionToken)
   }
@@ -124,7 +123,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     } else {
       serviceScope.launch {
         try {
-          val remoteChildren = MediaItemTree.getRemoteChildren(applicationContext, parentId)
+          val remoteChildren = MediaItemTree.getRemoteChildren(parentId)
+          QueueManager.buildQueue(mediaSession, remoteChildren)
           result.sendResult(remoteChildren)
         } catch (e: Exception) {
           Log.e("MusicService", "Error loading children", e)

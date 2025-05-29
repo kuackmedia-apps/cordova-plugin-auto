@@ -3,6 +3,8 @@ package com.kuackmedia.androidauto.media
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.MediaPlayer.OnCompletionListener
+import android.media.MediaPlayer.OnPreparedListener
 import android.net.Uri
 import android.util.Log
 
@@ -15,6 +17,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   private val TAG = "MediaPlayerAdapter"
   private val mediaPlayer = MediaPlayer()
   private var currentTrackUri: Uri? = null
+  private var isPreparing = false
 
   override val currentPosition: Long
     get() = mediaPlayer.currentPosition.toLong()
@@ -27,28 +30,45 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
         .build()
     )
-    mediaPlayer.setOnErrorListener { mp, what, extra ->
-      Log.e(TAG, "MediaPlayer error: what=$what, extra=$extra")
-      true
-    }
 
-    mediaPlayer.setOnInfoListener { mp, what, extra ->
-      Log.i(TAG, "MediaPlayer info: what=$what, extra=$extra")
-      false
-    }
-
-    mediaPlayer.setOnPreparedListener { mp ->
-      {
-        Log.i(TAG, "[playCurrentTrack] Starting player")
-        mp?.start()
-      }
-    }
+    mediaPlayer.isLooping = false
   }
 
-  override fun listenOnTrackFinished(callback: () -> Unit) {
-    mediaPlayer.setOnCompletionListener {
-      callback()
-    }
+  override fun setOnErrorListener(handleError: ( what: Int, extra: Int) -> Unit) {
+   mediaPlayer.setOnErrorListener(object : MediaPlayer.OnErrorListener {
+     override fun onError(mp: MediaPlayer?, what: Int, extra: Int): Boolean {
+       handleError(what, extra)
+       isPreparing = false
+       return true
+     }
+   })
+  }
+
+  override fun setOnCompletionListener(handlePlaybackCompletion: () -> Unit) {
+    mediaPlayer.setOnCompletionListener(object : OnCompletionListener {
+      override fun onCompletion(mp: MediaPlayer?) {
+        Log.i(TAG, "[MediaPlayerAdapter] Finished track")
+        handlePlaybackCompletion()
+      }
+    })
+  }
+
+  override fun setOnPreparedListener(handlePrepare: () -> Unit) {
+    mediaPlayer.setOnPreparedListener(object : OnPreparedListener {
+      override fun onPrepared(mp: MediaPlayer?) {
+        Log.i(TAG, "[MediaPlayerAdapter] Prepare callback called")
+        handlePrepare()
+        isPreparing = false
+      }
+    })
+  }
+
+  override fun isPlaying(): Boolean {
+    return this.mediaPlayer.isPlaying
+  }
+
+  override fun isPreparing(): Boolean {
+    return this.isPreparing
   }
 
   override fun play() {
@@ -57,7 +77,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
       mediaPlayer.stop()
       mediaPlayer.reset()
     }
-    mediaPlayer.start()
+    if(!isPreparing) mediaPlayer.start()
   }
 
   override fun playCurrentTrack(context: Context) {
@@ -72,12 +92,10 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
         val url = this.currentTrackUri.toString()
 
-        mediaPlayer.run {
-          Log.i(TAG, "[playCurrentTrack] Setting data source $url")
-          mediaPlayer.setDataSource(url)
-          mediaPlayer.prepareAsync()
-          Log.i(TAG, "[playCurrentTrack] Prepare was completed")
-        }
+        Log.i(TAG, "[playCurrentTrack] Setting data source $url")
+        mediaPlayer.setDataSource(url)
+        mediaPlayer.prepareAsync()
+        isPreparing = true
       }
     } catch (e: Exception) {
       Log.e(TAG, "Error en playTrack", e)
@@ -99,8 +117,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun seekTo(position: Long) {
-    mediaPlayer.seekTo(position.toInt())
-    mediaPlayer.start()
+    Log.i(TAG, "Seek to $position isPreparing $isPreparing")
+    if(!isPreparing) {
+      mediaPlayer.seekTo(position.toInt())
+      mediaPlayer.start()
+    }
   }
 
   override fun setCurrentTrack(trackUri: Uri?){
@@ -111,6 +132,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   override fun release() {
     Log.i(TAG, "[MediaPlayerAdapter] Release was executed")
     mediaPlayer.release()
+  }
+
+  override fun reset() {
+    Log.i(TAG, "[MediaPlayerAdapter] Reset was executed")
+    mediaPlayer.reset()
   }
 }
 

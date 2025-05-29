@@ -70,6 +70,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/media/MediaSessionCallback.kt" target-dir="src/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/MusicLibraryService.kt" target-dir="src/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/CurrentMedia.kt" target-dir="src/com/kuackmedia/androidauto/media" />
+    <source-file src="src/android/com/kuackmedia/androidauto/media/QueueManager.kt" target-dir="src/com/kuackmedia/androidauto/media" />
     
     <source-file src="src/android/com/kuackmedia/androidauto/api/DefaultTokenProvider.kt" target-dir="src/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/LocalAssetInterceptor.kt" target-dir="src/com/kuackmedia/androidauto/api" />
@@ -82,6 +83,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/tree/MediaItemJsonAdapter.kt" target-dir="src/com/kuackmedia/androidauto/tree" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/utils/LocalStorageUtils.kt" target-dir="src/com/kuackmedia/androidauto/utils" />
+    <source-file src="src/android/com/kuackmedia/androidauto/utils/MediaUtils.kt" target-dir="src/com/kuackmedia/androidauto/utils" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumItem.kt" target-dir="src/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumSummary.kt" target-dir="src/com/kuackmedia/androidauto/models" />

@@ -16,7 +16,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.io.File
 
 object CurrentMedia {
-  const val TAG = "CURRENT_MEDIA"
+  const val TAG = "CurrentMedia"
 
   fun getCurrentTrackFromQueue(
     currentTrack: String,
@@ -31,34 +31,5 @@ object CurrentMedia {
         MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
       )
     } else null
-  }
-
-  fun getCurrentQueue(context: Context): List<MediaSessionCompat.QueueItem>? {
-    val mediaItemAdapter = MediaItemJsonAdapter(
-        Moshi.Builder()
-            .add(KotlinJsonAdapterFactory())
-            .build()
-    )
-    val moshi = Moshi.Builder()
-      .add(MediaItem::class.java, mediaItemAdapter)
-      .add(KotlinJsonAdapterFactory())
-      .build()
-
-    val jsonFile = File(context.filesDir, "QUEUE_ITEMS_KEY")
-    val jsonArray = jsonFile.readText(Charsets.UTF_8)
-    val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
-    val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
-    val items: List<QueueItem>? = adapter.fromJson(jsonArray)
-    Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
-    val queueJsonObjects = items
-      ?.map { it.data }
-      ?.filter { it !is EmptyModel }
-      ?.map { MediaItemFactory.parseMediaItems(context, it)!! }
-      ?.mapIndexed { index, track ->
-        MediaSessionCompat.QueueItem(track.description, index.toLong())
-      }
-
-    Log.i(TAG, "QUEUE_ITEMS_KEY: $queueJsonObjects")
-    return queueJsonObjects
   }
 }
