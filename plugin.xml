@@ -107,6 +107,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/models/RecentListened.kt" target-dir="src/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/AutoNavigationExplorer.kt" target-dir="src/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/TrackAPIModels.kt" target-dir="src/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/QueueItem.kt" target-dir="src/com/kuackmedia/androidauto/models" />
 
   </platform>
 
