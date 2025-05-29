@@ -1,19 +1,27 @@
 package com.kuackmedia.androidauto.api
 
 import android.content.Context
-import android.content.SharedPreferences
+import android.content.Context.MODE_PRIVATE
 import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.tree.MediaItemJsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
-const val URL = "http://192.168.0.106:3344/api/"
-
 object ServiceFactory {
+  private var BASE_URL = "http://192.168.0.106:3344/api/"
+  private lateinit var okHttpClient: OkHttpClient
+
+
   fun create(context: Context): MusicApi {
-    context.getSharedPreferences("auth", Context.MODE_PRIVATE)
+    val prefs = context.getSharedPreferences("auth", MODE_PRIVATE)
+
+    BASE_URL = prefs.getString("API_URL", "")!!
+    okHttpClient = OkHttpClient.Builder()
+      .addInterceptor(TokenInterceptor { prefs.getString("ACCESS_TOKEN_KEY", null) })
+      .build()
 
     val mediaItemAdapter = MediaItemJsonAdapter(
       Moshi.Builder()
@@ -25,40 +33,12 @@ object ServiceFactory {
       .add(KotlinJsonAdapterFactory())
       .build()
 
-    return Retrofit.Builder()
-      .baseUrl(URL)
+    val retrofit: Retrofit = Retrofit.Builder()
+      .baseUrl(BASE_URL)
       .addConverterFactory(MoshiConverterFactory.create(moshi))
+      .client(okHttpClient)
       .build()
-      .create(MusicApi::class.java)
 
-//    val tokenProvider = DefaultTokenProvider(
-//      prefs,
-//      simpleRetrofit.create(MusicApi::class.java)
-//    )
-
-    // 2) OkHttp client with:
-    //    a) local-assets fallback
-    //    b) bearer-token interceptor
-    //    c) 401→refresh authenticator
-//    val client = OkHttpClient.Builder()
-//      //.addInterceptor(LocalAssetInterceptor(context))
-//      .addInterceptor { chain ->
-//        val req = chain.request().newBuilder().apply {
-//          tokenProvider.getToken()?.let {
-//            header("Authorization", "Bearer $it")
-//          }
-//        }.build()
-//        chain.proceed(req)
-//      }
-//      .authenticator(TokenAuthenticator(tokenProvider))
-//      .build()
-
-    // 3) Retrofit that uses this client
-//    return Retrofit.Builder()
-//      .baseUrl(URL)
-//      .client(client)
-//      .addConverterFactory(MoshiConverterFactory.create())
-//      .build()
-//      .create(MusicApi::class.java)
+    return retrofit.create(MusicApi::class.java)
   }
 }
