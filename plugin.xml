@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<plugin id="cordova-plugin-auto" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+<plugin id="cordova-plugin-auto" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
   <name>Android Auto Music Plugin</name>
 
   <engines>
@@ -33,28 +33,28 @@
 
     <config-file target="AndroidManifest.xml" parent="application">
       <service
-        name="com.kuackmedia.androidauto.media.MusicLibraryService"
-        exported="true"
-        foregroundServiceType="mediaPlayback">
+              android:name="com.kuackmedia.androidauto.media.MusicLibraryService"
+              android:exported="true"
+              android:foregroundServiceType="mediaPlayback">
         <intent-filter>
           <action name="android.media.browse.MediaBrowserService"/>
         </intent-filter>
       </service>
 
       <meta-data
-        name="com.google.android.gms.car.application"
-        resource="@xml/automotive_app_desc" />
+              android:name="com.google.android.gms.car.application"
+        android:resource="@xml/automotive_app_desc" />
     </config-file>
 
     <config-file target="AndroidManifest.xml" parent="/*">
-      <uses-permission name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
-      <uses-permission name="android.permission.INTERNET"/>
-      <uses-permission name="android.permission.ACCESS_NETWORK_STATE"/>
-      <uses-permission name="android.permission.FOREGROUND_SERVICE"/>
+      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+      <uses-permission android:name="android.permission.INTERNET"/>
+      <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+      <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
       <!-- Para que Android 11+ permita descubrir tu servicio -->
       <queries>
           <intent>
-              <action name="android.media.browse.MediaBrowserService"/>
+              <action android:name="android.media.browse.MediaBrowserService"/>
           </intent>
       </queries>
     </config-file>
