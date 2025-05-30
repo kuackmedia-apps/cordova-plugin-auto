@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<plugin id="my-cordova-android-auto-music-plugin" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+<plugin id="cordova-plugin-auto" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
   <name>Android Auto Music Plugin</name>
 
   <engines>
@@ -22,11 +22,6 @@
 
     <resource-file src="src/android/res/xml/automotive_app_desc.xml" target="res/xml/automotive_app_desc.xml" />
     <resource-file src="src/android/res/xml/allowed_media_browser_callers.xml" target="res/xml/allowed_media_browser_callers.xml" />
-    <resource-file src="src/android/res/values/strings.xml" target="res/values/strings.xml" />
-    <resource-file src="src/android/res/drawable/ic_album.xml" target="res/drawable/ic_album.xml" />
-    <resource-file src="src/android/res/drawable/ic_recommended.xml" target="res/drawable/ic_recommended.xml" />
-    <resource-file src="src/android/res/drawable/ic_notification.png" target="res/drawable/ic_notification.png" />
-    <resource-file src="src/android/res/drawable-nodpi/default_art.png" target="res/drawable-nodpi/default_art.png" />
     
 
     <config-file target="res/xml/config.xml" parent="/*">

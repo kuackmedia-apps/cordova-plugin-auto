@@ -11,14 +11,14 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 object ServiceFactory {
-  private var BASE_URL = ""
+  private var BASE_URL = "http://192.168.0.106:3344/api/"
   private lateinit var okHttpClient: OkHttpClient
 
 
   fun create(context: Context): MusicApi {
     val prefs = context.getSharedPreferences("auth", MODE_PRIVATE)
 
-    BASE_URL = prefs.getString("API_URL", "http://192.168.0.106:3344/api/")!!
+    BASE_URL = prefs.getString("API_URL", "")!!
     okHttpClient = OkHttpClient.Builder()
       .addInterceptor(TokenInterceptor { prefs.getString("ACCESS_TOKEN_KEY", null) })
       .build()
