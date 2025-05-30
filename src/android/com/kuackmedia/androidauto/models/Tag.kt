@@ -15,5 +15,5 @@ data class Tag(
   val updateDate: Long,
   val imageUpdateDate: Long,
   val amount: Any?,
-  val imageColorInfo: ImageColorInfo
+  val imageColorInfo: ImageColorInfo? = null
 ) : MediaItem()

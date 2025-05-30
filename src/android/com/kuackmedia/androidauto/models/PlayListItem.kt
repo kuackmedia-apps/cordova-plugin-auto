@@ -16,5 +16,5 @@ data class PlayListItem(
   val createDate: Long,
   val tags: List<Tag>?,
   val images: List<CoverImage>,
-  val imageColorInfo: ImageColorInfo
+  val imageColorInfo: ImageColorInfo? = null
 ) : MediaItem()
