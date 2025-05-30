@@ -49,7 +49,7 @@ object MediaItemFactory {
           subtitle = if (mediaItem.curator != null) mediaItem.curator.name else "Playlist",
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
-          imageUri = Uri.parse(playlist.images[0].url),
+          imageUri = Uri.parse(getImageUrl(playlist.images)),
           extras = extras
         )
       }
@@ -62,7 +62,7 @@ object MediaItemFactory {
           subtitle = getArtistsNames(album.artists),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
-          imageUri = Uri.parse(album.images[0].url),
+          imageUri = Uri.parse(getImageUrl(album.images)),
           extras = extras
         )
       }
