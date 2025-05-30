@@ -16,7 +16,7 @@ object ServiceFactory {
 
 
   fun create(context: Context): MusicApi {
-    val prefs = context.getSharedPreferences("auth", MODE_PRIVATE)
+    val prefs = context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
 
     BASE_URL = prefs.getString("API_URL", "")!!
     okHttpClient = OkHttpClient.Builder()
