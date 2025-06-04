@@ -55,7 +55,7 @@ object LocalStorageUtils {
     return iconFile.absolutePath
   }
 
-  suspend fun getTrackUri(context: Context, trackId: String?): Uri? {
+  suspend fun getTrackUri(context: Context, trackId: String?, idAlbumTrack: String?): Uri? {
     val trackName = "$trackId.mp3"
     val trackFile: File = File(context.filesDir, "playerTracks/$trackName")
     //file:///data/user/0/com.algar.nomomusica/files/playerTracks/12180191.mp3
@@ -67,7 +67,7 @@ object LocalStorageUtils {
       Log.i(TAG, "Using remote track: $trackId")
       val api = ServiceFactory.create(context)
       val payload = TrackRequest(
-        idAlbumTrack = "",
+        idAlbumTrack = idAlbumTrack!!,
         idTrack = trackId!!,
         forceDevice = false,
         useCloudFront =  true,

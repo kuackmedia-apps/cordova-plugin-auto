@@ -100,6 +100,8 @@ object MediaItemFactory {
         extras.putString("artist", getArtistsNames(track.artists))
         extras.putString("album", track.album?.title)
         extras.putString("image", imageUri)
+        extras.putString("id", track.id)
+        extras.putString("idAlbumTrack", track.idAlbumTrack.toString())
 
         val mediaItemAdapter = MediaItemJsonAdapter(
           Moshi.Builder()

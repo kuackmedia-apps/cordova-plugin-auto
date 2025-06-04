@@ -9,18 +9,18 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import android.util.Log
 
 object ServiceFactory {
-  private var BASE_URL = "http://192.168.0.106:3344/api/"
+  private var BASE_URL = "https://api.prod.kuackmedia.com/api/"
   private lateinit var okHttpClient: OkHttpClient
 
 
   fun create(context: Context): MusicApi {
     val prefs = context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
-
-    BASE_URL = prefs.getString("API_URL", "")!!
+   // BASE_URL = prefs.getString("API_URL", "")!!
     okHttpClient = OkHttpClient.Builder()
-      .addInterceptor(TokenInterceptor { prefs.getString("ACCESS_TOKEN_KEY", null) })
+      .addInterceptor(TokenInterceptor { prefs})
       .build()
 
     val mediaItemAdapter = MediaItemJsonAdapter(

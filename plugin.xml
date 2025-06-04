@@ -6,8 +6,8 @@
       <engine name="cordova-android" version=">=12.0.0" />
   </engines>
 
-  <js-module src="www/myplugin.js" name="MyMusicPlugin">
-      <clobbers target="cordova.plugins.MyMusicPlugin" />
+  <js-module src="www/myplugin.js" name="auto">
+      <clobbers target="cordova.plugins.auto" />
   </js-module>
 
   <platform name="android">

@@ -247,9 +247,13 @@ object MediaItemTree {
 
     Log.i(TAG, "Trying to load remote children for $parentId - $mediaType")
 
+    //recive item_playlist_5232 return 5232
+    val idParts = parentId.split("_")
+    val itemId = if (idParts.size > 2) idParts[2] else parentId;
+    Log.i(TAG, "Trying to load remote children for $itemId - $mediaType")
     when (mediaType) {
       "playlist" -> {
-        result = this.musicApi.getPlayListTracks(parentId).tracks.items.mapNotNull {
+        result = this.musicApi.getPlayListTracks(itemId).tracks.items.mapNotNull {
           MediaItemFactory.parseMediaItems(it.track)
         }
       }

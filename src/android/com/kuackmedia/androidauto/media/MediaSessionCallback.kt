@@ -61,7 +61,7 @@ class MediaSessionCallback(
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, dataMediaId)
+          val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, extras?.getString("id"), extras?.getString("idAlbumTrack"))
           withContext(Dispatchers.Main) {
             Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
             mediaPlayer.setCurrentTrack(trackUrl)

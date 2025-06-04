@@ -26,8 +26,8 @@ interface MusicApi {
 
   @GET("playlist/PlayListItem")
   suspend fun getPlayListItem(): PlayListItem
-
-  @GET("playlist/PlayListTracks/{playListId}")
+////https://api.prod.kuackmedia.com/api/playlists/33144?limit=15&offset=0
+  @GET("playlists/{playListId}?limit=15&offset=0")
   suspend fun getPlayListTracks(@Path("playListId") playListId: String): PlaylistTracks
 
   @Headers("Content-type: application/json")
