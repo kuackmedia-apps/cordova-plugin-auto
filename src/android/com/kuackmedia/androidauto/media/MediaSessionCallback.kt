@@ -28,6 +28,32 @@ class MediaSessionCallback(
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
     Log.i(TAG, "[onPlayFromMediaId] Start $mediaId")
     val id = mediaId ?: return
+    
+    // Check if this is a hardcoded track
+    if (id.contains("hardcoded_")) {
+      // This is a hardcoded track, use the media_uri from extras directly
+      val trackUrl = extras?.getString("media_uri")
+      if (trackUrl != null) {
+        Log.i(TAG, "[onPlayFromMediaId] Playing hardcoded track: $trackUrl")
+        mediaPlayer.setCurrentTrack(Uri.parse(trackUrl))
+        mediaPlayer.playCurrentTrack(context)
+        updateState(PlaybackStateCompat.STATE_PLAYING)
+        
+        val metadata = MediaMetadataCompat.Builder()
+          .putString(MediaMetadataCompat.METADATA_KEY_TITLE, extras.getString("title"))
+          .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras.getString("artist"))
+          .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras.getString("album"))
+          .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
+          .build()
+          
+        mediaSession.setMetadata(metadata)
+      } else {
+        Log.e(TAG, "[onPlayFromMediaId] No media_uri found in extras for hardcoded track")
+      }
+      return
+    }
+    
+    // Handle regular tracks from the API
     val dataMediaId = id.split("_").last()
     Log.i(TAG, "[onPlayFromMediaId] dataMediaId $dataMediaId")
 

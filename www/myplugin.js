@@ -1,146 +1,296 @@
 /**
- * AndroidAutoPlugin.js
+ * AutoMusicPlugin.js
  *
- * Objeto con los métodos y eventos para sincronización y control de reproducción
- * entre la app y Android Auto, según documentación de interfaz.
+ * Interface for controlling music playback in Android Auto and Apple CarPlay.
+ * Provides methods and events for synchronization and playback control.
  */
 var exec = require('cordova/exec');
-const AndroidAutoPlugin = {
+const AutoMusicPlugin = {
   // ---------------------------
-  // 1. Conectividad
+  // 1. Connectivity
   // ---------------------------
   /**
-   * Verifica si el servicio de Android Auto está conectado.
-   * @param {function(boolean): void} callback
+   * Checks if the device is connected to Android Auto or CarPlay.
+   * @param {function(boolean): void} successCallback - Callback with connection status
+   * @param {function(string): void} errorCallback - Error callback
    */
-  isConnected(callback) {
-    // TODO: Consultar estado de conexión y ejecutar callback(status)
+  isConnected(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'isConnected', []);
   },
 
   /**
-   * Escucha cambios de conexión al servicio.
-   * @param {function('connecting'|'connected'|'disconnected'): void} callback
+   * Listens for connection changes to Android Auto or CarPlay.
+   * @param {function({connected: boolean}): void} callback - Connection status callback
    */
   onConnectionChange(callback) {
-    // TODO: Registrar listener para cambios de estado
+    exec(function(data) {
+      callback(data);
+    }, function(error) {
+      console.error('Error in connection change listener:', error);
+    }, 'AutoMusicPlugin', 'registerAutoConnectListener', []);
+  },
+  
+  /**
+   * Stops listening for connection changes.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  stopConnectionListener(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'unregisterAutoConnectListener', []);
   },
 
   // ---------------------------
   // 2. MediaSession
   // ---------------------------
   /**
-   * Notifica cambios en la pista actual.
-   * @param {function(Track): void} callback
+   * Notifies about changes in the current track.
+   * @param {function(Object): void} callback - Track metadata callback
    */
   onMediaUpdate(callback) {
-    // TODO: Emitir cuando cambia metadata de track
+    exec(function(data) {
+      callback(data);
+    }, function(error) {
+      console.error('Error in media update listener:', error);
+    }, 'AutoMusicPlugin', 'onMediaUpdate', []);
   },
 
   /**
-   * Indica cambios en el estado de reproducción.
-   * @param {function('playing'|'paused'|'stopped'|'buffering'): void} callback
+   * Notifies about changes in playback state.
+   * @param {function('playing'|'paused'|'stopped'|'buffering'): void} callback - Playback state callback
    */
   onPlaybackStateChange(callback) {
-    // TODO: Emitir al cambiar estado de playback
+    exec(function(data) {
+      callback(data);
+    }, function(error) {
+      console.error('Error in playback state listener:', error);
+    }, 'AutoMusicPlugin', 'onPlaybackStateChange', []);
   },
 
   /**
-   * Entrega la cola de reproducción actualizada.
-   * @param {function(Array<Track>): void} callback
+   * Notifies about updates to the playback queue.
+   * @param {function(Array<Object>): void} callback - Queue update callback
    */
   onQueueUpdate(callback) {
-    // TODO: Emitir cuando la cola cambie
+    exec(function(data) {
+      callback(data);
+    }, function(error) {
+      console.error('Error in queue update listener:', error);
+    }, 'AutoMusicPlugin', 'onQueueUpdate', []);
   },
 
   /**
-   * Se dispara al buscar posición dentro de la pista.
-   * @param {function(number): void} callback - posición en ms
+   * Triggered when seeking position within a track.
+   * @param {function(number): void} callback - Position in milliseconds
    */
   onSeek(callback) {
-    // TODO: Emitir cuando usuario seek
+    exec(function(position) {
+      callback(position);
+    }, function(error) {
+      console.error('Error in seek listener:', error);
+    }, 'AutoMusicPlugin', 'onSeek', []);
   },
 
   /**
-   * Evento para acciones personalizadas.
-   * @param {function(string, any=): void} callback
+   * Event for custom actions.
+   * @param {function(string, any=): void} callback - Custom action callback
    */
   onCustomAction(callback) {
-    // TODO: Emitir acciones como 'repeat', 'shuffle', etc.
+    exec(function(data) {
+      callback(data.action, data.data);
+    }, function(error) {
+      console.error('Error in custom action listener:', error);
+    }, 'AutoMusicPlugin', 'onCustomAction', []);
   },
 
-  /** Inicia o reanuda reproducción. */
-  play(callback, errorCallback) {
-    // TODO: Implementar play
+  /**
+   * Starts or resumes playback.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  play(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'play', []);
   },
 
-  /** Pausa reproducción. */
-  pause(callback, errorCallback) {
-    // TODO: Implementar pause
+  /**
+   * Pauses playback.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  pause(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'pause', []);
   },
 
-
-  /** Avanza a la siguiente pista. */
-  skipToNext(callback, errorCallback) {
-    // TODO: Implementar siguiente track
+  /**
+   * Skips to the next track.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  skipToNext(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'skipToNext', []);
   },
 
-  /** Retrocede a la pista anterior. */
-  skipToPrevious(callback, errorCallback) {
-    // TODO: Implementar pista anterior
+  /**
+   * Skips to the previous track.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  skipToPrevious(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'skipToPrevious', []);
   },
 
-  /** Salta a la posición indicada. */
-  seekTo(position, callback, errorCallback) {
-    // TODO: Implementar seekTo
+  /**
+   * Seeks to the specified position.
+   * @param {number} position - Position in milliseconds
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  seekTo(position, successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'seekTo', [position]);
   },
 
-  /** Actualiza la cola completa de reproducción. */
-  updateQueue(queue, callback, errorCallback) {
-    // TODO: Enviar nueva cola al servicio
+  /**
+   * Updates the entire playback queue.
+   * @param {Array<Object>} queue - Array of track objects
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  updateQueue(queue, successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'updateQueue', [queue]);
   },
 
   // ---------------------------
-  // 5. Sincronización de Cola y Pista Actual
+  // 3. Queue and Current Track Synchronization
   // ---------------------------
   /**
-   * Evento: disparado cuando cambia el contenido del almacenamiento de la cola.
-   * @param {function(Array<Track>): void} callback
+   * Event: triggered when the queue storage content changes.
+   * @param {function(Array<Object>): void} callback - Queue storage update callback
    */
   onQueueStorageChange(callback) {
-    // TODO: Escuchar cambios en QUEUE_ITEMS_QUEUE o playlist_data
+    exec(function(data) {
+      callback(data);
+    }, function(error) {
+      console.error('Error in queue storage change listener:', error);
+    }, 'AutoMusicPlugin', 'onQueueStorageChange', []);
   },
 
   /**
-   * Evento: disparado al cambiar el track actual.
-   * @param {function(number): void} callback
+   * Event: triggered when the current track changes.
+   * @param {function(number): void} callback - Current track index callback
    */
   onCurrentTrackChange(callback) {
-    // TODO: Escuchar cambios en current_track
-  },
-
-  /** Método: notifica al servicio que recargue la cola. */
-  notifyQueueStorageUpdated() {
-    // TODO: Notificar recarga de cola al servicio
-  },
-
-  /** Método: notifica al servicio que cambie la pista actual. */
-  notifyCurrentTrackUpdated() {
-    // TODO: Notificar cambio de pista al servicio
+    exec(function(data) {
+      callback(data);
+    }, function(error) {
+      console.error('Error in current track change listener:', error);
+    }, 'AutoMusicPlugin', 'onCurrentTrackChange', []);
   },
 
   /**
-   * Retorna la posición actual de reproducción.
-   * @param {function(position): void} successCallback
+   * Method: notifies the service to reload the queue.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
    */
-  getPosition (successCallback, errorCallback) {
-
+  notifyQueueStorageUpdated(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'notifyQueueStorageUpdated', []);
   },
-  /**
-   * Indica cambios en el estado de reproducción.
-   * @param {function('playing'|'paused'|'stopped'|'buffering'): void} successCallback
-   */
-  getCurrentPlaybackState (successCallback, errorCallback) {
 
+  /**
+   * Method: notifies the service to change the current track.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  notifyCurrentTrackUpdated(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'notifyCurrentTrackUpdated', []);
+  },
+
+  /**
+   * Returns the current playback position.
+   * @param {function(number): void} successCallback - Position callback in milliseconds
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  getPosition(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'getPosition', []);
+  },
+
+  /**
+   * Returns the current playback state.
+   * @param {function('playing'|'paused'|'stopped'|'buffering'): void} successCallback - Playback state callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  getCurrentPlaybackState(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'getCurrentPlaybackState', []);
+  },
+  
+  /**
+   * Starts the auto service (Android only).
+   * @param {function(string): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  startService(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'startService', []);
+  },
+
+  // ---------------------------
+  // 5. Hardcoded Content
+  // ---------------------------
+  /**
+   * Gets the hardcoded playlists available in the plugin.
+   * @param {function(Array<Object>): void} successCallback - Success callback with playlists
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  getHardcodedPlaylists(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'getHardcodedPlaylists', []);
+  },
+
+  /**
+   * Gets tracks for a hardcoded playlist.
+   * @param {string} playlistId - ID of the hardcoded playlist
+   * @param {function(Array<Object>): void} successCallback - Success callback with tracks
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  getHardcodedPlaylistTracks(playlistId, successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'getHardcodedPlaylistTracks', [playlistId]);
+  },
+
+  /**
+   * Plays a hardcoded track directly.
+   * @param {string} trackId - ID of the hardcoded track
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  playHardcodedTrack(trackId, successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'playHardcodedTrack', [trackId]);
+  },
+
+  // ---------------------------
+  // 6. Debugging and Logging
+  // ---------------------------
+  /**
+   * Gets all the collected logs from the native side.
+   * @param {function(Array<string>): void} successCallback - Success callback with logs array
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  getLogs(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'getLogs', []);
+  },
+
+  /**
+   * Clears all collected logs.
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  clearLogs(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'clearLogs', []);
+  },
+
+  /**
+   * Adds a custom log entry.
+   * @param {string} message - Message to log
+   * @param {function(): void} successCallback - Success callback
+   * @param {function(string): void} errorCallback - Error callback
+   */
+  addLog(message, successCallback, errorCallback) {
+    exec(successCallback, errorCallback, 'AutoMusicPlugin', 'addLog', [message]);
   }
 };
-module.exports = AndroidAutoPlugin;
+module.exports = AutoMusicPlugin;
