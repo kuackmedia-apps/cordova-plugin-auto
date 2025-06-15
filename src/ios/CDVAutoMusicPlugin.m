@@ -202,51 +202,52 @@ static CDVAutoMusicPlugin *gSharedInstance = nil;
     }
 }
 
-#pragma mark - Hardcoded Content Methods
+#pragma mark - Content Loading Methods
 
 - (void)getHardcodedPlaylists:(CDVInvokedUrlCommand*)command {
+    NSLog(@"CDVAutoMusicPlugin: Loading playlists from JSON files");
+    
+    // Load playlists from JSON files using the PlaylistProvider
+    NSArray *loadedPlaylists = [CDVPlaylistProvider loadPlaylistsFromJSON];
     NSMutableArray *playlists = [NSMutableArray array];
     
-    // Create three hardcoded playlists matching the ones in Android implementation
-    NSDictionary *playlist1 = @{
-        @"id": @"hardcoded_playlist_1",
-        @"name": @"Featured Tracks",
-        @"description": @"Our featured music collection"
-    };
-    [playlists addObject:playlist1];
+    // Convert to the format expected by the JavaScript API
+    for (NSDictionary *playlist in loadedPlaylists) {
+        NSMutableDictionary *formattedPlaylist = [NSMutableDictionary dictionary];
+        formattedPlaylist[@"id"] = playlist[@"id"];
+        formattedPlaylist[@"name"] = playlist[@"title"];
+        formattedPlaylist[@"description"] = playlist[@"description"];
+        [playlists addObject:formattedPlaylist];
+    }
     
-    NSDictionary *playlist2 = @{
-        @"id": @"hardcoded_playlist_2",
-        @"name": @"Sample Music",
-        @"description": @"Sample tracks for demonstration"
-    };
-    [playlists addObject:playlist2];
-    
-    NSDictionary *playlist3 = @{
-        @"id": @"hardcoded_playlist_3",
-        @"name": @"Favorites",
-        @"description": @"Your favorite tracks"
-    };
-    [playlists addObject:playlist3];
+    NSLog(@"CDVAutoMusicPlugin: Loaded %lu playlists from JSON", (unsigned long)playlists.count);
     
     CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:playlists];
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
 
-- (void)getHardcodedPlaylistTracks:(CDVInvokedUrlCommand*)command {
+- (void)getHardcodedTracksForPlaylistId:(CDVInvokedUrlCommand*)command {
     NSString *playlistId = [command.arguments objectAtIndex:0];
+    NSLog(@"CDVAutoMusicPlugin: Loading tracks for playlist %@ from JSON", playlistId);
+    
+    // Load tracks from JSON files using the PlaylistProvider
+    NSArray *loadedTracks = [CDVPlaylistProvider loadTracksForPlaylist:playlistId];
     NSMutableArray *tracks = [NSMutableArray array];
     
-    // Create a sample track that matches the one in Android implementation
-    NSDictionary *track = @{
-        @"id": [NSString stringWithFormat:@"%@_track_1", playlistId],
-        @"title": @"SoundHelix Song 1",
-        @"artist": @"T. Schürger",
-        @"album": @"SoundHelix Samples",
-        @"url": @"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-        @"duration": @372000 // Approximate duration in ms
-    };
-    [tracks addObject:track];
+    // Convert to the format expected by the JavaScript API
+    for (NSDictionary *track in loadedTracks) {
+        NSMutableDictionary *formattedTrack = [NSMutableDictionary dictionary];
+        formattedTrack[@"id"] = track[@"id"];
+        formattedTrack[@"title"] = track[@"title"];
+        formattedTrack[@"artist"] = track[@"artist"];
+        formattedTrack[@"album"] = track[@"album"];
+        formattedTrack[@"url"] = track[@"source"];
+        formattedTrack[@"duration"] = track[@"duration"];
+        formattedTrack[@"imageUrl"] = track[@"image"];
+        [tracks addObject:formattedTrack];
+    }
+    
+    NSLog(@"CDVAutoMusicPlugin: Loaded %lu tracks for playlist %@ from JSON", (unsigned long)tracks.count, playlistId);
     
     CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:tracks];
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];

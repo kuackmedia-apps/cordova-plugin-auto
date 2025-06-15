@@ -9,6 +9,7 @@
 // New methods to load from JSON files
 + (NSArray *)loadPlaylistsFromJSON;
 + (NSArray *)loadTracksForPlaylist:(NSString *)playlistId;
++ (NSArray *)loadNavigationFromJSON;
 
 // Utility methods
 + (id)loadJSONFromFile:(NSString *)filename inDirectory:(NSString *)directory;

@@ -94,51 +94,283 @@
 }
 
 - (void)setupRootTemplate:(CPInterfaceController *)interfaceController {
-    [CDVLogger log:@"CDVCarPlayManager: setupRootTemplate starting..."];
+    [CDVLogger log:@"⚠️ CDVCarPlayManager: setupRootTemplate starting..."];
+    NSLog(@"⚠️ CDVCarPlayManager: setupRootTemplate starting...");
     
-    // Create the playlists template
+    // Verificar que el interfaceController es válido
+    if (!interfaceController) {
+        [CDVLogger log:@"❌ CDVCarPlayManager ERROR: interfaceController is nil"];
+        NSLog(@"❌ CDVCarPlayManager ERROR: interfaceController is nil");
+        return;
+    }
+    self.interfaceController = interfaceController;
+    
+    // Create the now playing template
+    _nowPlayingTemplate = [CPNowPlayingTemplate sharedTemplate];
+    
+    // Create the playlists template as a fallback
     _playlistsTemplate = [self createPlaylistsTemplate];
     if (!_playlistsTemplate) {
-        NSLog(@"CDVCarPlayManager ERROR: Failed to create playlists template");
-    } else {
-        NSLog(@"CDVCarPlayManager: Playlists template created successfully with %lu sections", 
-               (unsigned long)_playlistsTemplate.sections.count);
+        [CDVLogger log:@"❌ CDVCarPlayManager ERROR: Failed to create playlists template"];
+        NSLog(@"❌ CDVCarPlayManager ERROR: Failed to create playlists template");
+        return;
     }
     
-    // Create the now playing template - but don't add it to the tab bar as it's not allowed
-    _nowPlayingTemplate = [CPNowPlayingTemplate sharedTemplate];
-    NSLog(@"CDVCarPlayManager: Now playing template obtained: %@", _nowPlayingTemplate);
+    // INTENTO 1: Crear un template básico sin tabs para probar si funciona
+    CPListTemplate *simpleTemplate = [[CPListTemplate alloc] initWithTitle:@"Music" sections:@[]];
+    if (!simpleTemplate) {
+        NSLog(@"❌ No se pudo crear template básico");
+    }
     
-    // Create a tab bar template with ONLY the playlists template - CPNowPlayingTemplate is not allowed in tab bars
-    [CDVLogger log:@"CDVCarPlayManager: Creating tab bar with just the playlists template since CPNowPlayingTemplate is not allowed in tab bars"];
-    NSArray *templates = @[_playlistsTemplate];
-    _tabBarTemplate = [[CPTabBarTemplate alloc] initWithTemplates:templates];
-    [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Tab bar template created with %lu templates", (unsigned long)templates.count]];
+    // INTENTO 2: Crear tabs individualmente
+    CPListTemplate *libraryTemplate = [self createPlaylistsTemplate];
+    libraryTemplate.tabTitle = @"Biblioteca";
+    libraryTemplate.tabImage = [UIImage systemImageNamed:@"music.note.list"];
     
-    // Set the root template to the interface controller
-    [CDVLogger log:@"CDVCarPlayManager: Setting root template to interface controller..."];
-    [interfaceController setRootTemplate:_tabBarTemplate animated:YES completion:^(BOOL success, NSError * _Nullable error) {
+    CPListTemplate *recentTemplate = [[CPListTemplate alloc] initWithTitle:@"Recientes" sections:@[]];
+    recentTemplate.tabTitle = @"Recientes";
+    recentTemplate.tabImage = [UIImage systemImageNamed:@"clock"];
+    
+    CPListTemplate *exploreTemplate = [[CPListTemplate alloc] initWithTitle:@"Explorar" sections:@[]];
+    exploreTemplate.tabTitle = @"Explorar";
+    exploreTemplate.tabImage = [UIImage systemImageNamed:@"square.grid.2x2"];
+    
+    // Crear el TabBarTemplate con los templates individuales
+    CPTabBarTemplate *tabBarTemplate = [[CPTabBarTemplate alloc] initWithTemplates:@[libraryTemplate, recentTemplate, exploreTemplate]];
+    
+    // Verificar si se creó correctamente
+    if (tabBarTemplate) {
+        NSLog(@"✅ TabBarTemplate creado correctamente");
+    } else {
+        NSLog(@"❌ Fallo al crear TabBarTemplate");
+    }
+    
+    // Establecer el TabBarTemplate como root
+    NSLog(@"⚠️ Intentando establecer TabBarTemplate como root...");
+    [self.interfaceController setRootTemplate:tabBarTemplate animated:YES completion:^(BOOL success, NSError *error) {
         if (error) {
-            [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager ERROR: Failed to set root template: %@", error]];
+            NSLog(@"❌ ERROR al establecer TabBarTemplate: %@", error);
+            // Intentar con el template básico
+            [self.interfaceController setRootTemplate:simpleTemplate animated:YES completion:^(BOOL success, NSError *error) {
+                if (error) {
+                    NSLog(@"❌ ERROR al establecer template básico: %@", error);
+                    // Fallback final al template de playlists
+                    [self.interfaceController setRootTemplate:self->_playlistsTemplate animated:YES completion:nil];
+                } else {
+                    NSLog(@"✅ Template básico establecido correctamente");
+                }
+            }];
         } else {
-            [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Root template set successfully: %@", success ? @"YES" : @"NO"]];
+            NSLog(@"✅ TabBarTemplate establecido correctamente: %@", success ? @"YES" : @"NO");
         }
     }];
 }
 
+- (CPTabBarTemplate *)createNavigationTemplate {
+    [CDVLogger log:@"CDVCarPlayManager: createNavigationTemplate starting..."];
+    
+    // Get navigation items from AUTO_NAVIGATION
+    NSArray *navigationItems = [CDVPlaylistProvider loadNavigationFromJSON];
+    [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Got %lu navigation items from AUTO_NAVIGATION", (unsigned long)navigationItems.count]];
+    
+    if (navigationItems.count == 0) {
+        [CDVLogger log:@"CDVCarPlayManager WARNING: No navigation items returned from provider"];
+        // Return a tab bar template with just a playlists tab as fallback
+        CPListTemplate *playlistsTemplate = [self createPlaylistsTemplate];
+        return [[CPTabBarTemplate alloc] initWithTemplates:@[playlistsTemplate]];
+    }
+    
+    // Create template items for each navigation area (Recientes, Biblioteca, Explorar)
+    NSMutableArray *tabTemplates = [NSMutableArray array];
+    
+    for (NSDictionary *navItem in navigationItems) {
+        NSString *text = navItem[@"text"];
+        NSString *fileName = navItem[@"fileName"];
+        
+        if (!text || !fileName) {
+            [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager ERROR: Navigation item missing required fields: %@", navItem]];
+            continue;
+        }
+        
+        [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Creating tab template for: %@ (file: %@)", text, fileName]];
+        
+        // Create appropriate template based on the navigation section
+        CPTemplate *sectionTemplate = nil;
+        
+        // Get SF Symbol from navigation item or use fallback
+        NSString *iconName = navItem[@"sfSymbol"];
+        if (!iconName) {
+            // If no sfSymbol specified, try to use a default based on the section
+            if ([fileName isEqualToString:@"AUTO_NAVIGATION_LIBRARY"]) {
+                iconName = @"music.note.list";
+            } else if ([fileName isEqualToString:@"RECENT_LISTENED"]) {
+                iconName = @"clock";
+            } else if ([fileName isEqualToString:@"AUTO_NAVIGATION_EXPLORER"]) {
+                iconName = @"square.grid.2x2";
+            } else {
+                iconName = @"questionmark.circle"; // Default fallback
+            }
+        }
+        
+        if ([fileName isEqualToString:@"AUTO_NAVIGATION_LIBRARY"]) {
+            // Library section - shows playlists from AUTO_NAVIGATION_LIBRARY
+            CPListTemplate *libraryTemplate = [self createTemplateForFileName:fileName withTitle:text];
+            libraryTemplate.tabTitle = text;
+            libraryTemplate.tabImage = [UIImage systemImageNamed:iconName];
+            sectionTemplate = libraryTemplate;
+            
+        } else if ([fileName isEqualToString:@"RECENT_LISTENED"]) {
+            // Recents section - loads from RECENT_LISTENED
+            CPListTemplate *recentsTemplate = [self createTemplateForFileName:fileName withTitle:text];
+            recentsTemplate.tabTitle = text;
+            recentsTemplate.tabImage = [UIImage systemImageNamed:iconName];
+            sectionTemplate = recentsTemplate;
+            
+        } else if ([fileName isEqualToString:@"AUTO_NAVIGATION_EXPLORER"]) {
+            // Explorer section - loads from AUTO_NAVIGATION_EXPLORER
+            CPListTemplate *explorerTemplate = [self createTemplateForFileName:fileName withTitle:text];
+            explorerTemplate.tabTitle = text;
+            explorerTemplate.tabImage = [UIImage systemImageNamed:iconName];
+            sectionTemplate = explorerTemplate;
+        }
+        
+        if (sectionTemplate) {
+            [tabTemplates addObject:sectionTemplate];
+        }
+    }
+    
+    // Create tab bar template with all the navigation tab templates
+    if (tabTemplates.count == 0) {
+        [CDVLogger log:@"CDVCarPlayManager WARNING: No valid tab templates created"];
+        // Return a tab bar template with just a playlists tab as fallback
+        CPListTemplate *playlistsTemplate = [self createPlaylistsTemplate];
+        return [[CPTabBarTemplate alloc] initWithTemplates:@[playlistsTemplate]];
+    }
+    
+    [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Created tab bar template with %lu tabs", (unsigned long)tabTemplates.count]];
+    CPTabBarTemplate *tabBarTemplate = [[CPTabBarTemplate alloc] initWithTemplates:tabTemplates];
+    
+    return tabBarTemplate;
+}
+
+- (CPListTemplate *)createTemplateForFileName:(NSString *)fileName withTitle:(NSString *)title {
+    [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Creating template for %@", fileName]];
+    NSLog(@"🔍 CDVCarPlayManager: Creating template for %@ with title %@", fileName, title);
+    
+    // Contenedor para las secciones de la lista
+    NSMutableArray *sections = [NSMutableArray array];
+    
+    // Process different file types
+    if ([fileName isEqualToString:@"AUTO_NAVIGATION_LIBRARY"]) {
+        NSLog(@"📚 CDVCarPlayManager: Loading library data...");
+        // Para biblioteca - usamos la plantilla de playlists ya implementada
+        return [self createPlaylistsTemplate];
+    } 
+    else if ([fileName isEqualToString:@"RECENT_LISTENED"]) {
+        NSLog(@"🕒 CDVCarPlayManager: Loading recent data...");
+        // Cargar escuchas recientes
+        NSArray *recentItems = [CDVPlaylistProvider loadJSONFromFile:fileName inDirectory:@"navigation"];
+        
+        if (recentItems && [recentItems isKindOfClass:[NSArray class]] && recentItems.count > 0) {
+            NSLog(@"✅ Found %lu recent items", (unsigned long)recentItems.count);
+            NSMutableArray *listItems = [NSMutableArray array];
+            
+            for (NSDictionary *item in recentItems) {
+                NSString *itemName = item[@"name"] ?: @"Sin nombre";
+                
+                // Extraer subtítulo
+                NSString *subtitleText = nil;
+                if (item[@"curator"] && [item[@"curator"] isKindOfClass:[NSDictionary class]]) {
+                    subtitleText = item[@"curator"][@"name"];
+                } else if (item[@"description"]) {
+                    subtitleText = item[@"description"];
+                }
+                
+                CPListItem *listItem = [[CPListItem alloc] initWithText:itemName detailText:subtitleText];
+                
+                // Manejador cuando se selecciona un ítem
+                __weak typeof(self) weakSelf = self;
+                listItem.handler = ^(CPListItem * _Nonnull item, dispatch_block_t  _Nonnull completion) {
+                    NSLog(@"👆 Selected recent item: %@", item.text);
+                    completion();
+                };
+                
+                [listItems addObject:listItem];
+            }
+            
+            if (listItems.count > 0) {
+                CPListSection *recentSection = [[CPListSection alloc] initWithItems:listItems header:@"Recientes" sectionIndexTitle:nil];
+                [sections addObject:recentSection];
+            }
+        } else {
+            NSLog(@"⚠️ No recent items found or invalid data format");
+            // Crear una sección vacía para evitar errores
+            CPListSection *emptySection = [[CPListSection alloc] initWithItems:@[] header:@"No hay elementos recientes" sectionIndexTitle:nil];
+            [sections addObject:emptySection];
+        }
+    } 
+    else if ([fileName isEqualToString:@"AUTO_NAVIGATION_EXPLORER"]) {
+        NSLog(@"🌐 CDVCarPlayManager: Loading explorer data...");
+        // Cargar datos de explorador
+        NSArray *explorerItems = [CDVPlaylistProvider loadJSONFromFile:fileName inDirectory:@"navigation"];
+        
+        if (explorerItems && [explorerItems isKindOfClass:[NSArray class]] && explorerItems.count > 0) {
+            NSLog(@"✅ Found %lu explorer items", (unsigned long)explorerItems.count);
+            NSMutableArray *listItems = [NSMutableArray array];
+            
+            for (NSDictionary *item in explorerItems) {
+                NSString *itemName = item[@"name"] ?: @"Sin nombre";
+                NSString *itemType = item[@"type"] ?: @"";
+                
+                CPListItem *listItem = [[CPListItem alloc] initWithText:itemName detailText:itemType];
+                
+                // Manejador cuando se selecciona un ítem
+                __weak typeof(self) weakSelf = self;
+                listItem.handler = ^(CPListItem * _Nonnull item, dispatch_block_t  _Nonnull completion) {
+                    NSLog(@"👆 Selected explorer item: %@", item.text);
+                    completion();
+                };
+                
+                [listItems addObject:listItem];
+            }
+            
+            if (listItems.count > 0) {
+                CPListSection *explorerSection = [[CPListSection alloc] initWithItems:listItems header:@"Categorías" sectionIndexTitle:nil];
+                [sections addObject:explorerSection];
+            }
+        } else {
+            NSLog(@"⚠️ No explorer items found or invalid data format");
+            // Crear una sección vacía para evitar errores
+            CPListSection *emptySection = [[CPListSection alloc] initWithItems:@[] header:@"No hay elementos para explorar" sectionIndexTitle:nil];
+            [sections addObject:emptySection];
+        }
+    } else {
+        NSLog(@"⚠️ Unknown file name: %@", fileName);
+        // Crear una sección vacía para archivo desconocido
+        CPListSection *emptySection = [[CPListSection alloc] initWithItems:@[] header:@"No hay contenido" sectionIndexTitle:nil];
+        [sections addObject:emptySection];
+    }
+    
+    // Crear la plantilla con las secciones
+    CPListTemplate *template = [[CPListTemplate alloc] initWithTitle:title sections:sections];
+    NSLog(@"✅ Created template for %@ with %lu sections", fileName, (unsigned long)sections.count);
+    return template;
+}
+
 - (CPListTemplate *)createPlaylistsTemplate {
-    [CDVLogger log:@"CDVCarPlayManager: createPlaylistsTemplate starting..."];
+    [CDVLogger log:@"CDVCarPlayManager: Creating playlists template"];
+    NSLog(@"📚 CDVCarPlayManager: Creating playlists template");
     
-    // Create a list template for playlists
-    NSMutableArray *playlistItems = [NSMutableArray array];
-    
-    // Get playlists from the provider
-    NSArray *playlists = [CDVPlaylistProvider hardcodedPlaylists];
-    [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Got %lu playlists from provider", (unsigned long)playlists.count]];
+    NSArray *playlists = [CDVPlaylistProvider loadPlaylistsFromJSON];
+    [CDVLogger log:[NSString stringWithFormat:@"🔍 CDVCarPlayManager: Loaded %lu playlists", (unsigned long)[playlists count]]];
+    NSLog(@"🔍 CDVCarPlayManager: Loaded %lu playlists", (unsigned long)[playlists count]);
     
     if (playlists.count == 0) {
         [CDVLogger log:@"CDVCarPlayManager WARNING: No playlists returned from provider"];
     }
+    
+    // Create a list template for playlists
+    NSMutableArray *playlistItems = [NSMutableArray array];
     
     // Create list items for each playlist
     for (NSDictionary *playlist in playlists) {
@@ -158,12 +390,14 @@
         item.handler = ^(CPListItem * _Nonnull item, dispatch_block_t  _Nonnull completion) {
             [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Playlist selected: %@", item.text]];
             
-            // Load tracks for the selected playlist
-            NSArray *tracks = [CDVPlaylistProvider tracksForPlaylist:playlist[@"id"]];
-            [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Got %lu tracks for playlist %@", (unsigned long)tracks.count, playlist[@"id"]]];
+            // Load tracks from JSON files for the selected playlist
+            NSArray *tracks = [CDVPlaylistProvider loadTracksForPlaylist:playlist[@"id"]];
+            [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Got %lu tracks from JSON for playlist %@", (unsigned long)tracks.count, playlist[@"id"]]];
             
             if (tracks.count == 0) {
-                [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager WARNING: No tracks returned for playlist %@", playlist[@"id"]]];
+                [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager WARNING: No tracks returned for playlist %@, falling back to hardcoded tracks", playlist[@"id"]]];
+                // Try fallback to hardcoded tracks
+                tracks = [CDVPlaylistProvider tracksForPlaylist:playlist[@"id"]];
             }
             
             [weakSelf.musicPlayer updateQueue:tracks];
