@@ -43,21 +43,26 @@ object QueueManager {
       .build()
 
     val jsonFile = File(context.filesDir, "QUEUE_ITEMS_KEY")
-    val jsonArray = jsonFile.readText(Charsets.UTF_8)
-    val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
-    val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
-    val items: List<QueueItem>? = adapter.fromJson(jsonArray)
-    Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
-    val queueJsonObjects = items
-      ?.map { it.data }
-      ?.filter { it !is EmptyModel }
-      ?.map { MediaItemFactory.parseMediaItems(it)!! }
-      ?.mapIndexed { index, track ->
-        MediaSessionCompat.QueueItem(track.description, index.toLong())
-      }
 
-    Log.i(TAG, "QUEUE_ITEMS_KEY: $queueJsonObjects")
-    return queueJsonObjects
+    if (jsonFile.exists()) {
+      val jsonArray = jsonFile.readText(Charsets.UTF_8)
+      val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
+      val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
+      val items: List<QueueItem>? = adapter.fromJson(jsonArray)
+      Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
+      val queueJsonObjects = items
+        ?.map { it.data }
+        ?.filter { it !is EmptyModel }
+        ?.map { MediaItemFactory.parseMediaItems(it)!! }
+        ?.mapIndexed { index, track ->
+          MediaSessionCompat.QueueItem(track.description, index.toLong())
+        }
+
+      Log.i(TAG, "QUEUE_ITEMS_KEY: $queueJsonObjects")
+      return queueJsonObjects
+    } else {
+      return null
+    }
   }
 
   fun getNextQueueItem(mediaSession: MediaSessionCompat): MediaSessionCompat.QueueItem? {

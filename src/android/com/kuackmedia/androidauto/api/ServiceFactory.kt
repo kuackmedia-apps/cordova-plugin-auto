@@ -7,20 +7,26 @@ import com.kuackmedia.androidauto.tree.MediaItemJsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
-import android.util.Log
 
 object ServiceFactory {
-  private var BASE_URL = "https://api.prod.kuackmedia.com/api/"
   private lateinit var okHttpClient: OkHttpClient
 
-
   fun create(context: Context): MusicApi {
-    val prefs = context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
-   // BASE_URL = prefs.getString("API_URL", "")!!
+    val prefs = { context.getSharedPreferences("NativeStorage", MODE_PRIVATE) }
+    //val baseUrl = prefs().getString("API_URL", "https://api.prod.kuackmedia.com/api/")!!
+    val baseUrl = "https://api.prod.kuackmedia.com/api/"
+
+    val loggingInterceptor = HttpLoggingInterceptor().apply {
+      level = HttpLoggingInterceptor.Level.BODY // Use BASIC, HEADERS or NONE as needed
+    }
+
+    val interceptor = TokenInterceptor(prefProvider = prefs, baseUrl = baseUrl)
     okHttpClient = OkHttpClient.Builder()
-      .addInterceptor(TokenInterceptor { prefs})
+      .addInterceptor(loggingInterceptor)
+      .addInterceptor(interceptor)
       .build()
 
     val mediaItemAdapter = MediaItemJsonAdapter(
@@ -34,7 +40,7 @@ object ServiceFactory {
       .build()
 
     val retrofit: Retrofit = Retrofit.Builder()
-      .baseUrl(BASE_URL)
+      .baseUrl(baseUrl)
       .addConverterFactory(MoshiConverterFactory.create(moshi))
       .client(okHttpClient)
       .build()

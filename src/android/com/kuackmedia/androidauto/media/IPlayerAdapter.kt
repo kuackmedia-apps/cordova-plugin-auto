@@ -9,6 +9,7 @@ import android.net.Uri
  */
 interface IPlayerAdapter {
   fun play()
+  fun start()
   fun playCurrentTrack(context: Context)
   fun pause()
   fun stop()

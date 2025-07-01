@@ -14,5 +14,17 @@ data class TrackRequest(
 
 @JsonClass(generateAdapter = true)
 data class TrackResponse(
-  val url: String,
+  val idTrack: Double,
+  val idAlbumTrack: Double,
+  val idVideo: Double?,
+  val isPreview: Boolean,
+  val signedUrl: String,
+  val rights: List<Right>,
+)
+
+@JsonClass(generateAdapter = true)
+data class Right(
+  val idDist: Double,
+  val idLabel: Double,
+  val hadRight: Boolean,
 )

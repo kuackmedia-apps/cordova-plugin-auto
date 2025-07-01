@@ -108,6 +108,7 @@ class MediaSessionCallback(
   }
 
   override fun onPause() {
+    Log.d(TAG, "Pausing at position: ${mediaPlayer.currentPosition}")
     if(!mediaPlayer.isPreparing()) {
       mediaPlayer.pause()
       updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
@@ -187,10 +188,10 @@ class MediaSessionCallback(
 
   private fun handlePrepare() {
     Log.i(TAG, "[MediaSessionCallbacks] handling prepare.")
+    mediaPlayer.start()
     updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
     handler.post(updatePlaybackPositionRunnable)
-
-    mediaPlayer.play()
+    mediaSession.isActive = true
   }
 
   private fun handleError(what: Int, extra: Int) {

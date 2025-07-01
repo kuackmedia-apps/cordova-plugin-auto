@@ -8,6 +8,7 @@ import com.kuackmedia.androidauto.api.ServiceFactory
 import com.kuackmedia.androidauto.models.TrackRequest
 import java.io.File
 import kotlin.String
+import androidx.core.net.toUri
 
 object LocalStorageUtils {
   private const val TAG = "LocalStorageUtils"
@@ -75,9 +76,9 @@ object LocalStorageUtils {
         extraLife = false,
       )
       Log.i(TAG, "[LocalStorageUtils] Track payload: $payload")
-      val url = api.getTrackUrl(payload).url
+      val url = api.getTrackUrl(payload).signedUrl
       Log.i(TAG, "[LocalStorageUtils] Track URL: $url")
-      return Uri.parse(url)
+      return url.toUri()
     }
   }
 

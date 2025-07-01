@@ -1,7 +1,10 @@
 package com.kuackmedia.androidauto.media
 
 import android.content.Context
+import android.content.Context.AUDIO_SERVICE
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.MediaPlayer.OnCompletionListener
 import android.media.MediaPlayer.OnPreparedListener
@@ -71,6 +74,10 @@ class MediaPlayerAdapter() : IPlayerAdapter {
     return this.isPreparing
   }
 
+  override fun start() {
+    mediaPlayer.start()
+  }
+
   override fun play() {
     Log.i(TAG, "[MediaPlayerAdapter] Play was executed")
     if (mediaPlayer.isPlaying) {
@@ -82,6 +89,19 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override fun playCurrentTrack(context: Context) {
     try {
+      val audioManager = context.getSystemService(AUDIO_SERVICE) as AudioManager
+      val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(
+          AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        )
+        .setOnAudioFocusChangeListener { /* react to changes */ }
+        .build()
+
+      val result = audioManager.requestAudioFocus(focusRequest)
+
       if (mediaPlayer.isPlaying) {
         mediaPlayer.stop()
         mediaPlayer.reset()
@@ -92,10 +112,12 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
         val url = this.currentTrackUri.toString()
 
-        Log.i(TAG, "[playCurrentTrack] Setting data source $url")
-        mediaPlayer.setDataSource(url)
-        mediaPlayer.prepareAsync()
-        isPreparing = true
+        if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+          Log.i(TAG, "[playCurrentTrack] Setting data source $url")
+          mediaPlayer.setDataSource(url)
+          mediaPlayer.prepareAsync()
+          isPreparing = true
+        }
       }
     } catch (e: Exception) {
       Log.e(TAG, "Error en playTrack", e)

@@ -19,6 +19,7 @@
     <framework src="com.squareup.moshi:moshi-adapters:1.15.2" />
     <framework src="org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0" />
     <framework src="com.squareup.okhttp3:okhttp:4.12.0" />
+    <framework src="com.squareup.okhttp3:logging-interceptor:4.12.0" />
 
     <resource-file src="src/android/res/xml/automotive_app_desc.xml" target="res/xml/automotive_app_desc.xml" />
     <resource-file src="src/android/res/xml/allowed_media_browser_callers.xml" target="res/xml/allowed_media_browser_callers.xml" />
@@ -68,11 +69,9 @@
     <source-file src="src/android/com/kuackmedia/androidauto/media/CurrentMedia.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/QueueManager.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
 
-    <source-file src="src/android/com/kuackmedia/androidauto/api/DefaultTokenProvider.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/LocalAssetInterceptor.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/MusicApi.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/ServiceFactory.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
-    <source-file src="src/android/com/kuackmedia/androidauto/api/TokenAuthenticator.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/TokenInterceptor.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/tree/MediaItemTree.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/tree" />
@@ -85,6 +84,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumItem.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumSummary.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumTracks.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/ArtistTracks.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/Artist.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/CoverImage.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/Curator.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />

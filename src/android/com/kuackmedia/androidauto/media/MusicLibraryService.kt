@@ -1,5 +1,9 @@
 package com.kuackmedia.androidauto.media
 
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
@@ -37,7 +41,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
   private lateinit var mediaSession: MediaSessionCompat
   private lateinit var playerAdapter: IPlayerAdapter
-  private lateinit var currentQueue: List<MediaSessionCompat.QueueItem>
+  private var currentQueue: List<MediaSessionCompat.QueueItem>? = null
   private var currentTrack: MediaBrowserCompat.MediaItem? = null
 
   override fun onCreate() {
@@ -50,12 +54,15 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     playerAdapter = MediaPlayerAdapter()
     MediaItemTree.initialize(applicationContext, musicApi)
 
-    this.currentQueue = QueueManager.getCurrentQueue(applicationContext)!!
-    this.currentTrack =
-      CurrentMedia.getCurrentTrackFromQueue(
-        this.currentTrackName!!,
-        this.currentQueue
-      )
+    this.currentQueue = QueueManager.getCurrentQueue(applicationContext)
+    if(currentQueue !== null) {
+      this.currentTrack =
+        CurrentMedia.getCurrentTrackFromQueue(
+          this.currentTrackName!!,
+          this.currentQueue
+        )
+    }
+
 
     if (!::mediaSession.isInitialized) {
       mediaSession = MediaSessionCompat(this, TAG)
@@ -66,7 +73,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       mediaSession.setCallback(MediaSessionCallback(playerAdapter, mediaSession, applicationContext))
     }
 
-    if(this.currentQueue.isNotEmpty()) {
+    if(this.currentQueue !== null) {
       Log.i(TAG, "Setting queue")
       mediaSession.setQueue(this.currentQueue)
 
