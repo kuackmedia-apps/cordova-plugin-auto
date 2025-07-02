@@ -11,7 +11,6 @@ import android.media.MediaPlayer.OnPreparedListener
 import android.net.Uri
 import android.util.Log
 
-
 /**
  * A simple PlayerAdapter that wraps Android's MediaPlayer.
  */
@@ -118,6 +117,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
           mediaPlayer.prepareAsync()
           isPreparing = true
         }
+
       }
     } catch (e: Exception) {
       Log.e(TAG, "Error en playTrack", e)

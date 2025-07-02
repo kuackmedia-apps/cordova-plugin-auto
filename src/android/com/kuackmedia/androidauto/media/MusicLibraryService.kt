@@ -13,7 +13,9 @@ import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.api.ServiceFactory
+import com.kuackmedia.androidauto.models.QueueItem
 import com.kuackmedia.androidauto.tree.MediaItemTree
+import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.kuackmedia.androidauto.utils.MediaUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +35,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     const val DEVICE_ID = "DEVICE_ID"
     const val ROOT_ID = "[rootID]"
     const val CURRENT_TRACK_KEY = "current_track"
+    const val QUEUE_ITEMS_KEY = "QUEUE_ITEMS_KEY"
   }
 
   private var currentTrackName: String? = null
@@ -41,8 +44,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
   private lateinit var mediaSession: MediaSessionCompat
   private lateinit var playerAdapter: IPlayerAdapter
-  private var currentQueue: List<MediaSessionCompat.QueueItem>? = null
-  private var currentTrack: MediaBrowserCompat.MediaItem? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -54,16 +55,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     playerAdapter = MediaPlayerAdapter()
     MediaItemTree.initialize(applicationContext, musicApi)
 
-    this.currentQueue = QueueManager.getCurrentQueue(applicationContext)
-    if(currentQueue !== null) {
-      this.currentTrack =
-        CurrentMedia.getCurrentTrackFromQueue(
-          this.currentTrackName!!,
-          this.currentQueue
-        )
-    }
-
-
     if (!::mediaSession.isInitialized) {
       mediaSession = MediaSessionCompat(this, TAG)
       mediaSession.setFlags(
@@ -73,32 +64,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       mediaSession.setCallback(MediaSessionCallback(playerAdapter, mediaSession, applicationContext))
     }
 
-    if(this.currentQueue !== null) {
-      Log.i(TAG, "Setting queue")
-      mediaSession.setQueue(this.currentQueue)
-
-      if(this.currentTrack !== null) {
-        Log.i(TAG, "Setting current track")
-        val trackUrl = this.currentTrack?.description?.extras?.getString("media_uri")
-        playerAdapter.setCurrentTrack(Uri.parse(trackUrl))
-        playerAdapter.playCurrentTrack(applicationContext)
-
-        val duration = MediaUtils.getMp3Duration(trackUrl!!)
-
-        val metadata = MediaMetadataCompat.Builder()
-          .putString(MediaMetadataCompat.METADATA_KEY_TITLE, this.currentTrack!!.description.title.toString())
-          //.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras?.getString("artist"))
-          //.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras?.getString("album"))
-          .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, this.currentTrack!!.description.mediaId)
-          .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, this.currentTrack!!.description.iconUri.toString())
-          .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-          .build()
-
-        mediaSession.setMetadata(metadata)
-      }
-    }
-
     setSessionToken(mediaSession.sessionToken)
+
+    mediaSession.controller.transportControls.prepare()
   }
 
   override fun onGetRoot(
@@ -132,6 +100,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         try {
           val remoteChildren = MediaItemTree.getRemoteChildren(parentId)
           QueueManager.buildQueue(mediaSession, remoteChildren)
+
           result.sendResult(remoteChildren)
         } catch (e: Exception) {
           Log.e("MusicService", "Error loading children", e)
@@ -143,6 +112,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
   override fun onDestroy() {
     Log.i(TAG, "onDestroy called")
+    playerAdapter.stop()
+    playerAdapter.reset()
     mediaSession.release()
     playerAdapter.release()
     super.onDestroy()
@@ -173,5 +144,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     Log.i(TAG, "APP_KUACK_CODE: $appKuackCode")
     Log.i(TAG, "API_URL: $baseUrl")
     Log.i(TAG, "DeviceID: $deviceId")
+    Log.i(TAG, "CURRENT_TRACK_KEY: ${this.currentTrackName}")
   }
 }

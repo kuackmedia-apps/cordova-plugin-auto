@@ -10,8 +10,9 @@ object CurrentMedia {
   fun getCurrentTrackFromQueue(
     currentTrack: String,
     currentQueue: List<MediaSessionCompat.QueueItem>?): MediaBrowserCompat.MediaItem? {
+    Log.i(TAG, "Finding current track: $currentTrack")
     val currentQueueItem = currentQueue
-      ?.firstOrNull { it.description.title.toString() == currentTrack }
+      ?.firstOrNull { it.description.extras?.getString("idAlbumTrack") == currentTrack }
       ?.also { Log.i(TAG, "found current track: ${it.description.title}") }
 
     return if(currentQueueItem !== null) {

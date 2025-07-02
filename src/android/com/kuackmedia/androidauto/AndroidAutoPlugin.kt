@@ -24,29 +24,46 @@ class AndroidAutoPlugin : CordovaPlugin() {
     args: JSONArray?,
     callbackContext: CallbackContext
   ): Boolean {
-    if ("startService" == action) {
-      val ctx = cordova.context
-      val intent = Intent(ctx, MusicLibraryService::class.java)
-      ctx.startService(intent)
-      Log.d(TAG, "Android Auto startService:")
-      callbackContext.success("Servicio Android Auto iniciado")
-      return true
-    } else if ("isConnectedToAndroidAuto" == action) {
-      val isConnected = this.isConnectedToAndroidAuto
-      Log.d(TAG, "Android Auto connected: $isConnected")
-      callbackContext.success(if (isConnected) 1 else 0)
-      return true
-    } else if ("registerAutoConnectListener" == action) {
-      connectionEventCallback = callbackContext
-      registerAutoConnectListener()
-      val pluginResult = PluginResult(PluginResult.Status.NO_RESULT)
-      pluginResult.keepCallback = true
-      callbackContext.sendPluginResult(pluginResult)
-      return true
-    } else if ("unregisterAutoConnectListener" == action) {
-      unregisterAutoConnectListener()
-      callbackContext.success("Listener eliminado")
-      return true
+    when (action) {
+      "registerEvents" -> {
+        CordovaEventBridge.eventCallbackContext = callbackContext
+
+        val result = PluginResult(PluginResult.Status.NO_RESULT)
+        result.keepCallback = true
+        callbackContext.sendPluginResult(result)
+        return true
+      }
+
+      "startService" -> {
+        val ctx = cordova.context
+        val intent = Intent(ctx, MusicLibraryService::class.java)
+        ctx.startService(intent)
+        Log.d(TAG, "Android Auto startService:")
+        callbackContext.success("Servicio Android Auto iniciado")
+        return true
+      }
+
+      "isConnectedToAndroidAuto" -> {
+        val isConnected = this.isConnectedToAndroidAuto
+        Log.d(TAG, "Android Auto connected: $isConnected")
+        callbackContext.success(if (isConnected) 1 else 0)
+        return true
+      }
+
+      "registerAutoConnectListener" -> {
+        connectionEventCallback = callbackContext
+        registerAutoConnectListener()
+        val pluginResult = PluginResult(PluginResult.Status.NO_RESULT)
+        pluginResult.keepCallback = true
+        callbackContext.sendPluginResult(pluginResult)
+        return true
+      }
+
+      "unregisterAutoConnectListener" -> {
+        unregisterAutoConnectListener()
+        callbackContext.success("Listener eliminado")
+        return true
+      }
     }
     return false
   }

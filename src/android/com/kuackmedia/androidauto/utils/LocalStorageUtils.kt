@@ -1,6 +1,7 @@
 package com.kuackmedia.androidauto.utils
 
 import android.content.Context
+import android.content.Context.MODE_PRIVATE
 import android.net.Uri
 import android.support.v4.media.MediaBrowserCompat
 import android.util.Log
@@ -9,6 +10,8 @@ import com.kuackmedia.androidauto.models.TrackRequest
 import java.io.File
 import kotlin.String
 import androidx.core.net.toUri
+import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.CURRENT_TRACK_KEY
+import androidx.core.content.edit
 
 object LocalStorageUtils {
   private const val TAG = "LocalStorageUtils"
@@ -38,16 +41,6 @@ object LocalStorageUtils {
     }
   }
 
-  // Verifica claramente si un track está guardado localmente
-  fun isTrackAvailableLocally(context: Context, item: MediaBrowserCompat.MediaItem): Boolean {
-    val trackId = item.description.mediaId + ".mp3"
-    val trackFile = File(context.filesDir, "tracks/$trackId")
-
-    val exists = trackFile.exists()
-    Log.i(TAG, "Track $trackId local: $exists")
-    return exists
-  }
-
   fun getIconPath(context: Context, iconName: String): String {
     //String iconId = iconName;
     val iconFile = File(context.filesDir, iconName)
@@ -56,9 +49,27 @@ object LocalStorageUtils {
     return iconFile.absolutePath
   }
 
+  fun storeDataInPrefs(context: Context, key: String, data: String?) {
+    Log.i(TAG, "Storing data in prefs: $key - $data")
+    val prefs = context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
+    prefs.edit {
+      putString(key, "\"$data\"")
+    }
+  }
+
+  fun storeInFile(context: Context, key: String, data: String?) {
+    Log.i(TAG, "Storing data in file: $key - $data")
+
+    if(data !== null) {
+      context.openFileOutput(key, MODE_PRIVATE).use { output ->
+        output.write(data.toByteArray())
+      }
+    }
+  }
+
   suspend fun getTrackUri(context: Context, trackId: String?, idAlbumTrack: String?): Uri? {
     val trackName = "$trackId.mp3"
-    val trackFile: File = File(context.filesDir, "playerTracks/$trackName")
+    val trackFile = File(context.filesDir, "playerTracks/$trackName")
     //file:///data/user/0/com.algar.nomomusica/files/playerTracks/12180191.mp3
     Log.i(TAG, "getTrackUri $trackName")
     if (trackFile.exists()) {

@@ -2,6 +2,8 @@ package com.kuackmedia.androidauto.utils
 
 import android.media.MediaMetadataRetriever
 import android.util.Log
+import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
 import kotlin.text.toLong
 
@@ -15,7 +17,10 @@ object MediaUtils {
       if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
         mmr.setDataSource(filePath, HashMap<String?, String?>()) // For URLs
       } else {
-        mmr.setDataSource(filePath)
+        val file = File(filePath)
+        if (!file.exists()) return -1
+        val fis = FileInputStream(file)
+        mmr.setDataSource(fis.fd)
       }
       val durationStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
       if (durationStr != null) {

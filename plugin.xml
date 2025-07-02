@@ -13,7 +13,7 @@
   <platform name="android">
     <framework src="com.squareup.retrofit2:retrofit:3.0.0" />
     <framework src="com.squareup.retrofit2:converter-moshi:3.0.0" />
-    <framework src="androidx.media:media:1.7.0" />
+    <!-- <framework src="androidx.media:media:1.7.0" /> -->
     <framework src="com.squareup.moshi:moshi:1.15.2" />
     <framework src="com.squareup.moshi:moshi-kotlin:1.15.2" />
     <framework src="com.squareup.moshi:moshi-adapters:1.15.2" />
@@ -61,6 +61,7 @@
     </config-file>
 
     <source-file src="src/android/com/kuackmedia/androidauto/AndroidAutoPlugin.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto" />
+    <source-file src="src/android/com/kuackmedia/androidauto/CordovaEventBridge.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/media/IPlayerAdapter.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/MediaPlayerAdapter.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />

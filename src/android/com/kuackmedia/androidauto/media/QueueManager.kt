@@ -9,6 +9,7 @@ import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.QueueItem
 import com.kuackmedia.androidauto.tree.MediaItemFactory
 import com.kuackmedia.androidauto.tree.MediaItemJsonAdapter
+import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -46,6 +47,7 @@ object QueueManager {
 
     if (jsonFile.exists()) {
       val jsonArray = jsonFile.readText(Charsets.UTF_8)
+      Log.i(TAG, "QUEUE FILE: $jsonArray")
       val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
       val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
       val items: List<QueueItem>? = adapter.fromJson(jsonArray)

@@ -1,21 +1,27 @@
 package com.kuackmedia.androidauto.media
 
 import android.content.Context
+import android.content.Context.MODE_PRIVATE
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
+import com.kuackmedia.androidauto.CordovaEventBridge
+import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.CURRENT_TRACK_KEY
+import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.QUEUE_ITEMS_KEY
 import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.kuackmedia.androidauto.utils.MediaUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 
 /**
@@ -34,6 +40,8 @@ class MediaSessionCallback(
   }
 
   private val handler: Handler = Handler(Looper.getMainLooper())
+  private var currentQueue: List<MediaSessionCompat.QueueItem>? = null
+  private var currentTrack: MediaBrowserCompat.MediaItem? = null
 
   init {
     // This executes when a track ends playing
@@ -52,6 +60,24 @@ class MediaSessionCallback(
     }
   }
 
+  override fun onPrepare() {
+    Log.d(TAG, "onPrepare triggered")
+
+    val prefs = this.context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
+    this.currentQueue = QueueManager.getCurrentQueue(this.context)
+    if(currentQueue !== null) {
+      Log.d(TAG, "Current queue: $currentQueue")
+      this.currentTrack =
+        CurrentMedia.getCurrentTrackFromQueue(
+          prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", ""),
+          this.currentQueue
+        )
+      Log.d(TAG, "Current track: ${this.currentTrack}")
+      mediaSession.setQueue(this.currentQueue)
+      this.onPlayFromMediaId(this.currentTrack?.mediaId, this.currentTrack?.description?.extras)
+    }
+  }
+
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
     if(!mediaPlayer.isPreparing()) {
       Log.i(TAG, "[onPlayFromMediaId] Start $mediaId")
@@ -61,7 +87,8 @@ class MediaSessionCallback(
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, extras?.getString("id"), extras?.getString("idAlbumTrack"))
+          val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, extras?.getString("id"),
+            extras?.getString("idAlbumTrack"))
           withContext(Dispatchers.Main) {
             Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
             mediaPlayer.setCurrentTrack(trackUrl)
@@ -82,6 +109,15 @@ class MediaSessionCallback(
               .build()
 
             mediaSession.setMetadata(metadata)
+
+            val stringQueue = mediaSession.controller.queue.map {
+                it -> "{ \"data\":" + it.description.extras?.getString("track") + " }"
+            }
+
+            LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
+            LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, dataMediaId)
+
+            CordovaEventBridge.sendEvent("onMediaUpdate", JSONObject())
           }
         } catch (e: Exception) {
           Log.e("MediaSession", "Failed to load track URI", e)
@@ -293,7 +329,7 @@ class MediaSessionCallback(
   private val updatePlaybackPositionRunnable: Runnable = object : Runnable {
     override fun run() {
       if (mediaPlayer.isPlaying()) {
-        Log.i(TAG, "[MediaSessionCallback] Update PLayback position, player is playing")
+        Log.i(TAG, "[MediaSessionCallback] Update Playback position, player is playing")
         val currentPosition = mediaPlayer.currentPosition
         val currentState =
           PlaybackStateCompat.STATE_PLAYING

@@ -6,6 +6,30 @@
  */
 var exec = require('cordova/exec');
 const AndroidAutoPlugin = {
+  _eventHandler: null,
+
+  /**
+   * Call this once to start receiving native events.
+   * @param {Function} onEvent - Called whenever native sends an event.
+   */
+  registerEvents: function (onEvent) {
+    this._eventHandler = onEvent;
+
+    exec(
+      function success(data) {
+        if (onEvent && typeof onEvent === 'function') {
+          onEvent(data); // <- receive native event here
+        }
+      },
+      function error(err) {
+        console.error("Error in native event bridge", err);
+      },
+      "AndroidAutoPlugin",     // Java class name from plugin.xml
+      "registerEvents",     // method handled in execute()
+      []
+    );
+  },
+
   // ---------------------------
   // 1. Conectividad
   // ---------------------------
@@ -143,4 +167,6 @@ const AndroidAutoPlugin = {
 
   }
 };
+
+
 module.exports = AndroidAutoPlugin;
