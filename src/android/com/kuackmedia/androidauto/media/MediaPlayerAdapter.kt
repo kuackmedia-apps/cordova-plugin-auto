@@ -80,7 +80,6 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun play() {
-    Log.i(TAG, "[MediaPlayerAdapter] Play was executed")
     if (mediaPlayer.isPlaying) {
       mediaPlayer.stop()
       mediaPlayer.reset()

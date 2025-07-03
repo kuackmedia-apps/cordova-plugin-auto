@@ -22,11 +22,12 @@ import java.io.File
 
 object MediaItemFactory {
   private const val TAG: String = "MediaItemFactory"
-  fun parseMediaItems(mediaItem: MediaItem): MediaBrowserCompat.MediaItem? {
+  fun parseMediaItems(mediaItem: MediaItem, parentData: String): MediaBrowserCompat.MediaItem? {
     var result: MediaBrowserCompat.MediaItem? = null
     val mediaId = "item_" + mediaItem.itemType + "_" + mediaItem.id
     var extras = Bundle()
 
+    extras.putString("parentData", parentData)
     extras.putString("media_type", mediaItem.itemType)
     if (mediaItem.itemStyle == "grid") {
       extras.putInt(
@@ -100,6 +101,7 @@ object MediaItemFactory {
         extras.putString("artist", getArtistsNames(track.artists))
         extras.putString("album", track.album?.title)
         extras.putString("image", imageUri)
+        extras.putString("length", track.length)
         extras.putString("id", track.id)
         extras.putString("idAlbumTrack", track.idAlbumTrack.toString())
 

@@ -60,7 +60,7 @@ object LocalStorageUtils {
   fun storeInFile(context: Context, key: String, data: String?) {
     Log.i(TAG, "Storing data in file: $key - $data")
 
-    if(data !== null) {
+    if(null !== data) {
       context.openFileOutput(key, MODE_PRIVATE).use { output ->
         output.write(data.toByteArray())
       }

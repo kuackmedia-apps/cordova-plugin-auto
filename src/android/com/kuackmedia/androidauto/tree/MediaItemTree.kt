@@ -104,7 +104,7 @@ object MediaItemTree {
         val items: List<RecentListened>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it.data !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it.data)!! }
+          ?.map { MediaItemFactory.parseMediaItems(it.data, "")!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -132,7 +132,7 @@ object MediaItemTree {
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
 
             it.items.forEach {
-              val categoryMediaItem = MediaItemFactory.parseMediaItems(it)!!
+              val categoryMediaItem = MediaItemFactory.parseMediaItems(it, "")!!
               treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
               titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
               treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
@@ -147,7 +147,7 @@ object MediaItemTree {
         val items: List<MediaItem>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it)!! }
+          ?.map { MediaItemFactory.parseMediaItems(it, "")!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -253,19 +253,34 @@ object MediaItemTree {
     when (mediaType) {
       "playlist" -> {
         result = this.musicApi.getPlayListTracks(itemId).tracks.items.mapNotNull {
-          MediaItemFactory.parseMediaItems(it.track)
+          val parentData = "{" +
+            " \"id\": $itemId,\n" +
+            "  \"type\": \"PLAYLIST\",\n" +
+            "  \"name\": ${parent.description.title}" +
+            "}"
+          MediaItemFactory.parseMediaItems(it.track, parentData)
         }
       }
 
       "album" -> {
         result =  this.musicApi.getAlbumTracks(itemId).tracks.items.mapNotNull {
-          MediaItemFactory.parseMediaItems(it)
+          val parentData = "{" +
+            " \"id\": $itemId,\n" +
+            "  \"type\": \"ALBUM\",\n" +
+            "  \"name\": ${parent.description.title}" +
+            "}"
+          MediaItemFactory.parseMediaItems(it, parentData)
         }
       }
 
       "artist" -> {
         result =  this.musicApi.getArtistTracks(itemId).list.mapNotNull {
-          MediaItemFactory.parseMediaItems(it)
+          val parentData = "{" +
+            " \"id\": $itemId,\n" +
+            "  \"type\": \"ARTIST\",\n" +
+            "  \"name\": ${parent.description.title}" +
+            "}"
+          MediaItemFactory.parseMediaItems(it, parentData)
         }
       }
     }

@@ -1,22 +1,13 @@
 package com.kuackmedia.androidauto.media
 
-import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
-import android.net.Uri
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
-import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.api.ServiceFactory
-import com.kuackmedia.androidauto.models.QueueItem
 import com.kuackmedia.androidauto.tree.MediaItemTree
-import com.kuackmedia.androidauto.utils.LocalStorageUtils
-import com.kuackmedia.androidauto.utils.MediaUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +27,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     const val ROOT_ID = "[rootID]"
     const val CURRENT_TRACK_KEY = "current_track"
     const val QUEUE_ITEMS_KEY = "QUEUE_ITEMS_KEY"
+    const val PLAYLIST_DATA = "playlist_data"
   }
 
   private var currentTrackName: String? = null

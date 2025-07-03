@@ -15,6 +15,7 @@ import android.util.Log
 import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.CURRENT_TRACK_KEY
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.QUEUE_ITEMS_KEY
+import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.PLAYLIST_DATA
 import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.kuackmedia.androidauto.utils.MediaUtils
 import kotlinx.coroutines.CoroutineScope
@@ -81,16 +82,23 @@ class MediaSessionCallback(
   }
 
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+    val mediaSessionContext = extras?.getString("MEDIA_SESSION_SERVICE_CONTEXT")
+
+    if (mediaSessionContext == "MEDIA_AUTOPLAY") {
+      Log.d(TAG, "Blocking autoplay triggered by Android Auto")
+      // Optionally reset state or ignore
+      return
+    }
+
     if(!mediaPlayer.isPreparing()) {
       Log.i(TAG, "[onPlayFromMediaId] Start $mediaId")
-      val id = mediaId ?: return
-      val dataMediaId = id.split("_").last()
-      Log.i(TAG, "[onPlayFromMediaId] dataMediaId $dataMediaId")
+      val trackId = extras?.getString("idAlbumTrack")
+      Log.i(TAG, "[onPlayFromMediaId] trackId $trackId")
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, extras?.getString("id"),
-            extras?.getString("idAlbumTrack"))
+            trackId)
           withContext(Dispatchers.Main) {
             Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
             mediaPlayer.setCurrentTrack(trackUrl)
@@ -98,7 +106,10 @@ class MediaSessionCallback(
 
             updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
 
-            val duration = MediaUtils.getMp3Duration(trackUrl.toString())
+            val duration = extras?.getLong("Length")?.let {
+              if (it <= 0) MediaUtils.getMp3Duration(trackUrl.toString())
+              else it
+            }
             Log.i(TAG, "[onPlayFromMediaId] Duration $duration")
 
             val metadata = MediaMetadataCompat.Builder()
@@ -107,17 +118,20 @@ class MediaSessionCallback(
               .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras?.getString("album"))
               .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
               .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, extras?.getString("image"))
-              .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+              .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration!!)
               .build()
 
             mediaSession.setMetadata(metadata)
 
+            // TODO Use the parser here
             val stringQueue = mediaSession.controller.queue.map {
                 it -> "{ \"data\":" + it.description.extras?.getString("track") + " }"
             }
+            val playlistData = extras.getString("parentData")
 
             LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
-            LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$dataMediaId\"")
+            LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
+            LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$trackId\"")
 
             CordovaEventBridge.sendEvent("mediaUpdate", JSONObject())
           }
@@ -129,14 +143,6 @@ class MediaSessionCallback(
   }
 
   override fun onPlay() {
-    val extras = mediaSession.controller.extras
-    val context = extras?.getString("android.media.session.MEDIA_SESSION_SERVICE_CONTEXT")
-    if (context == "MEDIA_AUTOPLAY") {
-      Log.d(TAG, "Suppressing autoplay on Android Auto startup.")
-      // Ignore or delay playback here
-      return
-    }
-
     if(!mediaPlayer.isPreparing()) {
       mediaPlayer.play()
       updateState(PlaybackStateCompat.STATE_PLAYING)
@@ -234,16 +240,15 @@ class MediaSessionCallback(
 
   private fun handlePrepare() {
     Log.i(TAG, "[MediaSessionCallbacks] handling prepare.")
-    if(!mediaPlayer.currentTrackFromApp) {
+    if(mediaPlayer.currentTrackFromApp) {
+      mediaPlayer.currentTrackFromApp = false
+      updateState(PlaybackStateCompat.STATE_STOPPED, mediaPlayer.currentPosition)
+    } else {
       mediaPlayer.start()
       updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
-      mediaPlayer.currentTrackFromApp = false
-    } else {
-      mediaPlayer.pause()
-      updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+      handler.post(updatePlaybackPositionRunnable)
+      mediaSession.isActive = true
     }
-    handler.post(updatePlaybackPositionRunnable)
-    mediaSession.isActive = true
   }
 
   private fun handleError(what: Int, extra: Int) {

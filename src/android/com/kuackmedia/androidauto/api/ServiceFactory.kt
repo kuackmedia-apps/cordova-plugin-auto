@@ -25,7 +25,7 @@ object ServiceFactory {
 
     val interceptor = TokenInterceptor(prefProvider = prefs, baseUrl = baseUrl)
     okHttpClient = OkHttpClient.Builder()
-      .addInterceptor(loggingInterceptor)
+      //.addInterceptor(loggingInterceptor)
       .addInterceptor(interceptor)
       .build()
 
