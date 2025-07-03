@@ -72,8 +72,10 @@ class MediaSessionCallback(
           prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", ""),
           this.currentQueue
         )
-      Log.d(TAG, "Current track: ${this.currentTrack}")
+      Log.i(TAG, "Current track: ${this.currentTrack}")
       mediaSession.setQueue(this.currentQueue)
+
+      mediaPlayer.currentTrackFromApp = true
       this.onPlayFromMediaId(this.currentTrack?.mediaId, this.currentTrack?.description?.extras)
     }
   }
@@ -115,9 +117,9 @@ class MediaSessionCallback(
             }
 
             LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
-            LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, dataMediaId)
+            LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$dataMediaId\"")
 
-            CordovaEventBridge.sendEvent("onMediaUpdate", JSONObject())
+            CordovaEventBridge.sendEvent("mediaUpdate", JSONObject())
           }
         } catch (e: Exception) {
           Log.e("MediaSession", "Failed to load track URI", e)
@@ -127,6 +129,14 @@ class MediaSessionCallback(
   }
 
   override fun onPlay() {
+    val extras = mediaSession.controller.extras
+    val context = extras?.getString("android.media.session.MEDIA_SESSION_SERVICE_CONTEXT")
+    if (context == "MEDIA_AUTOPLAY") {
+      Log.d(TAG, "Suppressing autoplay on Android Auto startup.")
+      // Ignore or delay playback here
+      return
+    }
+
     if(!mediaPlayer.isPreparing()) {
       mediaPlayer.play()
       updateState(PlaybackStateCompat.STATE_PLAYING)
@@ -224,8 +234,14 @@ class MediaSessionCallback(
 
   private fun handlePrepare() {
     Log.i(TAG, "[MediaSessionCallbacks] handling prepare.")
-    mediaPlayer.start()
-    updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+    if(!mediaPlayer.currentTrackFromApp) {
+      mediaPlayer.start()
+      updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+      mediaPlayer.currentTrackFromApp = false
+    } else {
+      mediaPlayer.pause()
+      updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+    }
     handler.post(updatePlaybackPositionRunnable)
     mediaSession.isActive = true
   }
@@ -328,15 +344,20 @@ class MediaSessionCallback(
 
   private val updatePlaybackPositionRunnable: Runnable = object : Runnable {
     override fun run() {
-      if (mediaPlayer.isPlaying()) {
-        Log.i(TAG, "[MediaSessionCallback] Update Playback position, player is playing")
-        val currentPosition = mediaPlayer.currentPosition
-        val currentState =
-          PlaybackStateCompat.STATE_PLAYING
+      try {
+        if (mediaPlayer.isPlaying()) {
+          Log.i(TAG, "[MediaSessionCallback] Update Playback position, player is playing")
+          val currentPosition = mediaPlayer.currentPosition
+          val currentState =
+            PlaybackStateCompat.STATE_PLAYING
 
-        updateState(currentState, currentPosition)
+          updateState(currentState, currentPosition)
+        }
+        handler.postDelayed(this, PLAYBACK_POSITION_UPDATE_INTERVAL)
+      } catch (e: Exception) {
+        // Prevent app to break when disconnected.
       }
-      handler.postDelayed(this, PLAYBACK_POSITION_UPDATE_INTERVAL)
+
     }
   }
 }

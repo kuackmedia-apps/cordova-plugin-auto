@@ -21,6 +21,8 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   private var currentTrackUri: Uri? = null
   private var isPreparing = false
 
+  override var currentTrackFromApp: Boolean = false
+
   override val currentPosition: Long
     get() = mediaPlayer.currentPosition.toLong()
 

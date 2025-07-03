@@ -23,5 +23,6 @@ interface IPlayerAdapter {
   fun setOnPreparedListener(handlePlaybackCompletion: () -> Unit)
   fun setOnErrorListener(handleError: ( what: Int, extra: Int) -> Unit)
   val currentPosition: Long
+  var currentTrackFromApp: Boolean
 }
 
