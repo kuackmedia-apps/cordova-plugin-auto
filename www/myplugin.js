@@ -7,7 +7,23 @@ var AutoPlugin = (function () {
     exec(
       function success(data) {
         if (data.event === 'mediaUpdate' && mediaUpdateCallback) {
-          mediaUpdateCallback(data.track);
+          mediaUpdateCallback(data);
+        }
+
+        if(data.event === 'playbackStateChange' && playbackStateChangeCallback) {
+          playbackStateChangeCallback(data.action);
+        }
+
+        if(data.event === 'connected' && connectedCallback) {
+          isConnected(data.action);
+        }
+
+        if(data.event === 'updateQueue' && updateQueueCallback) {
+          updateQueue(data);
+        }
+
+        if(data.event === 'queueStorageChange' && queueStorageChangeCallback) {
+          queueStorageChange(data);
         }
       },
       function error(err) {
@@ -28,7 +44,8 @@ var AutoPlugin = (function () {
      * @param {function(boolean): void} callback
      */
     isConnected(callback) {
-      // TODO: Consultar estado de conexión y ejecutar callback(status)
+      connectedCallback = callback;
+      registerNativeListener(); // connect with native
     },
 
     /**
@@ -36,7 +53,6 @@ var AutoPlugin = (function () {
      * @param {function('connecting'|'connected'|'disconnected'): void} callback
      */
     onConnectionChange(callback) {
-      // TODO: Registrar listener para cambios de estado
     },
 
     // ---------------------------
@@ -56,7 +72,8 @@ var AutoPlugin = (function () {
      * @param {function('playing'|'paused'|'stopped'|'buffering'): void} callback
      */
     onPlaybackStateChange(callback) {
-      // TODO: Emitir al cambiar estado de playback
+      playbackStateChangeCallback = callback;
+      registerNativeListener(); // connect with native
     },
 
     /**
@@ -67,13 +84,6 @@ var AutoPlugin = (function () {
       // TODO: Emitir cuando la cola cambie
     },
 
-    /**
-     * Se dispara al buscar posición dentro de la pista.
-     * @param {function(number): void} callback - posición en ms
-     */
-    onSeek(callback) {
-      // TODO: Emitir cuando usuario seek
-    },
 
     /**
      * Evento para acciones personalizadas.
@@ -83,35 +93,10 @@ var AutoPlugin = (function () {
       // TODO: Emitir acciones como 'repeat', 'shuffle', etc.
     },
 
-    /** Inicia o reanuda reproducción. */
-    play(callback, errorCallback) {
-      // TODO: Implementar play
-    },
-
-    /** Pausa reproducción. */
-    pause(callback, errorCallback) {
-      // TODO: Implementar pause
-    },
-
-
-    /** Avanza a la siguiente pista. */
-    skipToNext(callback, errorCallback) {
-      // TODO: Implementar siguiente track
-    },
-
-    /** Retrocede a la pista anterior. */
-    skipToPrevious(callback, errorCallback) {
-      // TODO: Implementar pista anterior
-    },
-
-    /** Salta a la posición indicada. */
-    seekTo(position, callback, errorCallback) {
-      // TODO: Implementar seekTo
-    },
-
     /** Actualiza la cola completa de reproducción. */
-    updateQueue(queue, callback, errorCallback) {
-      // TODO: Enviar nueva cola al servicio
+    updateQueue(callback) {
+      updateQueueCallback = callback;
+      registerNativeListener();
     },
 
     // ---------------------------
@@ -122,7 +107,8 @@ var AutoPlugin = (function () {
      * @param {function(Array<Track>): void} callback
      */
     onQueueStorageChange(callback) {
-      // TODO: Escuchar cambios en QUEUE_ITEMS_QUEUE o playlist_data
+      queueStorageChangeCallback = callback;
+      registerNativeListener();
     },
 
     /**

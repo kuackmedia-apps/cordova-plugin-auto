@@ -6,12 +6,14 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.utils.MediaConstants
+import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.api.ServiceFactory
 import com.kuackmedia.androidauto.tree.MediaItemTree
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 
 class MusicLibraryService : MediaBrowserServiceCompat() {
@@ -39,6 +41,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
   override fun onCreate() {
     super.onCreate()
+
+    CordovaEventBridge.sendEvent("connected", JSONObject())
 
     initApiData()
 

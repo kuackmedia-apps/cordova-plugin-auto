@@ -148,6 +148,7 @@ class MediaSessionCallback(
       updateState(PlaybackStateCompat.STATE_PLAYING)
       handler.post(updatePlaybackPositionRunnable)
       mediaSession.isActive = true
+      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'play' }"))
     }
   }
 
@@ -156,6 +157,7 @@ class MediaSessionCallback(
       mediaPlayer.stop()
       updateState(PlaybackStateCompat.STATE_STOPPED, 0)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
+      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'stop' }"))
     }
   }
 
@@ -165,6 +167,7 @@ class MediaSessionCallback(
       mediaPlayer.pause()
       updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
+      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'pause' }"))
     }
   }
 
@@ -175,6 +178,7 @@ class MediaSessionCallback(
         mediaId = nextItem?.mediaId,
         extras = nextItem?.extras
       )
+      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'skipToNext' }"))
     }
   }
 
@@ -185,6 +189,7 @@ class MediaSessionCallback(
         mediaId = previousItem?.mediaId,
         extras = previousItem?.extras
       )
+      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'skipToPrevious' }"))
     }
   }
 
@@ -201,6 +206,8 @@ class MediaSessionCallback(
         handler.removeCallbacks(updatePlaybackPositionRunnable)
         handler.post(updatePlaybackPositionRunnable)
       }
+
+      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'seekTo' }"))
     }
   }
 
