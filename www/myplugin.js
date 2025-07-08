@@ -18,6 +18,10 @@ var AutoPlugin = (function () {
           isConnected(data.action);
         }
 
+        if(data.event === 'onConnectionChange' && onConnectionChangeCallback) {
+          onConnectionChange(data.action);
+        }
+
         if(data.event === 'updateQueue' && updateQueueCallback) {
           updateQueue(data);
         }
@@ -53,6 +57,8 @@ var AutoPlugin = (function () {
      * @param {function('connecting'|'connected'|'disconnected'): void} callback
      */
     onConnectionChange(callback) {
+      connectionChangeCallback = callback;
+      registerNativeListener();
     },
 
     // ---------------------------
