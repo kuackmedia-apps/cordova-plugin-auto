@@ -2,7 +2,11 @@ var exec = require('cordova/exec');
 
 var AutoPlugin = (function () {
   let mediaUpdateCallback = null;
-
+  let onConnectionChangeCallback = null
+  let updateQueueCallback = null;
+  let queueStorageChangeCallback = null;
+  let playbackStateChangeCallback = null;
+  let connectedCallback = null;
   function registerNativeListener() {
     exec(
       function success(data) {
@@ -15,19 +19,19 @@ var AutoPlugin = (function () {
         }
 
         if(data.event === 'connected' && connectedCallback) {
-          isConnected(data.action);
+          connectedCallback(data.action);
         }
 
         if(data.event === 'onConnectionChange' && onConnectionChangeCallback) {
-          onConnectionChange(data.action);
+          onConnectionChangeCallback(data.action);
         }
 
         if(data.event === 'updateQueue' && updateQueueCallback) {
-          updateQueue(data);
+          updateQueueCallback(data);
         }
 
         if(data.event === 'queueStorageChange' && queueStorageChangeCallback) {
-          queueStorageChange(data);
+          queueStorageChangeCallback(data);
         }
       },
       function error(err) {
