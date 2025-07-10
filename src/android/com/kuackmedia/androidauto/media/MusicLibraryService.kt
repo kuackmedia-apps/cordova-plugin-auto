@@ -42,7 +42,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
   override fun onCreate() {
     super.onCreate()
 
-    CordovaEventBridge.sendEvent("onConnectionChange", JSONObject())
+    CordovaEventBridge.sendEvent(
+      "onConnectionChange",
+      JSONObject().put("connected", true))
 
     initApiData()
 
@@ -95,8 +97,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       serviceScope.launch {
         try {
           val remoteChildren = MediaItemTree.getRemoteChildren(parentId)
-          QueueManager.buildQueue(mediaSession, remoteChildren)
-
+          QueueManager.buildQueue( remoteChildren)
           result.sendResult(remoteChildren)
         } catch (e: Exception) {
           Log.e("MusicService", "Error loading children", e)
@@ -113,7 +114,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     mediaSession.release()
     playerAdapter.release()
 
-    CordovaEventBridge.sendEvent("onConnectionChanged", JSONObject())
+    CordovaEventBridge.sendEvent(
+      "onConnectionChange",
+      JSONObject().put("connected", false))
 
     super.onDestroy()
   }

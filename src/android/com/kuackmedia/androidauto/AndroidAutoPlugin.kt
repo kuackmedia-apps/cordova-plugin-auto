@@ -26,7 +26,8 @@ class AndroidAutoPlugin : CordovaPlugin() {
   ): Boolean {
     when (action) {
       "registerEvents" -> {
-        CordovaEventBridge.eventCallbackContext = callbackContext
+        val action = args!!.optString(0)
+        CordovaEventBridge.eventCallbackContext[action] = callbackContext
 
         val result = PluginResult(PluginResult.Status.NO_RESULT)
         result.keepCallback = true

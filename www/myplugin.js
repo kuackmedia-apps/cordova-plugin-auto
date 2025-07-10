@@ -1,163 +1,122 @@
-var exec = require('cordova/exec');
+cordova.define("cordova-plugin-auto.auto", function(require, exports, module) {
 
-var AutoPlugin = (function () {
-  let mediaUpdateCallback = null;
-  let onConnectionChangeCallback = null;
-  let playbackStateChangeCallback = null;
-  let connectedCallback = null;
-  let updateQueueCallback = null;
-  let queueStorageChangeCallback = null;
-
-  function registerNativeListener() {
-    exec(
-      function success(data) {
-        if (data.event === 'mediaUpdate' && mediaUpdateCallback) {
-          mediaUpdateCallback(data);
-        }
-
-        if(data.event === 'playbackStateChange' && playbackStateChangeCallback) {
-          playbackStateChangeCallback(data.action);
-        }
-
-        if(data.event === 'connected' && connectedCallback) {
-          connectedCallback(data.action);
-        }
-
-        if(data.event === 'onConnectionChange' && onConnectionChangeCallback) {
-          console.log('[PLUGIN AUTO] onConnectionChange from NATIVE', callback);
-          onConnectionChangeCallback(data.action);
-        }
-
-        if(data.event === 'updateQueue' && updateQueueCallback) {
-          updateQueueCallback(data);
-        }
-
-        if(data.event === 'queueStorageChange' && queueStorageChangeCallback) {
-          queueStorageChangeCallback(data);
-        }
-      },
-      function error(err) {
-        console.error("Error receiving native events", err);
-      },
-      "AndroidAutoPlugin",       // <- Java plugin name in plugin.xml
-      "registerEvents",   // <- Kotlin `execute` action
-      []
-    );
-  }
-
-  return {
-    // ---------------------------
-    // 1. Conectividad
-    // ---------------------------
-    /**
-     * Verifica si el servicio de Android Auto está conectado.
-     * @param {function(boolean): void} callback
-     */
-    isConnected(callback) {
-      connectedCallback = callback;
-      registerNativeListener(); // connect with native
+  var exec = require('cordova/exec');
+  var AutoPlugin = {
+    onConnectionChangeCallback: null,
+    onMediaUpdateCallback: null,
+  
+    onConnectionChange: function (callback) {
+      AutoPlugin.onConnectionChangeCallback = callback;
+  
+      exec(
+        function(data) {
+          if (typeof AutoPlugin.onConnectionChangeCallback === 'function') {
+            AutoPlugin.onConnectionChangeCallback(data);
+          }
+        },
+        function(err) {
+          console.error('AutoPlugin listener error:', err);
+        },
+        'AndroidAutoPlugin',
+        'registerEvents',
+        ['onConnectionChange']
+      );
     },
-
-    /**
-     * Escucha cambios de conexión al servicio.
-     * @param {function('connecting'|'connected'|'disconnected'): void} callback
-     */
-    onConnectionChange(callback) {
-      console.log('[PLUGIN AUTO] onConnectionChange', callback);
-      onConnectionChangeCallback = callback;
-      registerNativeListener();
-    },
-
-    // ---------------------------
-    // 2. MediaSession
-    // ---------------------------
-    /**
-     * Notifica cambios en la pista actual.
-     * @param {function(Track): void} callback
-     */
+  
     onMediaUpdate: function (callback) {
-      console.log('[PLUGIN AUTO] onMediaUpdate', callback);
-      mediaUpdateCallback = callback;
-      registerNativeListener(); // connect with native
+        AutoPlugin.onMediaUpdateCallback = callback;
+  
+        exec(
+          function (data) {
+            if (typeof AutoPlugin.onMediaUpdateCallback === 'function') {
+              AutoPlugin.onMediaUpdateCallback(data);
+            }
+          },
+          function (err) {
+            console.error('AutoPlugin onMediaUpdate error:', err);
+          },
+          'AndroidAutoPlugin',
+          'registerEvents',
+          ['onMediaUpdate']
+        );
     },
-
-    /**
-     * Indica cambios en el estado de reproducción.
-     * @param {function('playing'|'paused'|'stopped'|'buffering'): void} callback
-     */
-    onPlaybackStateChange(callback) {
-      playbackStateChangeCallback = callback;
-      registerNativeListener(); // connect with native
+  
+    onPlaybackStateChange: function (callback) {
+      AutoPlugin.onPlaybackStateChange = callback;
+  
+      exec(
+        function (data) {
+          if (typeof AutoPlugin.onPlaybackStateChange === 'function') {
+            AutoPlugin.onPlaybackStateChange(data);
+          }
+        },
+        function (err) {
+          console.error('AutoPlugin onPlaybackStateChange error:', err);
+        },
+        'AndroidAutoPlugin',
+        'registerEvents',
+        ['onPlaybackStateChange']
+      );
     },
-
-    /**
-     * Entrega la cola de reproducción actualizada.
-     * @param {function(Array<Track>): void} callback
-     */
-    onQueueUpdate(callback) {
-      // TODO: Emitir cuando la cola cambie
+  
+    play: function() {
+      cordova.exec(
+        function success(result) {
+          console.log('Track played successfully:', result);
+        },
+        function error(err) {
+          console.error('Error playing track:', err);
+        },
+        'AndroidAutoPlugin',
+        'play',
+        [],
+      );
     },
-
-
-    /**
-     * Evento para acciones personalizadas.
-     * @param {function(string, any=): void} callback
-     */
-    onCustomAction(callback) {
-      // TODO: Emitir acciones como 'repeat', 'shuffle', etc.
+  
+    pause: function() {
+        cordova.exec(
+          function success(result) {
+            console.log('Track paused successfully:', result);
+          },
+          function error(err) {
+            console.error('Error paused track:', err);
+          },
+          'AndroidAutoPlugin',
+          'pause',
+          [],
+        );
     },
-
-    /** Actualiza la cola completa de reproducción. */
-    updateQueue(callback) {
-      updateQueueCallback = callback;
-      registerNativeListener();
+  
+    getCurrentPlaybackState: function() {
+      cordova.exec(
+        function success(result) {
+          console.log('Track getCurrentPlaybackState successfully:', result);
+        },
+        function error(err) {
+          console.error('Error getCurrentPlaybackState track:', err);
+        },
+        'AndroidAutoPlugin',
+        'getCurrentPlaybackState',
+        [],
+      );
     },
-
-    // ---------------------------
-    // 5. Sincronización de Cola y Pista Actual
-    // ---------------------------
-    /**
-     * Evento: disparado cuando cambia el contenido del almacenamiento de la cola.
-     * @param {function(Array<Track>): void} callback
-     */
-    onQueueStorageChange(callback) {
-      queueStorageChangeCallback = callback;
-      registerNativeListener();
-    },
-
-    /**
-     * Evento: disparado al cambiar el track actual.
-     * @param {function(number): void} callback
-     */
-    onCurrentTrackChange(callback) {
-      // TODO: Escuchar cambios en current_track
-    },
-
-    /** Método: notifica al servicio que recargue la cola. */
-    notifyQueueStorageUpdated() {
-      // TODO: Notificar recarga de cola al servicio
-    },
-
-    /** Método: notifica al servicio que cambie la pista actual. */
-    notifyCurrentTrackUpdated() {
-      // TODO: Notificar cambio de pista al servicio
-    },
-
-    /**
-     * Retorna la posición actual de reproducción.
-     * @param {function(position): void} successCallback
-     */
-    getPosition (successCallback, errorCallback) {
-
-    },
-    /**
-     * Indica cambios en el estado de reproducción.
-     * @param {function('playing'|'paused'|'stopped'|'buffering'): void} successCallback
-     */
-    getCurrentPlaybackState (successCallback, errorCallback) {
-
+  
+    isConnected: function () {
+      cordova.exec(
+        function success(result) {
+          console.log('Track isConnected successfully:', result);
+        },
+        function error(err) {
+          console.error('Error isConnected track:', err);
+        },
+        'AndroidAutoPlugin',
+        'isConnected',
+        [],
+      );
     }
-  };
-})();
-
-module.exports = AutoPlugin;
+  }
+  
+  module.exports = AutoPlugin;
+  
+  });
+  

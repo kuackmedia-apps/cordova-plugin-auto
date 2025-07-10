@@ -21,18 +21,18 @@ import java.io.File
 object QueueManager {
   const val TAG = "QueueBuilder"
   private var currentQueueIndex = 0
+  private var queue:  List<MediaSessionCompat.QueueItem>? = null
 
-  fun buildQueue(
-    mediaSession: MediaSessionCompat,
-    items: List<MediaBrowserCompat.MediaItem>) {
+  fun buildQueue(items: List<MediaBrowserCompat.MediaItem>) {
 
-    val queue = items
+    this.queue = items
       .mapIndexed { index, track ->
         MediaSessionCompat.QueueItem(track.description, index.toLong())
       }
+  }
 
-    CordovaEventBridge.sendEvent("queueStorageChange", JSONObject(queue.toString()))
-
+  fun setQueue(mediaSession: MediaSessionCompat,) {
+    CordovaEventBridge.sendEvent("queueStorageChange", JSONObject())
     mediaSession.setQueue(queue)
   }
 

@@ -101,6 +101,7 @@ class MediaSessionCallback(
             trackId)
           withContext(Dispatchers.Main) {
             Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
+            QueueManager.setQueue(mediaSession)
             mediaPlayer.setCurrentTrack(trackUrl)
             mediaPlayer.playCurrentTrack(context)
 
@@ -123,17 +124,7 @@ class MediaSessionCallback(
 
             mediaSession.setMetadata(metadata)
 
-            // TODO Use the parser here
-            val stringQueue = mediaSession.controller.queue.map {
-                it -> "{ \"data\":" + it.description.extras?.getString("track") + " }"
-            }
-            val playlistData = extras.getString("parentData")
-
-            LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
-            LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
-            LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$trackId\"")
-
-            CordovaEventBridge.sendEvent("mediaUpdate", JSONObject())
+            storeLocalData(extras, trackId)
           }
         } catch (e: Exception) {
           Log.e("MediaSession", "Failed to load track URI", e)
@@ -221,6 +212,18 @@ class MediaSessionCallback(
         )
       }
     }
+  }
+
+  private fun storeLocalData(extras: Bundle, trackId: String?) {
+    val stringQueue = mediaSession.controller.queue.map {
+        it -> JSONObject().put("data", it.description.extras?.getString("track"))
+    }
+    val playlistData = extras.getString("parentData")
+    LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
+    LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
+    LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$trackId\"")
+
+    CordovaEventBridge.sendEvent("onMediaUpdate", JSONObject())
   }
 
   private fun updateState(
