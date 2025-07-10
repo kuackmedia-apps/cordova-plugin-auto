@@ -13,6 +13,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import com.kuackmedia.androidauto.CordovaEventBridge
+import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.CURRENT_TRACK_KEY
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.QUEUE_ITEMS_KEY
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.PLAYLIST_DATA
@@ -74,7 +75,6 @@ class MediaSessionCallback(
           this.currentQueue
         )
       Log.i(TAG, "Current track: ${this.currentTrack}")
-      mediaSession.setQueue(this.currentQueue)
 
       mediaPlayer.currentTrackFromApp = true
       this.onPlayFromMediaId(this.currentTrack?.mediaId, this.currentTrack?.description?.extras)
@@ -139,7 +139,9 @@ class MediaSessionCallback(
       updateState(PlaybackStateCompat.STATE_PLAYING)
       handler.post(updatePlaybackPositionRunnable)
       mediaSession.isActive = true
-      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'play' }"))
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "play"))
     }
   }
 
@@ -148,7 +150,9 @@ class MediaSessionCallback(
       mediaPlayer.stop()
       updateState(PlaybackStateCompat.STATE_STOPPED, 0)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
-      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'stop' }"))
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "stop"))
     }
   }
 
@@ -158,7 +162,9 @@ class MediaSessionCallback(
       mediaPlayer.pause()
       updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
-      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'pause' }"))
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "pause"))
     }
   }
 
@@ -169,7 +175,9 @@ class MediaSessionCallback(
         mediaId = nextItem?.mediaId,
         extras = nextItem?.extras
       )
-      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'skipToNext' }"))
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "skipToNext"))
     }
   }
 
@@ -180,7 +188,9 @@ class MediaSessionCallback(
         mediaId = previousItem?.mediaId,
         extras = previousItem?.extras
       )
-      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'skipToPrevious' }"))
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "skipToPrevious"))
     }
   }
 
@@ -197,8 +207,9 @@ class MediaSessionCallback(
         handler.removeCallbacks(updatePlaybackPositionRunnable)
         handler.post(updatePlaybackPositionRunnable)
       }
-
-      CordovaEventBridge.sendEvent("play", JSONObject("{ 'action': 'seekTo' }"))
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "seekTo").put("value", pos))
     }
   }
 
@@ -211,19 +222,24 @@ class MediaSessionCallback(
           extras = nextItem.description.extras
         )
       }
+      CordovaEventBridge.sendEvent(
+        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+        JSONObject().put("action", "skipToQueueItem"))
     }
   }
 
   private fun storeLocalData(extras: Bundle, trackId: String?) {
-    val stringQueue = mediaSession.controller.queue.map {
-        it -> JSONObject().put("data", it.description.extras?.getString("track"))
-    }
-    val playlistData = extras.getString("parentData")
-    LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
-    LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
-    LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$trackId\"")
+    if(mediaSession.controller.queue !== null) {
+      val stringQueue = mediaSession.controller.queue.map { it ->
+        "{ \"data\":" + it.description.extras?.getString("track") + " }"
+      }
+      val playlistData = extras.getString("parentData")
+      LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
+      LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
+      LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$trackId\"")
 
-    CordovaEventBridge.sendEvent("onMediaUpdate", JSONObject())
+      CordovaEventBridge.sendEvent(CordovaEvents.ON_MEDIA_UPDATE)
+    }
   }
 
   private fun updateState(
@@ -243,7 +259,7 @@ class MediaSessionCallback(
       )
     val pb = PlaybackStateCompat.Builder()
       .setActions(actions)
-      .setState(state, position, /* speed= */ 1f)
+      .setState(state, position, 1f)
       .build()
     mediaSession.setPlaybackState(pb)
   }

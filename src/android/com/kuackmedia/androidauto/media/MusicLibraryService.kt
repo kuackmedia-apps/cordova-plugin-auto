@@ -1,5 +1,6 @@
 package com.kuackmedia.androidauto.media
 
+import android.content.Intent
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -7,6 +8,7 @@ import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.CordovaEventBridge
+import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.api.ServiceFactory
 import com.kuackmedia.androidauto.tree.MediaItemTree
 import kotlinx.coroutines.CoroutineScope
@@ -43,7 +45,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     super.onCreate()
 
     CordovaEventBridge.sendEvent(
-      "onConnectionChange",
+      CordovaEvents.ON_CONNECTION_CHANGE,
       JSONObject().put("connected", true))
 
     initApiData()
@@ -51,6 +53,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     val musicApi = ServiceFactory.create(applicationContext)
 
     playerAdapter = MediaPlayerAdapter()
+
     MediaItemTree.initialize(applicationContext, musicApi)
 
     if (!::mediaSession.isInitialized) {
@@ -63,6 +66,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     }
 
     setSessionToken(mediaSession.sessionToken)
+
+    MediaControlBridge.mediaSession = mediaSession
+    MediaControlBridge.mediaPlayer = playerAdapter
 
     mediaSession.controller.transportControls.prepare()
   }
@@ -80,7 +86,17 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
       MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
     extras.putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
+
+    if (clientPackageName.contains("android.auto")) {
+      MediaControlBridge.setConnected(true)
+    }
+
     return BrowserRoot(ROOT_ID, extras)
+  }
+
+  override fun onUnbind(intent: Intent?): Boolean {
+    MediaControlBridge.setConnected(false)
+    return super.onUnbind(intent)
   }
 
   override fun onLoadChildren(
@@ -115,7 +131,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     playerAdapter.release()
 
     CordovaEventBridge.sendEvent(
-      "onConnectionChange",
+      CordovaEvents.ON_CONNECTION_CHANGE,
       JSONObject().put("connected", false))
 
     super.onDestroy()

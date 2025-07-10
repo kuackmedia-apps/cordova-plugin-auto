@@ -1,23 +1,14 @@
 package com.kuackmedia.androidauto
 
-import android.app.UiModeManager
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.res.Configuration
-import android.util.Log
-import com.kuackmedia.androidauto.media.MusicLibraryService
+import android.support.v4.media.session.PlaybackStateCompat
+import com.kuackmedia.androidauto.media.MediaControlBridge
 import org.apache.cordova.CallbackContext
 import org.apache.cordova.CordovaPlugin
 import org.apache.cordova.PluginResult
 import org.json.JSONArray
 import org.json.JSONException
-import org.json.JSONObject
 
 class AndroidAutoPlugin : CordovaPlugin() {
-  private var carModeReceiver: BroadcastReceiver? = null
-
   @Throws(JSONException::class)
   override fun execute(
     action: String?,
@@ -35,113 +26,38 @@ class AndroidAutoPlugin : CordovaPlugin() {
         return true
       }
 
-      "startService" -> {
-        val ctx = cordova.context
-        val intent = Intent(ctx, MusicLibraryService::class.java)
-        ctx.startService(intent)
-        Log.d(TAG, "Android Auto startService:")
-        callbackContext.success("Servicio Android Auto iniciado")
+      "play" -> {
+        MediaControlBridge.play()
+        callbackContext.success("Playing")
         return true
       }
 
-      "isConnectedToAndroidAuto" -> {
-        val isConnected = this.isConnectedToAndroidAuto
-        Log.d(TAG, "Android Auto connected: $isConnected")
-        callbackContext.success(if (isConnected) 1 else 0)
+      "pause" -> {
+        MediaControlBridge.pause()
+        callbackContext.success("pause")
         return true
       }
 
-      "registerAutoConnectListener" -> {
-        connectionEventCallback = callbackContext
-        registerAutoConnectListener()
-        val pluginResult = PluginResult(PluginResult.Status.NO_RESULT)
-        pluginResult.keepCallback = true
-        callbackContext.sendPluginResult(pluginResult)
+      "getCurrentPlaybackState" -> {
+        val state = MediaControlBridge.mediaSession?.controller?.playbackState?.state
+        val label = when (state) {
+          PlaybackStateCompat.STATE_PLAYING -> "PLAYING"
+          PlaybackStateCompat.STATE_PAUSED -> "PAUSED"
+          PlaybackStateCompat.STATE_STOPPED -> "STOPPED"
+          PlaybackStateCompat.STATE_BUFFERING -> "BUFFERING"
+          PlaybackStateCompat.STATE_NONE -> "NONE"
+          else -> "unknown"
+        }
+        callbackContext.success(label)
         return true
       }
 
-      "unregisterAutoConnectListener" -> {
-        unregisterAutoConnectListener()
-        callbackContext.success("Listener eliminado")
+      "isConnected" -> {
+        callbackContext.success(if (MediaControlBridge.androidAutoConnected) 1 else 0)
         return true
       }
+
     }
     return false
-  }
-
-  private val isConnectedToAndroidAuto: Boolean
-    get() {
-      val uiModeManager =
-        cordova.activity.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager?
-      if (uiModeManager != null) {
-        return (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_CAR)
-      }
-      return false
-    }
-
-
-  private fun registerAutoConnectListener() {
-    if (carModeReceiver != null) {
-      unregisterAutoConnectListener()
-    }
-
-    carModeReceiver = object : BroadcastReceiver() {
-      override fun onReceive(context: Context?, intent: Intent) {
-        val action = intent.action
-        if (action != null && action == UiModeManager.ACTION_ENTER_CAR_MODE ||
-          action == UiModeManager.ACTION_EXIT_CAR_MODE ||
-          action == Intent.ACTION_CONFIGURATION_CHANGED
-        ) {
-          val isConnected: Boolean = isConnectedToAndroidAuto
-          sendConnectionEvent(isConnected)
-        }
-      }
-    }
-
-    val filter = IntentFilter()
-    filter.addAction(UiModeManager.ACTION_ENTER_CAR_MODE)
-    filter.addAction(UiModeManager.ACTION_EXIT_CAR_MODE)
-    filter.addAction(Intent.ACTION_CONFIGURATION_CHANGED)
-    cordova.activity.registerReceiver(carModeReceiver, filter)
-  }
-
-  private fun unregisterAutoConnectListener() {
-    if (carModeReceiver != null) {
-      try {
-        cordova.activity.unregisterReceiver(carModeReceiver)
-        carModeReceiver = null
-      } catch (e: Exception) {
-        // Receptor ya desregistrado
-      }
-    }
-  }
-
-  private fun sendConnectionEvent(isConnected: Boolean) {
-    try {
-      val eventData = JSONObject()
-      eventData.put("connected", isConnected)
-
-      val result = PluginResult(PluginResult.Status.OK, eventData)
-      result.keepCallback = true
-
-      // El segundo parámetro debería ser una CallbackContext guardada durante el registro
-      // Aquí se necesitaría guardar callbackContext durante registerAutoConnectListener
-      if (connectionEventCallback != null) {
-        connectionEventCallback!!.sendPluginResult(result)
-      }
-    } catch (e: JSONException) {
-      // Error al crear JSON
-    }
-  }
-
-  private var connectionEventCallback: CallbackContext? = null
-
-  override fun onDestroy() {
-    unregisterAutoConnectListener()
-    super.onDestroy()
-  }
-
-  companion object {
-    private const val TAG = "AndroidAutoPlugin"
   }
 }

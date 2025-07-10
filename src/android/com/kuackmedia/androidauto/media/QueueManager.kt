@@ -5,6 +5,7 @@ import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import com.kuackmedia.androidauto.CordovaEventBridge
+import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.models.EmptyModel
 import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.QueueItem
@@ -32,7 +33,7 @@ object QueueManager {
   }
 
   fun setQueue(mediaSession: MediaSessionCompat,) {
-    CordovaEventBridge.sendEvent("queueStorageChange", JSONObject())
+    CordovaEventBridge.sendEvent(CordovaEvents.ON_MEDIA_UPDATE, JSONObject())
     mediaSession.setQueue(queue)
   }
 
@@ -56,7 +57,7 @@ object QueueManager {
       val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
       val items: List<QueueItem>? = adapter.fromJson(jsonArray)
       Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
-      val queueJsonObjects = items
+      this.queue = items
         ?.map { it.data }
         ?.filter { it !is EmptyModel }
         ?.map { MediaItemFactory.parseMediaItems(it, "")!! }
@@ -64,8 +65,8 @@ object QueueManager {
           MediaSessionCompat.QueueItem(track.description, index.toLong())
         }
 
-      Log.i(TAG, "QUEUE_ITEMS_KEY: $queueJsonObjects")
-      return queueJsonObjects
+      Log.i(TAG, "QUEUE_ITEMS_KEY: ${this.queue}")
+      return  this.queue
     } else {
       return null
     }
