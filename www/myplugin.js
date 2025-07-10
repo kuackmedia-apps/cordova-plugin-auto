@@ -1,6 +1,4 @@
-cordova.define("cordova-plugin-auto.auto", function(require, exports, module) {
-
-  var exec = require('cordova/exec');
+var exec = require('cordova/exec');
   var AutoPlugin = {
     onConnectionChangeCallback: null,
     onMediaUpdateCallback: null,
@@ -113,10 +111,21 @@ cordova.define("cordova-plugin-auto.auto", function(require, exports, module) {
         'isConnected',
         [],
       );
-    }
+    },
+
+    getPosition: function () {
+         cordova.exec(
+           function success(result) {
+             console.log('Track getPosition successfully:', result);
+           },
+           function error(err) {
+             console.error('Error getPosition track:', err);
+           },
+           'AndroidAutoPlugin',
+           'getPosition',
+           [],
+         );
+    },
   }
   
   module.exports = AutoPlugin;
-  
-  });
-  

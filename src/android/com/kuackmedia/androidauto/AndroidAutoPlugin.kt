@@ -1,6 +1,7 @@
 package com.kuackmedia.androidauto
 
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import com.kuackmedia.androidauto.media.MediaControlBridge
 import org.apache.cordova.CallbackContext
 import org.apache.cordova.CordovaPlugin
@@ -27,12 +28,14 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "play" -> {
+        Log.d("AndroidAutoPlugin", "[play]")
         MediaControlBridge.play()
         callbackContext.success("Playing")
         return true
       }
 
       "pause" -> {
+        Log.d("AndroidAutoPlugin", "[play]")
         MediaControlBridge.pause()
         callbackContext.success("pause")
         return true
@@ -53,7 +56,14 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "isConnected" -> {
+        Log.d("AndroidAutoPlugin", "[isConnected] ${MediaControlBridge.androidAutoConnected}")
         callbackContext.success(if (MediaControlBridge.androidAutoConnected) 1 else 0)
+        return true
+      }
+
+      "getPosition" -> {
+        Log.d("AndroidAutoPlugin", "[getPosition] ${MediaControlBridge.mediaPlayer?.currentPosition?.toInt()}")
+        callbackContext.success(MediaControlBridge.mediaPlayer?.currentPosition?.toInt()!!)
         return true
       }
 

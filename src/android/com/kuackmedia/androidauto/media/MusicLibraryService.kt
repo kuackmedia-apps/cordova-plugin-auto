@@ -87,9 +87,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
     extras.putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
 
-    if (clientPackageName.contains("android.auto")) {
-      MediaControlBridge.setConnected(true)
-    }
+    MediaControlBridge.setConnected(true)
 
     return BrowserRoot(ROOT_ID, extras)
   }
