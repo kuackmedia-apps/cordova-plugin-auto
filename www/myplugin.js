@@ -2,11 +2,12 @@ var exec = require('cordova/exec');
 
 var AutoPlugin = (function () {
   let mediaUpdateCallback = null;
-  let onConnectionChangeCallback = null
-  let updateQueueCallback = null;
-  let queueStorageChangeCallback = null;
+  let onConnectionChangeCallback = null;
   let playbackStateChangeCallback = null;
   let connectedCallback = null;
+  let updateQueueCallback = null;
+  let queueStorageChangeCallback = null;
+
   function registerNativeListener() {
     exec(
       function success(data) {
@@ -23,6 +24,7 @@ var AutoPlugin = (function () {
         }
 
         if(data.event === 'onConnectionChange' && onConnectionChangeCallback) {
+          console.log('[PLUGIN AUTO] onConnectionChange from NATIVE', callback);
           onConnectionChangeCallback(data.action);
         }
 
@@ -61,7 +63,8 @@ var AutoPlugin = (function () {
      * @param {function('connecting'|'connected'|'disconnected'): void} callback
      */
     onConnectionChange(callback) {
-      connectionChangeCallback = callback;
+      console.log('[PLUGIN AUTO] onConnectionChange', callback);
+      onConnectionChangeCallback = callback;
       registerNativeListener();
     },
 
@@ -73,6 +76,7 @@ var AutoPlugin = (function () {
      * @param {function(Track): void} callback
      */
     onMediaUpdate: function (callback) {
+      console.log('[PLUGIN AUTO] onMediaUpdate', callback);
       mediaUpdateCallback = callback;
       registerNativeListener(); // connect with native
     },

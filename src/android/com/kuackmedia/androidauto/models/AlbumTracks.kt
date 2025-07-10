@@ -11,7 +11,7 @@ data class AlbumTracks(
   val upc: String,
   val title: String,
   @Json(name = "subTitle") val subTitle: String?,
-  val releaseType: String,
+  val releaseType?: String,
   val lenght: String,
   val tracksQty: Int,
   val releaseDate: String,

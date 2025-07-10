@@ -42,7 +42,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
   override fun onCreate() {
     super.onCreate()
 
-    CordovaEventBridge.sendEvent("onConnectionChange", JSONObject("{'connected': true}"))
+    CordovaEventBridge.sendEvent("onConnectionChange", JSONObject())
 
     initApiData()
 
@@ -113,7 +113,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     mediaSession.release()
     playerAdapter.release()
 
-    CordovaEventBridge.sendEvent("onConnectionChange", JSONObject("{'connected': false}"))
+    CordovaEventBridge.sendEvent("onConnectionChanged", JSONObject())
 
     super.onDestroy()
   }
