@@ -2,10 +2,10 @@ var exec = require('cordova/exec');
   var AutoPlugin = {
     onConnectionChangeCallback: null,
     onMediaUpdateCallback: null,
-  
+
     onConnectionChange: function (callback) {
       AutoPlugin.onConnectionChangeCallback = callback;
-  
+
       exec(
         function(data) {
           if (typeof AutoPlugin.onConnectionChangeCallback === 'function') {
@@ -20,10 +20,10 @@ var exec = require('cordova/exec');
         ['onConnectionChange']
       );
     },
-  
+
     onMediaUpdate: function (callback) {
         AutoPlugin.onMediaUpdateCallback = callback;
-  
+
         exec(
           function (data) {
             if (typeof AutoPlugin.onMediaUpdateCallback === 'function') {
@@ -38,10 +38,10 @@ var exec = require('cordova/exec');
           ['onMediaUpdate']
         );
     },
-  
+
     onPlaybackStateChange: function (callback) {
       AutoPlugin.onPlaybackStateChange = callback;
-  
+
       exec(
         function (data) {
           if (typeof AutoPlugin.onPlaybackStateChange === 'function') {
@@ -56,56 +56,78 @@ var exec = require('cordova/exec');
         ['onPlaybackStateChange']
       );
     },
-  
-    play: function() {
+
+    play: function(cb, errorCb) {
       cordova.exec(
         function success(result) {
           console.log('Track played successfully:', result);
+          if (typeof cb === 'function') {
+            cb(result);
+          }
         },
         function error(err) {
           console.error('Error playing track:', err);
+          if (typeof errorCb === 'function') {
+            errorCb(err);
+          }
         },
         'AndroidAutoPlugin',
         'play',
         [],
       );
     },
-  
-    pause: function() {
+
+    pause: function(cb, errorCb) {
         cordova.exec(
           function success(result) {
             console.log('Track paused successfully:', result);
+            if (typeof cb === 'function') {
+              cb(result);
+            }
           },
           function error(err) {
             console.error('Error paused track:', err);
+            if (typeof errorCb === 'function') {
+              errorCb(err);
+            }
           },
           'AndroidAutoPlugin',
           'pause',
           [],
         );
     },
-  
-    getCurrentPlaybackState: function() {
+
+    getCurrentPlaybackState: function(cb, errorCb) {
       cordova.exec(
         function success(result) {
           console.log('Track getCurrentPlaybackState successfully:', result);
+          cb(result);
         },
         function error(err) {
           console.error('Error getCurrentPlaybackState track:', err);
+          if (typeof errorCb === 'function') {
+            errorCb(err);
+          }
         },
         'AndroidAutoPlugin',
         'getCurrentPlaybackState',
         [],
       );
     },
-  
-    isConnected: function () {
+
+    isConnected: function (cb, errorCb) {
       cordova.exec(
         function success(result) {
           console.log('Track isConnected successfully:', result);
+          if (typeof cb === 'function') {
+            cb(result);
+          }
         },
         function error(err) {
           console.error('Error isConnected track:', err);
+          if (typeof errorCb === 'function') {
+            errorCb(err);
+          }
         },
         'AndroidAutoPlugin',
         'isConnected',
@@ -113,13 +135,19 @@ var exec = require('cordova/exec');
       );
     },
 
-    getPosition: function () {
+    getPosition: function (cb, errorCb) {
          cordova.exec(
            function success(result) {
              console.log('Track getPosition successfully:', result);
+              if (typeof cb === 'function') {
+                cb(result);
+              }
            },
            function error(err) {
              console.error('Error getPosition track:', err);
+              if (typeof errorCb === 'function') {
+                errorCb(err);
+              }
            },
            'AndroidAutoPlugin',
            'getPosition',
@@ -127,5 +155,5 @@ var exec = require('cordova/exec');
          );
     },
   }
-  
+
   module.exports = AutoPlugin;
