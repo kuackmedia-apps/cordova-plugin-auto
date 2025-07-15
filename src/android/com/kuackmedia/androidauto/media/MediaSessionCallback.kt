@@ -236,7 +236,7 @@ class MediaSessionCallback(
       val playlistData = extras.getString("parentData")
       LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
       LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
-      LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, "\"$trackId\"")
+      LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, trackId.toString())
 
       CordovaEventBridge.sendEvent(CordovaEvents.ON_MEDIA_UPDATE)
     }
