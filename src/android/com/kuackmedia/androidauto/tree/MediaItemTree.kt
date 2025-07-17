@@ -176,12 +176,12 @@ object MediaItemTree {
       val mediaId = it.fileName + "_MENU"
       treeNodes[mediaId] =
         MediaItemNode(
-          MediaItemFactory.buildMediaItem(
-            title = it.text,
-            subtitle = "",
-            mediaId = mediaId,
-            flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
-          )
+         MediaItemFactory.createBrowsable(
+           title = it.text,
+           mediaId = mediaId,
+           iconStringPath = it.icon,
+           context = context
+         )
         )
       treeNodes[ROOT_ID]!!.addChild(mediaId)
 
