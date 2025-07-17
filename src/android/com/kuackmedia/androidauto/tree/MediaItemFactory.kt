@@ -151,6 +151,7 @@ object MediaItemFactory {
     mediaId: String?,
     title: String?,
     iconStringPath: String?,
+    itemStyle: String?,
     context: Context,
   ): MediaBrowserCompat.MediaItem {
     val iconFile = File(context.filesDir, iconStringPath!!)
@@ -161,9 +162,29 @@ object MediaItemFactory {
     val description = MediaDescriptionCompat.Builder()
       .setMediaId(mediaId)
       .setTitle(title)
-      .setIconBitmap(bmp)
-      .build()
-    return MediaBrowserCompat.MediaItem(description, MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
+      .setIconBitmap(bmp);
+    if (itemStyle != null && itemStyle === "LIST") {
+        val extras = Bundle()
+        extras.putInt(
+          MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+          MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+        )
+        description.setExtras(extras)
+        } else {
+        Log.w(TAG, "createBrowsable itemType is null for $title")
+    }
+    if (itemStyle != null && itemStyle === "GRID") {
+      val extras = Bundle()
+      extras.putInt(
+        MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_GRID_ITEM
+      )
+      description.setExtras(extras)
+    } else {
+      Log.w(TAG, "createBrowsable itemType is null for $title")
+    }
+
+    return MediaBrowserCompat.MediaItem(description.build(), MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
   }
 
   private fun getImageUrl(images: List<CoverImage>?): String? {

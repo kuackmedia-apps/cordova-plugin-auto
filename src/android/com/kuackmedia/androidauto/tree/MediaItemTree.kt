@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.support.v4.media.MediaBrowserCompat
 import android.util.Log
+import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.api.MusicApi
 import com.kuackmedia.androidauto.models.AutoNavigationExplorer
 import com.kuackmedia.androidauto.models.EmptyModel
@@ -125,8 +126,10 @@ object MediaItemTree {
               mediaId = it.text,
               title = it.text,
               iconStringPath = it.icon,
+              itemStyle = "LIST",
               context = context
             )
+
             treeNodes[libraryMediaItem.mediaId!!] = MediaItemNode(libraryMediaItem)
             titleMap[libraryMediaItem.description.title.toString()] = treeNodes[libraryMediaItem.mediaId]!!
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
@@ -176,12 +179,13 @@ object MediaItemTree {
       val mediaId = it.fileName + "_MENU"
       treeNodes[mediaId] =
         MediaItemNode(
-         MediaItemFactory.createBrowsable(
-           title = it.text,
-           mediaId = mediaId,
-           iconStringPath = it.icon,
-           context = context
-         )
+          MediaItemFactory.createBrowsable(
+            title = it.text,
+            mediaId = mediaId,
+            iconStringPath = it.icon,
+            itemStyle = "GRID",
+            context = context
+          )
         )
       treeNodes[ROOT_ID]!!.addChild(mediaId)
 
