@@ -66,6 +66,13 @@ class AndroidAutoPlugin : CordovaPlugin() {
         return true
       }
 
+      "playCurrentTrack" -> {
+        Log.d("AndroidAutoPlugin", "[playCurrentTrack]")
+        MediaControlBridge.playCurrentTrack()
+        callbackContext.success("Playing current track")
+        return true
+      }
+
     }
     return false
   }

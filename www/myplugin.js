@@ -60,7 +60,6 @@ var exec = require('cordova/exec');
     play: function(cb, errorCb) {
       cordova.exec(
         function success(result) {
-          console.log('Track played successfully:', result);
           if (typeof cb === 'function') {
             cb(result);
           }
@@ -138,7 +137,6 @@ var exec = require('cordova/exec');
     getPosition: function (cb, errorCb) {
          cordova.exec(
            function success(result) {
-             console.log('Track getPosition successfully:', result);
               if (typeof cb === 'function') {
                 cb(result);
               }
@@ -151,6 +149,25 @@ var exec = require('cordova/exec');
            },
            'AndroidAutoPlugin',
            'getPosition',
+           [],
+         );
+    },
+
+    playCurrentTrack: function (cb, errorCb) {
+         cordova.exec(
+           function success(result) {
+              if (typeof cb === 'function') {
+                cb(result);
+              }
+           },
+           function error(err) {
+             console.error('Error playCurrentTrack :', err);
+              if (typeof errorCb === 'function') {
+                errorCb(err);
+              }
+           },
+           'AndroidAutoPlugin',
+           'playCurrentTrack',
            [],
          );
     },

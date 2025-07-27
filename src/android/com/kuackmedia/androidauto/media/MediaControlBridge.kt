@@ -18,4 +18,8 @@ object MediaControlBridge {
     fun setConnected(flag: Boolean) {
         this.androidAutoConnected = flag
     }
+
+    fun playCurrentTrack() {
+        mediaSession?.controller?.transportControls?.prepare()
+    }
 }
