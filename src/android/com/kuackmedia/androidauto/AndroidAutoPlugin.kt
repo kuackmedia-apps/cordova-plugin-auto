@@ -62,7 +62,6 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "getPosition" -> {
-        Log.d("AndroidAutoPlugin", "[getPosition] ${MediaControlBridge.mediaPlayer?.currentPosition?.toInt()}")
         callbackContext.success(MediaControlBridge.mediaPlayer?.currentPosition?.toInt()!!)
         return true
       }

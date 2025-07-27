@@ -140,7 +140,16 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     result: Result<MutableList<MediaBrowserCompat.MediaItem?>?>
   ) {
     Log.d("Search", "Received search query: $query")
-    result.sendResult(MediaItemTree.search(query))
+    result.detach() // Notify the system you'll send the result asynchronously
+    serviceScope.launch {
+      try {
+        val items = MediaItemTree.search(query)
+        result.sendResult(items.toMutableList<MediaBrowserCompat.MediaItem?>())
+      } catch (e: Exception) {
+        Log.e("MusicLibraryService", "Search failed", e)
+        result.sendResult(mutableListOf())
+      }
+    }
   }
 
   private fun initApiData() {

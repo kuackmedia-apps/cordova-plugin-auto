@@ -24,7 +24,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   override var currentTrackFromApp: Boolean = false
 
   override val currentPosition: Long
-    get() = mediaPlayer.currentPosition.toLong()
+    get() = if (mediaPlayer.isPlaying || isPreparing) {
+      mediaPlayer.currentPosition.toLong()
+    } else {
+      0L
+    }
 
   init {
     Log.i(TAG, "MediaPlayerAdapter init")

@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.support.v4.media.MediaBrowserCompat
 import android.util.Log
-import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.api.MusicApi
 import com.kuackmedia.androidauto.models.AutoNavigationExplorer
 import com.kuackmedia.androidauto.models.EmptyModel
@@ -28,8 +27,6 @@ object MediaItemTree {
 
 
   private class MediaItemNode(val item: MediaBrowserCompat.MediaItem) {
-    val searchTitle = normalizeSearchText(item.description.title)
-
     private val children = mutableListOf<MediaBrowserCompat.MediaItem>()
 
     fun addChild(childID: String) {
@@ -211,28 +208,40 @@ object MediaItemTree {
     return null
   }
 
-  fun search(query: String): MutableList<MediaBrowserCompat.MediaItem?>? {
+  suspend fun search(query: String): MutableList<MediaBrowserCompat.MediaItem> {
     val matches: MutableList<MediaBrowserCompat.MediaItem> = mutableListOf()
-    val titleMatches: MutableList<MediaBrowserCompat.MediaItem?>? = mutableListOf()
-    val words = query.split(" ").map { it.trim().lowercase() }.filter { it.length > 1 }
-    titleMap.keys.forEach { title ->
-      Log.i(TAG, "[SEARCH] title: $title")
-      val mediaItemNode = titleMap[title]!!
-      for (word in words) {
-        Log.i(TAG, "[SEARCH] words: $words")
-        if (mediaItemNode.searchTitle.contains(word)) {
-          if (mediaItemNode.searchTitle.contains(query.lowercase())) {
-            titleMatches?.add(mediaItemNode.item)
-          } else {
-            matches.add(mediaItemNode.item)
-          }
-          break
-        }
-      }
+    val result = this.musicApi.search(query)
+
+    result.tracks.list!!.forEach { track ->
+      this.parseSearchResult(matches, track)
     }
-    titleMatches?.addAll(matches)
-    Log.i(TAG, "[SEARCH] matches: $titleMatches")
-    return titleMatches
+
+    result.playlists.list!!.forEach { playlist ->
+      this.parseSearchResult(matches, playlist)
+    }
+
+    result.artists.list!!.forEach { artist ->
+      this.parseSearchResult(matches, artist)
+    }
+
+    result.albums.list!!.forEach { album ->
+      this.parseSearchResult(matches, album)
+    }
+
+    result.tags.list!!.forEach { tag ->
+      this.parseSearchResult(matches, tag)
+    }
+
+    return matches
+  }
+
+  fun parseSearchResult(matches: MutableList<MediaBrowserCompat.MediaItem>, mediaItem: MediaItem) {
+    val parsedItem = MediaItemFactory.parseMediaItems(mediaItem, "")
+    if(parsedItem !== null) {
+      treeNodes[parsedItem.mediaId!!] = MediaItemNode(parsedItem)
+      titleMap[parsedItem.description.title.toString()] = treeNodes[parsedItem.mediaId!!]!!
+      matches.add(parsedItem)
+    }
   }
 
   fun getRootItem(): MediaBrowserCompat.MediaItem {
