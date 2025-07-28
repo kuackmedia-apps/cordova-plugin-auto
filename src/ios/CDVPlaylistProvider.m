@@ -15,54 +15,147 @@
     
     // Listar directorios y archivos disponibles para depuración
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+    NSLog(@"📚 Bundle path: %@", bundlePath);
+    
     NSError *fileError = nil;
     NSArray *bundleContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:bundlePath error:&fileError];
     if (fileError) {
         NSLog(@"❌ Error listando bundle: %@", fileError);
     } else {
         NSLog(@"📚 Bundle contents: %@", bundleContents);
+    }
+    
+    // Verificar si existe el directorio App/data
+    NSString *appPath = [bundlePath stringByAppendingPathComponent:@"App"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:appPath]) {
+        NSLog(@"✅ App directory exists: %@", appPath);
+        NSArray *appContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:appPath error:&fileError];
+        NSLog(@"📚 App contents: %@", appContents);
         
-        // Verificar si existe el directorio data
-        NSString *dataPath = [bundlePath stringByAppendingPathComponent:@"data"];
-        BOOL isDirectory = NO;
-        BOOL dataExists = [[NSFileManager defaultManager] fileExistsAtPath:dataPath isDirectory:&isDirectory];
-        
-        if (dataExists && isDirectory) {
-            NSArray *dataContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dataPath error:&fileError];
-            if (fileError) {
-                NSLog(@"❌ Error listando data: %@", fileError);
-            } else {
-                NSLog(@"📚 Data contents: %@", dataContents);
-                
-                // Verificar la carpeta navigation
-                NSString *navPath = [dataPath stringByAppendingPathComponent:directory];
-                BOOL navExists = [[NSFileManager defaultManager] fileExistsAtPath:navPath isDirectory:&isDirectory];
-                
-                if (navExists && isDirectory) {
-                    NSArray *navContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:navPath error:&fileError];
-                    if (fileError) {
-                        NSLog(@"❌ Error listando navigation: %@", fileError);
-                    } else {
-                        NSLog(@"📚 Navigation contents: %@", navContents);
-                    }
-                } else {
-                    NSLog(@"❌ Directorio %@ no existe en data", directory);
-                }
+        NSString *appDataPath = [appPath stringByAppendingPathComponent:@"data"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:appDataPath]) {
+            NSLog(@"✅ App/data directory exists: %@", appDataPath);
+            NSArray *dataContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:appDataPath error:&fileError];
+            NSLog(@"📚 App/data contents: %@", dataContents);
+            
+            // Verificar si existe la carpeta navigation dentro de App/data
+            NSString *appNavPath = [appDataPath stringByAppendingPathComponent:directory];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:appNavPath]) {
+                NSLog(@"✅ App/data/%@ directory exists: %@", directory, appNavPath);
+                NSArray *navContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:appNavPath error:&fileError];
+                NSLog(@"📚 App/data/%@ contents: %@", directory, navContents);
             }
-        } else {
-            NSLog(@"❌ Directorio data no existe!");
         }
+    }
+    
+    // Verificar si existe el directorio data en la raiz
+    NSString *dataPath = [bundlePath stringByAppendingPathComponent:@"data"];
+    BOOL isDirectory = NO;
+    BOOL dataExists = [[NSFileManager defaultManager] fileExistsAtPath:dataPath isDirectory:&isDirectory];
+    
+    if (dataExists && isDirectory) {
+        NSArray *dataContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dataPath error:&fileError];
+        if (fileError) {
+            NSLog(@"❌ Error listando data: %@", fileError);
+        } else {
+            NSLog(@"📚 Data contents: %@", dataContents);
+            
+            // Verificar la carpeta navigation
+            NSString *navPath = [dataPath stringByAppendingPathComponent:directory];
+            BOOL navExists = [[NSFileManager defaultManager] fileExistsAtPath:navPath isDirectory:&isDirectory];
+            
+            if (navExists && isDirectory) {
+                NSArray *navContents = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:navPath error:&fileError];
+                if (fileError) {
+                    NSLog(@"❌ Error listando navigation: %@", fileError);
+                } else {
+                    NSLog(@"📚 Navigation contents: %@", navContents);
+                    
+                    // Buscar archivo especifico
+                    for (NSString *file in navContents) {
+                        if ([file isEqualToString:filename] || [file isEqualToString:[NSString stringWithFormat:@"%@.json", filename]]) {
+                            NSString *fullPath = [navPath stringByAppendingPathComponent:file];
+                            NSLog(@"✅ FOUND EXACT FILE: %@", fullPath);
+                        }
+                    }
+                }
+            } else {
+                NSLog(@"❌ Directorio %@ no existe en data", directory);
+            }
+        }
+    } else {
+        NSLog(@"❌ Directorio data no existe!");
     }
     
     // Try multiple path formats to find the file
     NSString *path = nil;
     
+    // NEW PATH: public/data/directory/filename
+    NSString *pathPublic = [[NSBundle mainBundle] pathForResource:filename ofType:nil inDirectory:[NSString stringWithFormat:@"public/data/%@", directory]];
+    NSLog(@"🔍 Trying public path: public/data/%@/%@", directory, filename);
+    if (pathPublic) {
+        path = pathPublic;
+        NSLog(@"✅ Found at public path!");
+    }
+    
+    // NEW PATH: public/data/directory/filename.json
+    if (!path) {
+        NSString *pathPublicJson = [[NSBundle mainBundle] pathForResource:filename ofType:@"json" inDirectory:[NSString stringWithFormat:@"public/data/%@", directory]];
+        NSLog(@"🔍 Trying public path with json: public/data/%@/%@.json", directory, filename);
+        if (pathPublicJson) {
+            path = pathPublicJson;
+            NSLog(@"✅ Found at public path with json!");
+        }
+    }
+    
+    // App/data/directory/filename
+    if (!path) {
+        NSString *pathApp = [[NSBundle mainBundle] pathForResource:filename ofType:nil inDirectory:[NSString stringWithFormat:@"App/data/%@", directory]];
+        NSLog(@"🔍 Trying App path: App/data/%@/%@", directory, filename);
+        if (pathApp) {
+            path = pathApp;
+            NSLog(@"✅ Found at App path!");
+        }
+    }
+    
+    // App/data/directory/filename.json
+    if (!path) {
+        NSString *pathAppJson = [[NSBundle mainBundle] pathForResource:filename ofType:@"json" inDirectory:[NSString stringWithFormat:@"App/data/%@", directory]];
+        NSLog(@"🔍 Trying App path with json: App/data/%@/%@.json", directory, filename);
+        if (pathAppJson) {
+            path = pathAppJson;
+            NSLog(@"✅ Found at App path with json!");
+        }
+    }
+    
+    // NEW PATH: App/App/data/directory/filename (no extension)
+    if (!path) {
+        NSString *pathAppApp = [[NSBundle mainBundle] pathForResource:filename ofType:nil inDirectory:[NSString stringWithFormat:@"App/App/data/%@", directory]];
+        NSLog(@"🔍 Trying App/App path: App/App/data/%@/%@", directory, filename);
+        if (pathAppApp) {
+            path = pathAppApp;
+            NSLog(@"✅ Found at App/App path!");
+        }
+    }
+    
+    // NEW PATH: App/App/data/directory/filename.json
+    if (!path) {
+        NSString *pathAppAppJson = [[NSBundle mainBundle] pathForResource:filename ofType:@"json" inDirectory:[NSString stringWithFormat:@"App/App/data/%@", directory]];
+        NSLog(@"🔍 Trying App/App path with json: App/App/data/%@/%@.json", directory, filename);
+        if (pathAppAppJson) {
+            path = pathAppAppJson;
+            NSLog(@"✅ Found at App/App path with json!");
+        }
+    }
+    
     // First try: data/directory/filename (no extension)
-    NSString *path1 = [[NSBundle mainBundle] pathForResource:filename ofType:nil inDirectory:[NSString stringWithFormat:@"data/%@", directory]];
-    NSLog(@"🔍 Trying path 1: data/%@/%@", directory, filename);
-    if (path1) {
-        path = path1;
-        NSLog(@"✅ Found at path 1!");
+    if (!path) {
+        NSString *path1 = [[NSBundle mainBundle] pathForResource:filename ofType:nil inDirectory:[NSString stringWithFormat:@"data/%@", directory]];
+        NSLog(@"🔍 Trying path 1: data/%@/%@", directory, filename);
+        if (path1) {
+            path = path1;
+            NSLog(@"✅ Found at path 1!");
+        }
     }
     
     if (!path) {
@@ -107,7 +200,20 @@
     
     if (!path) {
         NSLog(@"❌ CDVPlaylistProvider ERROR: Could not find file %@ in any location", filename);
-        return nil;
+        
+        // ÚLTIMA OPORTUNIDAD - Verificar si existe una copia directa en App/data
+        NSString *lastChance = [[NSBundle mainBundle] pathForResource:filename ofType:nil inDirectory:@"App/data"];
+        if (!lastChance) {
+            lastChance = [[NSBundle mainBundle] pathForResource:filename ofType:@"json" inDirectory:@"App/data"];
+        }
+        
+        if (lastChance) {
+            NSLog(@"🔥 FOUND FILE IN ROOT APP/DATA: %@", lastChance);
+            path = lastChance;
+        } else {
+            NSLog(@"💥 No se encontró el archivo en ninguna ubicación posible");
+            return nil;
+        }
     }
     
     NSLog(@"🍿 CDVPlaylistProvider: Found file at path: %@", path);
@@ -125,14 +231,39 @@
     NSString *preview = [jsonStr length] > 100 ? [NSString stringWithFormat:@"%@...",[jsonStr substringToIndex:100]] : jsonStr;
     NSLog(@"📄 JSON Content Preview: %@", preview);
     
-    id jsonObject = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
+    // Intentar analizar el JSON
+    id jsonObject = [NSJSONSerialization JSONObjectWithData:jsonData options:NSJSONReadingAllowFragments error:&error];
     
     if (!jsonObject) {
         NSLog(@"❌ CDVPlaylistProvider ERROR: Failed to parse JSON: %@", error);
-        return nil;
+        
+        // Intento de recuperación para ciertos formatos incorrectos
+        // Eliminar caracteres no válidos y reintentar
+        NSMutableData *cleanData = [NSMutableData data];
+        const char *bytes = [jsonData bytes];
+        for (NSUInteger i = 0; i < [jsonData length]; i++) {
+            char c = bytes[i];
+            // Eliminar caracteres de control excepto saltos de línea y tabulaciones
+            if (c >= 32 || c == 9 || c == 10 || c == 13) {
+                [cleanData appendBytes:&c length:1];
+            }
+        }
+        
+        jsonObject = [NSJSONSerialization JSONObjectWithData:cleanData options:NSJSONReadingAllowFragments error:&error];
+        if (!jsonObject) {
+            NSLog(@"❌ CDVPlaylistProvider ERROR: Segundo intento fallido de parseo: %@", error);
+            return nil;
+        }
+        NSLog(@"⚠️ Recuperación exitosa después de limpiar datos");
     }
     
     NSLog(@"✅ Successfully parsed JSON object type: %@", NSStringFromClass([jsonObject class]));
+    
+    if ([jsonObject isKindOfClass:[NSArray class]]) {
+        NSLog(@"✅ Array with %lu items", (unsigned long)[(NSArray *)jsonObject count]);
+    } else if ([jsonObject isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"✅ Dictionary with %lu keys: %@", (unsigned long)[(NSDictionary *)jsonObject count], [[(NSDictionary *)jsonObject allKeys] componentsJoinedByString:@", "]);
+    }
     
     return jsonObject;
 }
@@ -201,6 +332,8 @@
         return [self tracksForPlaylist:playlistId];
     }
     
+    NSLog(@"CDVPlaylistProvider: Successfully loaded %lu tracks from QUEUE_ITEMS_KEY", (unsigned long)tracks.count);
+    
     // Process tracks to ensure they have all required fields
     NSMutableArray *processedTracks = [NSMutableArray array];
     
@@ -213,8 +346,28 @@
         
         // Map the data to our expected format
         track[@"id"] = [NSString stringWithFormat:@"%@", data[@"id"] ?: @"unknown"];
-        track[@"title"] = data[@"title"] ?: data[@"name"] ?: @"Unknown Track";
-        track[@"artist"] = data[@"artistName"] ?: data[@"artist"] ?: @"Unknown Artist";
+        track[@"title"] = data[@"name"] ?: data[@"title"] ?: @"Unknown Track";
+        
+        // Extract artist info from artists array
+        if (data[@"artists"] && [data[@"artists"] isKindOfClass:[NSArray class]] && [data[@"artists"] count] > 0) {
+            // Get the first artist's name
+            NSDictionary *firstArtist = data[@"artists"][0];
+            track[@"artist"] = firstArtist[@"name"] ?: @"Unknown Artist";
+            
+            // If there are multiple artists, combine their names
+            if ([data[@"artists"] count] > 1) {
+                NSMutableString *artistNames = [NSMutableString stringWithString:track[@"artist"]];
+                
+                for (NSUInteger i = 1; i < [data[@"artists"] count]; i++) {
+                    NSDictionary *artist = data[@"artists"][i];
+                    [artistNames appendFormat:@", %@", artist[@"name"] ?: @"Unknown"];
+                }
+                
+                track[@"artist"] = artistNames;
+            }
+        } else {
+            track[@"artist"] = data[@"artistName"] ?: data[@"artist"] ?: @"Unknown Artist";
+        }
         
         // Extract album info
         if (data[@"album"]) {
@@ -222,6 +375,14 @@
             if ([data[@"album"] isKindOfClass:[NSDictionary class]]) {
                 NSDictionary *albumDict = data[@"album"];
                 track[@"album"] = albumDict[@"title"] ?: albumDict[@"name"] ?: @"Unknown Album";
+                
+                // Extract album artwork if available
+                if (albumDict[@"images"] && [albumDict[@"images"] isKindOfClass:[NSArray class]] && [albumDict[@"images"] count] > 0) {
+                    // Get the largest image available (usually the last one)
+                    NSArray *albumImages = albumDict[@"images"];
+                    NSDictionary *largestImage = albumImages[[albumImages count] - 1]; // Get the last image (usually largest)
+                    track[@"image"] = largestImage[@"url"];
+                }
             } else {
                 // If album is a string
                 track[@"album"] = data[@"album"];
@@ -230,18 +391,37 @@
             track[@"album"] = @"Unknown Album";
         }
         
-        // Extract image/artwork URL
-        if (data[@"images"] && [data[@"images"] isKindOfClass:[NSArray class]] && [data[@"images"] count] > 0) {
-            // If images is an array of dictionaries with URL
-            NSDictionary *firstImage = data[@"images"][0];
-            track[@"image"] = firstImage[@"url"];
-        } else if (data[@"image"]) {
-            // Direct image field
-            track[@"image"] = data[@"image"];
+        // Extract image/artwork URL if not already set from album
+        if (!track[@"image"]) {
+            if (data[@"images"] && [data[@"images"] isKindOfClass:[NSArray class]] && [data[@"images"] count] > 0) {
+                // If images is an array of dictionaries with URL
+                NSArray *images = data[@"images"];
+                NSDictionary *largestImage = images[[images count] - 1]; // Get the last image (usually largest)
+                track[@"image"] = largestImage[@"url"];
+            } else if (data[@"image"]) {
+                // Direct image field
+                track[@"image"] = data[@"image"];
+            }
         }
         
-        // Add source/URL
-        track[@"source"] = data[@"source"] ?: data[@"url"] ?: @"";
+        // Add source/URL - for testing, we'll use a sample URL since the JSON doesn't contain actual audio URLs
+        // In a real app, you would extract this from your JSON or use a streaming URL based on the track ID
+        if (data[@"audioId"]) {
+            // If there's an audioId, we can construct a URL to the audio file
+            track[@"source"] = [NSString stringWithFormat:@"https://audio.example.com/%@.mp3", data[@"audioId"]];
+        } else {
+            // Fallback to sample URLs for testing
+            NSArray *sampleURLs = @[
+                @"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                @"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                @"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+            ];
+            
+            // Use a consistent URL based on the track ID to ensure the same track always gets the same URL
+            NSInteger trackIdValue = [track[@"id"] integerValue];
+            NSInteger urlIndex = trackIdValue % [sampleURLs count];
+            track[@"source"] = sampleURLs[urlIndex];
+        }
         
         // Add duration if available
         if (data[@"duration"]) {
@@ -273,108 +453,87 @@
 }
 
 + (NSArray *)loadNavigationFromJSON {
-    // Define emergency fallback navigation so we have something
+    NSLog(@"CDVPlaylistProvider: Attempting to load AUTO_NAVIGATION JSON file...");
+    
+    // Define the emergency navigation structure to be used if no JSON is found
     NSArray *emergencyNavigation = @[
         @{
-            @"icon": @"img/auto-library.png",
+            @"icon": @"music.note.list",
+            @"sfSymbol": @"music.note.list",
             @"text": @"Biblioteca",
             @"fileName": @"AUTO_NAVIGATION_LIBRARY"
         },
         @{
-            @"icon": @"img/auto-recent.png",
+            @"icon": @"clock",
+            @"sfSymbol": @"clock",
             @"text": @"Recientes",
             @"fileName": @"RECENT_LISTENED"
         },
         @{
-            @"icon": @"img/auto-explorer.png",
+            @"icon": @"magnifyingglass",
+            @"sfSymbol": @"magnifyingglass",
             @"text": @"Explorar",
             @"fileName": @"AUTO_NAVIGATION_EXPLORER"
         }
     ];
     
-    NSLog(@"CDVPlaylistProvider: FORCED USING EMERGENCY NAVIGATION STRUCTURE");
-    return emergencyNavigation;
+    // Try loading from navigation directory
+    id jsonObject = [self loadJSONFromFile:@"AUTO_NAVIGATION" inDirectory:@"navigation"];
     
-    // The code below is commented out since we're using the emergency navigation directly
-    /*
-    // Log all important paths to help diagnose file loading issues
-    NSBundle *bundle = [NSBundle mainBundle];
-    NSLog(@"CDVPlaylistProvider: Bundle path: %@", bundle.bundlePath);
-    NSLog(@"CDVPlaylistProvider: Resource path: %@", bundle.resourcePath);
+    // If that fails, try with .json extension
+    if (!jsonObject) {
+        jsonObject = [self loadJSONFromFile:@"AUTO_NAVIGATION.json" inDirectory:@"navigation"];
+        NSLog(@"CDVPlaylistProvider: Tried loading with .json extension: %@", jsonObject ? @"success" : @"failed");
+    }
     
-    // Try multiple ways to find and load the AUTO_NAVIGATION file
-    NSString *resourcePath = bundle.resourcePath;
-    NSString *dataNavigationPath = [resourcePath stringByAppendingPathComponent:@"data/navigation"];
-    NSString *autoNavPath = [dataNavigationPath stringByAppendingPathComponent:@"AUTO_NAVIGATION"];
-    
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSLog(@"CDVPlaylistProvider: Checking if file exists at: %@", autoNavPath);
-    BOOL autoNavExists = [fileManager fileExistsAtPath:autoNavPath];
-    
-    // If file exists, try to load and parse it
-    if (autoNavExists) {
-        NSLog(@"CDVPlaylistProvider: AUTO_NAVIGATION file exists!");
-        NSError *error = nil;
-        NSData *jsonData = [NSData dataWithContentsOfFile:autoNavPath options:0 error:&error];
+    // If still not found, log what files are available in the bundle
+    if (!jsonObject) {
+        NSLog(@"CDVPlaylistProvider: Still can't find AUTO_NAVIGATION - logging bundle info");
         
-        if (jsonData) {
-            NSLog(@"CDVPlaylistProvider: Successfully loaded AUTO_NAVIGATION data, bytes: %lu", (unsigned long)[jsonData length]);
-            id json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
-            if (json && [json isKindOfClass:[NSArray class]]) {
-                NSArray *navArray = (NSArray *)json;
-                NSLog(@"CDVPlaylistProvider: Successfully parsed AUTO_NAVIGATION as array with %lu items", (unsigned long)[navArray count]);
-                if ([navArray count] > 0) {
-                    return navArray;
-                }
-            } else {
-                NSLog(@"CDVPlaylistProvider ERROR: Failed to parse AUTO_NAVIGATION as array: %@", error);
+        NSBundle *mainBundle = [NSBundle mainBundle];
+        NSLog(@"CDVPlaylistProvider: Bundle path: %@", [mainBundle bundlePath]);
+        NSLog(@"CDVPlaylistProvider: Resource path: %@", [mainBundle resourcePath]);
+        
+        // Log what's in the bundle root
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        NSError *error = nil;
+        NSArray *items = [fileManager contentsOfDirectoryAtPath:[mainBundle resourcePath] error:&error];
+        if (items) {
+            NSLog(@"CDVPlaylistProvider: Bundle contains %lu items at root", (unsigned long)items.count);
+            for (NSString *item in items) {
+                NSLog(@"CDVPlaylistProvider: - %@", item);
             }
         } else {
-            NSLog(@"CDVPlaylistProvider ERROR: Failed to load AUTO_NAVIGATION data: %@", error);
+            NSLog(@"CDVPlaylistProvider: Failed to list bundle contents: %@", error);
+        }
+    }
+    
+    // Convert loaded JSON into navigation items array
+    NSMutableArray *navigationItems = [NSMutableArray array];
+    
+    if (jsonObject) {
+        // Handle different JSON formats (array or dictionary with "items" key)
+        if ([jsonObject isKindOfClass:[NSArray class]]) {
+            navigationItems = [(NSArray *)jsonObject mutableCopy];
+            NSLog(@"CDVPlaylistProvider: Loaded navigation items from array, count: %lu", (unsigned long)[navigationItems count]);
+        } else if ([jsonObject isKindOfClass:[NSDictionary class]] && [(NSDictionary *)jsonObject[@"items"] isKindOfClass:[NSArray class]]) {
+            navigationItems = [(NSDictionary *)jsonObject[@"items"] mutableCopy];
+            NSLog(@"CDVPlaylistProvider: Loaded navigation items from dictionary, count: %lu", (unsigned long)[navigationItems count]);
+        } else {
+            NSLog(@"CDVPlaylistProvider: JSON object has unexpected format: %@", [jsonObject class]);
         }
     } else {
-        NSLog(@"CDVPlaylistProvider: AUTO_NAVIGATION file does not exist at path");
+        NSLog(@"CDVPlaylistProvider: No JSON object could be loaded, using emergency navigation");
     }
     
-    // Try the standard JSON loading method as a fallback
-    NSLog(@"CDVPlaylistProvider: Trying standard loadJSONFromFile method");
-    id navigationJSON = [self loadJSONFromFile:@"AUTO_NAVIGATION" inDirectory:@"navigation"];
-    
-    if (navigationJSON) {
-        NSLog(@"CDVPlaylistProvider: Standard loading worked! Type: %@", NSStringFromClass([navigationJSON class]));
-        
-        // Handle different potential formats
-        NSArray *navigationItems = nil;
-        
-        if ([navigationJSON isKindOfClass:[NSArray class]]) {
-            navigationItems = (NSArray *)navigationJSON;
-            if ([navigationItems count] > 0) {
-                NSLog(@"CDVPlaylistProvider: Returning navigation array with %lu items", (unsigned long)[navigationItems count]);
-                return navigationItems;
-            }
-        } else if ([navigationJSON isKindOfClass:[NSDictionary class]]) {
-            NSDictionary *navDict = (NSDictionary *)navigationJSON;
-            NSLog(@"CDVPlaylistProvider: AUTO_NAVIGATION is a dictionary with keys: %@", [navDict allKeys]);
-            
-            // Look for array fields
-            for (NSString *key in [navDict allKeys]) {
-                if ([navDict[key] isKindOfClass:[NSArray class]]) {
-                    navigationItems = navDict[key];
-                    NSLog(@"CDVPlaylistProvider: Found navigation items array in key: %@", key);
-                    break;
-                }
-            }
-            
-            if (navigationItems && navigationItems.count > 0) {
-                NSLog(@"CDVPlaylistProvider: Found navigation items from dictionary: %@", navigationItems);
-                return navigationItems;
-            }
-        }
+    // Return the loaded navigation items if we have them, otherwise use emergency navigation
+    if (navigationItems && navigationItems.count > 0) {
+        NSLog(@"CDVPlaylistProvider: Returning loaded navigation with %lu items", (unsigned long)navigationItems.count);
+        return navigationItems;
     }
-    */
     
     // If all attempts fail, return the emergency navigation structure
-    NSLog(@"CDVPlaylistProvider: Returning emergency navigation structure");
+    NSLog(@"CDVPlaylistProvider: Falling back to emergency navigation structure");
     return emergencyNavigation;
 }
 

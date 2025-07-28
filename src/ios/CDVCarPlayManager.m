@@ -4,6 +4,23 @@
 #import "CDVPlaylistProvider.h"
 #import "CDVLogger.h"
 
+// Define CarPlay constants if not available
+#ifndef CPNowPlayingTitleKey
+#define CPNowPlayingTitleKey MPMediaItemPropertyTitle
+#endif
+
+#ifndef CPNowPlayingSubtitleKey
+#define CPNowPlayingSubtitleKey MPMediaItemPropertyArtist
+#endif
+
+#ifndef CPNowPlayingAlbumTitleKey
+#define CPNowPlayingAlbumTitleKey MPMediaItemPropertyAlbumTitle
+#endif
+
+#ifndef CPNowPlayingImageKey
+#define CPNowPlayingImageKey MPMediaItemPropertyArtwork
+#endif
+
 @implementation CDVCarPlayManager {
     __weak CDVAutoMusicPlugin *_plugin;
     CPTabBarTemplate *_tabBarTemplate;
@@ -517,89 +534,204 @@
 }
 
 - (void)updateNowPlayingTemplate:(NSNotification *)notification {
-    [CDVLogger log:@"CDVCarPlayManager: Received request to update Now Playing template UI"];
-    NSDictionary *track = notification.userInfo[@"track"];
-    NSNumber *isPlaying = notification.userInfo[@"isPlaying"];
+    // Use a static token to track and prevent recursive calls
+    static NSString *currentUpdateToken = nil;
+    static NSInteger updateCounter = 0;
+    static NSDate *lastUpdateTime = nil;
     
-    if (track) {
-        [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Updating now playing template with track: %@", track[@"title"]]];
+    // Generate a unique token for this update
+    NSString *updateToken = [[NSUUID UUID] UUIDString];
+    
+    // Check if we're already updating
+    if (currentUpdateToken != nil) {
+        NSLog(@"CDVCarPlayManager: Already updating Now Playing template (token: %@), skipping recursive call", currentUpdateToken);
+        return;
+    }
+    
+    // Check if this update is too soon after the last one (throttle updates)
+    NSDate *now = [NSDate date];
+    if (lastUpdateTime && [now timeIntervalSinceDate:lastUpdateTime] < 0.5) {
+        NSLog(@"CDVCarPlayManager: Update requested too soon after previous update, throttling");
+        return;
+    }
+    
+    // Set the current update token and timestamp
+    currentUpdateToken = updateToken;
+    lastUpdateTime = now;
+    updateCounter++;
+    
+    NSLog(@"CDVCarPlayManager: Starting update #%ld with token: %@", (long)updateCounter, updateToken);
+    
+    @try {
+        [CDVLogger log:@"CDVCarPlayManager: Received request to update Now Playing template UI"];
+        NSLog(@"CDVCarPlayManager: Received request to update Now Playing template UI");
         
-        // Get the Now Playing template and update it explicitly
+        // Log notification details
+        NSLog(@"CDVCarPlayManager: Notification name: %@", notification.name);
+        
+        NSDictionary *track = notification.userInfo[@"track"];
+        NSNumber *isPlaying = notification.userInfo[@"isPlaying"];
+        
+        NSLog(@"CDVCarPlayManager: Track title: %@, artist: %@, album: %@", 
+              track[@"title"], track[@"artist"], track[@"album"]);
+        
+        if (!track) {
+            NSLog(@"CDVCarPlayManager: No track data provided, skipping update");
+            return;
+        }
+        
+        NSLog(@"CDVCarPlayManager: Updating now playing template with track: %@", track[@"title"]);
+        
+        // Get the Now Playing template
         CPNowPlayingTemplate *nowPlayingTemplate = [CPNowPlayingTemplate sharedTemplate];
         
-        // Explicitly set the metadata on the now playing template
+        // Extract track information
         NSString *title = track[@"title"] ?: @"Unknown Title";
         NSString *artist = track[@"artist"] ?: @"Unknown Artist";
         NSString *album = track[@"album"] ?: @"Unknown Album";
+        NSString *imageURL = track[@"image"];
         
-        // Create a completely fresh dictionary - prevents inconsistencies
-        NSMutableDictionary *updatedInfo = [NSMutableDictionary dictionary];
+        // Debug logging
+        [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager DEBUG: Track data - Title: %@, Artist: %@, Album: %@", title, artist, album]];
         
-        // Add playback info
-        updatedInfo[MPMediaItemPropertyTitle] = title;
-        updatedInfo[MPMediaItemPropertyArtist] = artist;
-        updatedInfo[MPMediaItemPropertyAlbumTitle] = album;
+        // Create a fresh dictionary for MPNowPlayingInfoCenter
+        NSMutableDictionary *nowPlayingInfo = [NSMutableDictionary dictionary];
         
-        // Preserve existing artwork if available
-        MPMediaItemArtwork *artwork = [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo[MPMediaItemPropertyArtwork];
-        if (artwork) {
-            updatedInfo[MPMediaItemPropertyArtwork] = artwork;
+        // Set basic metadata
+        nowPlayingInfo[MPMediaItemPropertyTitle] = title;
+        nowPlayingInfo[MPMediaItemPropertyArtist] = artist;
+        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album;
+        
+        // Add playback information
+        if (notification.userInfo[@"duration"]) {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = notification.userInfo[@"duration"];
         }
         
-        // Preserve playback information
-        NSDictionary *currentInfo = [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo;
-        if (currentInfo) {
-            // Copy playback state info
-            NSArray *playbackKeys = @[
-                MPNowPlayingInfoPropertyElapsedPlaybackTime,
-                MPNowPlayingInfoPropertyPlaybackRate,
-                MPNowPlayingInfoPropertyPlaybackQueueIndex,
-                MPNowPlayingInfoPropertyPlaybackQueueCount,
-                MPMediaItemPropertyPlaybackDuration,
-                MPNowPlayingInfoPropertyMediaType,
-                MPNowPlayingInfoPropertyIsLiveStream
-            ];
-            
-            for (NSString *key in playbackKeys) {
-                id value = currentInfo[key];
-                if (value) {
-                    updatedInfo[key] = value;
-                }
-            }
+        if (notification.userInfo[@"elapsedTime"]) {
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = notification.userInfo[@"elapsedTime"];
         }
         
-        // Set playback rate based on isPlaying
-        if (isPlaying != nil) {
-            updatedInfo[MPNowPlayingInfoPropertyPlaybackRate] = [isPlaying boolValue] ? @(1.0) : @(0.0);
-        }
+        // Set playback state
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? @1.0 : @0.0;
         
-        // Set the updated dictionary
-        [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = updatedInfo;
-        
+        // Update the Now Playing Info Center with basic metadata first
+        [[MPNowPlayingInfoCenter defaultCenter] setNowPlayingInfo:nowPlayingInfo];
+    
         // Update the interfaceController if available
         if (self.interfaceController && self.connected) {
-            // Make sure the template is visible in CarPlay
             dispatch_async(dispatch_get_main_queue(), ^{
-                // Show the Now Playing template first time
+                // Show the Now Playing template first time only
                 static BOOL firstUpdate = YES;
                 if (firstUpdate) {
                     firstUpdate = NO;
+                    NSLog(@"CDVCarPlayManager: First update - showing Now Playing template");
                     [self showNowPlayingTemplate:nil];
                 }
                 
-                // Ensure that song info always gets refreshed visually on CarPlay
-                if (@available(iOS 14.0, *)) {
-                    // This forces the Now Playing UI to refresh
-                    [nowPlayingTemplate updateNowPlayingButtons:@[]];
+                // REMOVED duplicate UI refresh call here to prevent update loops
+                // UI refresh will be done either immediately (if no artwork) or after artwork loads
+                
+                // CRITICAL FIX: Move UI refresh AFTER artwork loading to ensure we only refresh once
+                // Only refresh UI immediately if there's no artwork to load
+                BOOL hasArtworkToLoad = (imageURL && [imageURL hasPrefix:@"http"]);
+                
+                if (!hasArtworkToLoad) {
+                    // No artwork to load, so refresh UI now
+                    if (@available(iOS 14.0, *)) {
+                        NSLog(@"CDVCarPlayManager: No artwork to load, refreshing UI immediately");
+                        [nowPlayingTemplate updateNowPlayingButtons:@[]];
+                        NSLog(@"CDVCarPlayManager: UI refresh completed");
+                    }
+                }
+                
+                // Handle artwork loading - only if URL exists and starts with http
+                if (hasArtworkToLoad) {
+                    NSLog(@"CDVCarPlayManager: Starting artwork load from URL: %@", imageURL);
+                    
+                    // Use NSURLSession for better control and timeout handling
+                    NSURLSession *session = [NSURLSession sharedSession];
+                    NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:imageURL] 
+                                                            cachePolicy:NSURLRequestUseProtocolCachePolicy 
+                                                        timeoutInterval:10.0];
+                    
+                    NSURLSessionDataTask *task = [session dataTaskWithRequest:request 
+                                                        completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+                        if (error) {
+                            NSLog(@"CDVCarPlayManager: Failed to load artwork: %@", error);
+                            return;
+                        }
+                        
+                        UIImage *artwork = data ? [UIImage imageWithData:data] : nil;
+                        if (!artwork) {
+                            NSLog(@"CDVCarPlayManager: Failed to create image from data");
+                            return;
+                        }
+                        
+                        NSLog(@"CDVCarPlayManager: Artwork loaded successfully: %@", NSStringFromCGSize(artwork.size));
+                        
+                        // Create MPMediaItemArtwork
+                        MPMediaItemArtwork *mediaArtwork = [[MPMediaItemArtwork alloc] initWithBoundsSize:artwork.size 
+                                                                                          requestHandler:^UIImage * _Nonnull(CGSize size) {
+                            return artwork;
+                        }];
+                        
+                        // Update MPNowPlayingInfoCenter with artwork on main thread
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            NSLog(@"CDVCarPlayManager: Updating MPNowPlayingInfoCenter with artwork");
+                            // Get current info to preserve other metadata
+                            NSMutableDictionary *updatedInfo = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy];
+                            if (updatedInfo) {
+                                updatedInfo[MPMediaItemPropertyArtwork] = mediaArtwork;
+                                [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = updatedInfo;
+                                NSLog(@"CDVCarPlayManager: Artwork update complete");
+                                
+                                // CRITICAL FIX: Only refresh UI once after artwork is loaded
+                                if (@available(iOS 14.0, *)) {
+                                    NSLog(@"CDVCarPlayManager: Refreshing UI after artwork load");
+                                    [nowPlayingTemplate updateNowPlayingButtons:@[]];
+                                    NSLog(@"CDVCarPlayManager: UI refresh after artwork completed");
+                                }
+                            } else {
+                                NSLog(@"CDVCarPlayManager: Error - No current info available for artwork update");
+                            }
+                        });
+                    }];
+                    
+                    [task resume];
                 }
             });
             
-            // Log extensive debug information
+            NSLog(@"CDVCarPlayManager: Now Playing template update completed for track: %@", track[@"title"]);
             [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Now Playing template update completed for track: %@", track[@"title"]]];
-            [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager: Now Playing info center contains: %@", [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo]];
         } else {
+            NSLog(@"CDVCarPlayManager WARNING: Cannot show Now Playing template - interface controller is nil or not connected");
             [CDVLogger log:@"CDVCarPlayManager WARNING: Cannot show Now Playing template - interface controller is nil or not connected"];
         }
+    } @catch (NSException *exception) {
+        NSLog(@"CDVCarPlayManager ERROR: Exception while updating Now Playing template: %@", exception);
+        [CDVLogger log:[NSString stringWithFormat:@"CDVCarPlayManager ERROR: Exception while updating Now Playing template: %@", exception]];
+    } @finally {
+        // Store the token locally to ensure we're resetting the correct one
+        NSString *tokenToReset = currentUpdateToken;
+        
+        // Reset the token to allow future updates - IMPORTANT: This must happen on the main thread
+        // and with a slight delay to ensure all pending operations complete
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"CDVCarPlayManager: Resetting update token to allow future updates: %@", tokenToReset);
+            
+            // Add a small delay to ensure all pending operations are complete
+            // This is critical to prevent overlapping updates
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.75 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                // Only reset if the token hasn't changed (another update hasn't started)
+                if (currentUpdateToken == tokenToReset) {
+                    NSLog(@"CDVCarPlayManager: Update token reset complete for token: %@", tokenToReset);
+                    currentUpdateToken = nil;
+                } else {
+                    NSLog(@"CDVCarPlayManager: Token has changed since reset was scheduled. Current: %@, Was: %@", 
+                          currentUpdateToken, tokenToReset);
+                }
+            });
+        });
     }
 }
 
@@ -611,7 +743,6 @@
     
     // Remove observers
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-
 }
 
 @end

@@ -255,6 +255,7 @@
 
 - (void)updateNowPlayingInfo {
     if (_queue.count == 0 || _currentIndex >= _queue.count) {
+        NSLog(@"CDVMusicPlayer: Cannot update now playing info - queue is empty or index out of bounds");
         return;
     }
     
@@ -265,161 +266,190 @@
     
     _isUpdatingNowPlayingInfo = YES;
     
-    // Declare artwork variable at the beginning to avoid scope issues
-    UIImage *artwork = nil;
-    
     NSDictionary *track = _queue[_currentIndex];
     NSLog(@"CDVMusicPlayer: Updating now playing info for track: %@", track[@"title"]);
+    
+    // Extract track metadata
+    NSString *title = track[@"title"] ?: @"Unknown Title";
+    NSString *artist = track[@"artist"] ?: @"Unknown Artist";
+    NSString *album = track[@"album"] ?: @"Unknown Album";
+    NSString *imagePath = track[@"image"];
+    
+    NSLog(@"CDVMusicPlayer: Track metadata - Title: %@, Artist: %@, Album: %@, Image: %@", 
+          title, artist, album, imagePath ?: @"No image");
     
     // Create the now playing info
     NSMutableDictionary *nowPlayingInfo = [NSMutableDictionary dictionary];
     
-    // Debug information
-    NSLog(@"CDVMusicPlayer: Current track metadata - Title: %@, Artist: %@, Album: %@", 
-          track[@"title"] ?: @"nil",
-          track[@"artist"] ?: @"nil",
-          track[@"album"] ?: @"nil");
+    // Set track metadata
+    nowPlayingInfo[MPMediaItemPropertyTitle] = title;
+    nowPlayingInfo[MPMediaItemPropertyArtist] = artist;
+    nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album;
     
-    // Add metadata - make sure to have non-nil values
-    nowPlayingInfo[MPMediaItemPropertyTitle] = track[@"title"] ?: @"Unknown Title";
-    nowPlayingInfo[MPMediaItemPropertyArtist] = track[@"artist"] ?: @"Unknown Artist";
-    nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = track[@"album"] ?: @"Unknown Album";
+    // Set playback time and duration
+    float currentPlaybackTime = CMTimeGetSeconds(_player.currentTime);
+    float duration = CMTimeGetSeconds(_player.currentItem.duration);
     
-    // Add playback info
-    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds(_player.currentTime));
-    
-    if (_player.currentItem) {
-        CMTime duration = _player.currentItem.duration;
-        if (CMTIME_IS_VALID(duration) && !CMTIME_IS_INDEFINITE(duration)) {
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(CMTimeGetSeconds(duration));
-        } else {
-            // If duration is not valid, provide a reasonable default
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(180.0); // Default 3 minutes
-        }
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = _isPlaying ? @(1.0) : @(0.0);
+    if (!isnan(currentPlaybackTime)) {
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(currentPlaybackTime);
     }
+    
+    if (!isnan(duration)) {
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(duration);
+    } else if (track[@"duration"]) {
+        // If we have duration in the track metadata, use that
+        NSNumber *trackDuration = track[@"duration"];
+        if ([trackDuration isKindOfClass:[NSNumber class]]) {
+            // Convert from milliseconds to seconds if needed
+            float durationValue = [trackDuration floatValue];
+            if (durationValue > 10000) { // Likely in milliseconds
+                durationValue = durationValue / 1000.0;
+            }
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(durationValue);
+        }
+    }
+    
+    // Set playback rate
+    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = _isPlaying ? @(1.0) : @(0.0);
     
     // Add essential properties for CarPlay
     nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = @(NO);
     nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = @(MPMediaTypeMusic);
     
-    // Add artwork
-    NSString *imagePath = track[@"image"];
-    if (imagePath) {
-        // Check if artwork is already cached
-        UIImage *artwork = _artworkCache[imagePath];
+    // Set the now playing info without artwork first
+    [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nowPlayingInfo;
+    
+    // Load artwork asynchronously if available
+    if (imagePath && ([imagePath hasPrefix:@"http://"] || [imagePath hasPrefix:@"https://"])) {
+        NSLog(@"CDVMusicPlayer: Loading artwork from URL: %@", imagePath);
         
-        // If not in cache, load asynchronously
-        if (!artwork) {
-            if ([imagePath hasPrefix:@"http://"] || [imagePath hasPrefix:@"https://"]) {
-                // Load from URL asynchronously
-                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                    NSURL *imageURL = [NSURL URLWithString:imagePath];
-                    NSData *imageData = [NSData dataWithContentsOfURL:imageURL];
-                    UIImage *loadedImage = nil;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            NSURL *imageURL = [NSURL URLWithString:imagePath];
+            NSData *imageData = [NSData dataWithContentsOfURL:imageURL];
+            UIImage *loadedImage = nil;
+            
+            if (imageData) {
+                loadedImage = [UIImage imageWithData:imageData];
+                if (loadedImage) {
+                    NSLog(@"CDVMusicPlayer: Successfully loaded artwork image");
                     
-                    if (imageData) {
-                        loadedImage = [UIImage imageWithData:imageData];
-                        if (loadedImage) {
-                            // Cache the image
-                            dispatch_async(dispatch_get_main_queue(), ^{
-                                self->_artworkCache[imagePath] = loadedImage;
-                                // Set the now playing info again with the loaded image
-                                [self updateNowPlayingInfoWithArtwork:loadedImage track:track nowPlayingInfo:nowPlayingInfo];
-                            });
-                        }
-                    }
+                    // Create artwork for MPNowPlayingInfoCenter
+                    MPMediaItemArtwork *artwork = [[MPMediaItemArtwork alloc] initWithBoundsSize:loadedImage.size 
+                                                                                 requestHandler:^UIImage * _Nonnull(CGSize size) {
+                        return loadedImage;
+                    }];
                     
-                    // Ensure we finish updating if image loading fails
-                    if (!loadedImage) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            [self updateNowPlayingInfoWithArtwork:nil track:track nowPlayingInfo:nowPlayingInfo];
-                        });
-                    }
-                });
-                
-                // Continue with other updates while image loads
-                artwork = nil;
-            } else {
-                // Try to load from bundle (this is quick enough to do on main thread)
-                artwork = [UIImage imageNamed:imagePath];
-                if (artwork) {
-                    _artworkCache[imagePath] = artwork; // Cache it
+                    // Update now playing info with artwork
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        NSMutableDictionary *updatedInfo = [[[MPNowPlayingInfoCenter defaultCenter] nowPlayingInfo] mutableCopy];
+                        updatedInfo[MPMediaItemPropertyArtwork] = artwork;
+                        [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = updatedInfo;
+                        
+                        // Cache the image for future use
+                        self->_artworkCache[imagePath] = loadedImage;
+                        
+                        // Post notification to update CarPlay Now Playing template
+                        [self postCarPlayUpdateNotification:track];
+                    });
+                } else {
+                    NSLog(@"CDVMusicPlayer: Failed to create image from data");
+                    [self postCarPlayUpdateNotification:track];
                 }
+            } else {
+                NSLog(@"CDVMusicPlayer: Failed to load image data from URL");
+                [self postCarPlayUpdateNotification:track];
             }
-        }
-        
-        // Fall back to default artwork if we failed to load
-        if (!artwork) {
-            artwork = [UIImage imageNamed:@"default_art"];
-            // If still nil, create a colored placeholder
-            if (!artwork) {
-                // Create a simple colored square with the first letter of the song
-                CGRect rect = CGRectMake(0, 0, 600, 600);
-                UIGraphicsBeginImageContext(rect.size);
-                CGContextRef context = UIGraphicsGetCurrentContext();
-                
-                // Fill background with color based on first letter of title
-                NSString *title = track[@"title"] ?: @"Unknown";
-                unichar firstChar = [title characterAtIndex:0];
-                CGFloat hue = (firstChar % 26) / 26.0;
-                UIColor *color = [UIColor colorWithHue:hue saturation:0.7 brightness:0.7 alpha:1.0];
-                
-                CGContextSetFillColorWithColor(context, [color CGColor]);
-                CGContextFillRect(context, rect);
-                
-                // Add text
-                NSString *text = [title substringToIndex:1];
-                UIFont *font = [UIFont boldSystemFontOfSize:300];
-                NSDictionary *attributes = @{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor whiteColor]};
-                CGSize textSize = [text sizeWithAttributes:attributes];
-                CGRect textRect = CGRectMake((rect.size.width - textSize.width) / 2, 
-                                            (rect.size.height - textSize.height) / 2, 
-                                            textSize.width, 
-                                            textSize.height);
-                [text drawInRect:textRect withAttributes:attributes];
-                
-                artwork = UIGraphicsGetImageFromCurrentImageContext();
-                UIGraphicsEndImageContext();
-            }
-        }
-        
-        if (artwork) {
-            MPMediaItemArtwork *albumArt = [[MPMediaItemArtwork alloc] initWithBoundsSize:artwork.size 
-                                                                         requestHandler:^UIImage * _Nonnull(CGSize size) {
-                return artwork;
-            }];
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = albumArt;
-        }
+        });
     } else {
-        // Create default artwork if no image path is provided
-        CGRect rect = CGRectMake(0, 0, 600, 600);
-        UIGraphicsBeginImageContext(rect.size);
-        CGContextRef context = UIGraphicsGetCurrentContext();
+        // Use default artwork or cached artwork
+        UIImage *defaultArtwork = _artworkCache[imagePath] ?: [UIImage imageNamed:@"default_art"];
         
-        // Simple gradient background
-        CGContextSetFillColorWithColor(context, [[UIColor darkGrayColor] CGColor]);
-        CGContextFillRect(context, rect);
-        
-        UIImage *artwork = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        
-        if (artwork) {
-            MPMediaItemArtwork *albumArt = [[MPMediaItemArtwork alloc] initWithBoundsSize:artwork.size 
-                                                                         requestHandler:^UIImage * _Nonnull(CGSize size) {
-                return artwork;
-            }];
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = albumArt;
+        if (!defaultArtwork) {
+            // Create a simple colored square with the first letter of the song
+            defaultArtwork = [self createPlaceholderArtworkForTitle:title];
         }
+        
+        if (defaultArtwork) {
+            MPMediaItemArtwork *artwork = [[MPMediaItemArtwork alloc] initWithBoundsSize:defaultArtwork.size 
+                                                                         requestHandler:^UIImage * _Nonnull(CGSize size) {
+                return defaultArtwork;
+            }];
+            
+            NSMutableDictionary *updatedInfo = [[[MPNowPlayingInfoCenter defaultCenter] nowPlayingInfo] mutableCopy];
+            updatedInfo[MPMediaItemPropertyArtwork] = artwork;
+            [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = updatedInfo;
+        }
+        
+        // Post notification to update CarPlay Now Playing template
+        [self postCarPlayUpdateNotification:track];
     }
+}
+
+- (void)postCarPlayUpdateNotification:(NSDictionary *)track {
+    // Add static variables to track and throttle notification posting
+    static NSTimeInterval lastNotificationTime = 0;
+    static NSString *lastTrackTitle = nil;
     
-    // If we're doing async image loading, we'll return early and let the async path complete
-    if ([imagePath hasPrefix:@"http://"] || [imagePath hasPrefix:@"https://"] && !artwork) {
-        return;
-    }
+    // Post notification to update CarPlay Now Playing template
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Get current time
+        NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+        NSString *currentTrackTitle = track[@"title"];
+        
+        // Check if this is a duplicate notification for the same track within a short time window
+        BOOL isDuplicateUpdate = (lastTrackTitle && [lastTrackTitle isEqualToString:currentTrackTitle] && 
+                                 (now - lastNotificationTime < 1.0));
+        
+        if (isDuplicateUpdate) {
+            NSLog(@"CDVMusicPlayer: Skipping duplicate notification for track '%@' (throttled)", currentTrackTitle);
+            // Still mark update as finished
+            self->_isUpdatingNowPlayingInfo = NO;
+            return;
+        }
+        
+        // Update tracking variables
+        lastNotificationTime = now;
+        lastTrackTitle = [currentTrackTitle copy];
+        
+        NSLog(@"CDVMusicPlayer: Posting notification to update CarPlay Now Playing template for track: %@", currentTrackTitle);
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"CDVUpdateNowPlayingTemplate" 
+                                                       object:nil 
+                                                     userInfo:@{@"track": track, @"isPlaying": @(self->_isPlaying)}];
+        
+        // Mark update as finished
+        self->_isUpdatingNowPlayingInfo = NO;
+    });
+}
+
+- (UIImage *)createPlaceholderArtworkForTitle:(NSString *)title {
+    // Create a simple colored square with the first letter of the song
+    CGRect rect = CGRectMake(0, 0, 600, 600);
+    UIGraphicsBeginImageContext(rect.size);
+    CGContextRef context = UIGraphicsGetCurrentContext();
     
-    // Otherwise, complete the update with the current artwork state
-    [self updateNowPlayingInfoWithArtwork:artwork track:track nowPlayingInfo:nowPlayingInfo];
+    // Fill background with color based on first letter of title
+    unichar firstChar = [title length] > 0 ? [title characterAtIndex:0] : 'U';
+    CGFloat hue = (firstChar % 26) / 26.0;
+    UIColor *color = [UIColor colorWithHue:hue saturation:0.7 brightness:0.7 alpha:1.0];
+    
+    CGContextSetFillColorWithColor(context, [color CGColor]);
+    CGContextFillRect(context, rect);
+    
+    // Add text
+    NSString *text = [title length] > 0 ? [title substringToIndex:1] : @"?";
+    UIFont *font = [UIFont boldSystemFontOfSize:300];
+    NSDictionary *attributes = @{NSFontAttributeName: font, NSForegroundColorAttributeName: [UIColor whiteColor]};
+    CGSize textSize = [text sizeWithAttributes:attributes];
+    CGRect textRect = CGRectMake((rect.size.width - textSize.width) / 2, 
+                                (rect.size.height - textSize.height) / 2, 
+                                textSize.width, 
+                                textSize.height);
+    [text drawInRect:textRect withAttributes:attributes];
+    
+    UIImage *artwork = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    return artwork;
 }
 
 - (void)updateNowPlayingInfoWithArtwork:(UIImage *)artwork track:(NSDictionary *)track nowPlayingInfo:(NSMutableDictionary *)nowPlayingInfo {
@@ -437,19 +467,8 @@
     // Set the now playing info
     [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nowPlayingInfo;
     
-    // Update CarPlay now playing template if available - only if we're not in the middle of another update
-    if (_nowPlayingTemplate) {
-        // Consolidate all notifications into a single update
-        dispatch_async(dispatch_get_main_queue(), ^{
-            // Only post a single notification with all relevant info
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"CDVUpdateNowPlayingTemplate" 
-                                                           object:nil 
-                                                         userInfo:@{@"track": track, @"isPlaying": @(self->_isPlaying)}];
-        });
-    }
-    
-    // Mark update as finished
-    _isUpdatingNowPlayingInfo = NO;
+    // Post notification to update CarPlay Now Playing template
+    [self postCarPlayUpdateNotification:track];
 }
 
 - (void)updatePlaybackState:(NSString *)state {

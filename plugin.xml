@@ -164,6 +164,10 @@
     <source-file src="src/ios/CDVPlaylistProvider.m" />
     <header-file src="src/ios/CDVLogger.h" />
     <source-file src="src/ios/CDVLogger.m" />
+    
+    <!-- CPNowPlayingTemplate extension category -->
+    <header-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.h" />
+    <source-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.m" />
 
     <framework src="MediaPlayer.framework" />
     <framework src="CarPlay.framework" weak="true" />
