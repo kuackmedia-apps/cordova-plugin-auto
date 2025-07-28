@@ -4,12 +4,18 @@ import android.content.Intent
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
+import androidx.media.MediaBrowserServiceCompat.BrowserRoot
 import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.api.ServiceFactory
+import com.kuackmedia.androidauto.media.CurrentMedia
+import com.kuackmedia.androidauto.media.IPlayerAdapter
+import com.kuackmedia.androidauto.media.MediaPlayerAdapter
+import com.kuackmedia.androidauto.media.MediaSessionCallback
 import com.kuackmedia.androidauto.tree.MediaItemTree
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +77,60 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     MediaControlBridge.mediaPlayer = playerAdapter
 
     mediaSession.controller.transportControls.prepare()
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (intent?.action == "PLAY_HARDCODED_TRACK") {
+      val trackUrl = intent.getStringExtra("track_url")
+      val trackTitle = intent.getStringExtra("track_title")
+      val trackArtist = intent.getStringExtra("track_artist")
+      val trackAlbum = intent.getStringExtra("track_album")
+      
+      if (trackUrl != null) {
+        Log.i(TAG, "Playing hardcoded track: $trackUrl")
+        
+        // Set the current track URI
+        playerAdapter.setCurrentTrack(Uri.parse(trackUrl))
+        
+        // Update metadata
+        val metadata = MediaMetadataCompat.Builder()
+          .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, "hardcoded_track")
+          .putString(MediaMetadataCompat.METADATA_KEY_TITLE, trackTitle)
+          .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, trackArtist)
+          .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, trackAlbum)
+          .build()
+        
+        if (::mediaSession.isInitialized) {
+          mediaSession.setMetadata(metadata)
+          
+          // Start playback
+          playerAdapter.playCurrentTrack(applicationContext)
+          
+          // Update playback state
+          val stateBuilder = PlaybackStateCompat.Builder()
+            .setActions(
+              PlaybackStateCompat.ACTION_PLAY or
+              PlaybackStateCompat.ACTION_PAUSE or
+              PlaybackStateCompat.ACTION_PLAY_PAUSE or
+              PlaybackStateCompat.ACTION_STOP
+            )
+            .setState(PlaybackStateCompat.STATE_PLAYING, 0, 1.0f)
+          
+          mediaSession.setPlaybackState(stateBuilder.build())
+        }
+      }
+    }
+    
+    return super.onStartCommand(intent, flags, startId)
+  }
+
+  private fun initMediaSession() {
+    mediaSession = MediaSessionCompat(this, TAG)
+    mediaSession.setFlags(
+      MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+        MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+    )
+    mediaSession.setCallback(MediaSessionCallback(playerAdapter, mediaSession, applicationContext))
   }
 
   override fun onGetRoot(

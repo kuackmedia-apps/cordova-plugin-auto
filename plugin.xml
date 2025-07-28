@@ -4,6 +4,7 @@
 
   <engines>
       <engine name="cordova-android" version=">=12.0.0" />
+      <engine name="cordova-ios" version=">=6.0.0" />
   </engines>
 
   <js-module src="www/myplugin.js" name="auto">
@@ -108,4 +109,68 @@
 
   </platform>
 
+  <platform name="ios">
+    <config-file target="config.xml" parent="/*">
+      <feature name="AutoMusicPlugin">
+        <param name="ios-package" value="CDVAutoMusicPlugin" />
+        <param name="onload" value="true" />
+      </feature>
+    </config-file>
+
+    <!-- CarPlay entitlement and Info.plist configuration -->
+    <config-file target="*-Info.plist" parent="UIBackgroundModes">
+      <array>
+        <string>audio</string>
+      </array>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="NSAppleMusicUsageDescription">
+      <string>This app needs access to Apple Music to play your music in CarPlay.</string>
+    </config-file>
+
+    <!-- CarPlay app configuration -->
+    <config-file target="*-Info.plist" parent="UIApplicationSceneManifest">
+      <dict>
+        <key>UISceneConfigurations</key>
+        <dict>
+          <key>CPTemplateApplicationSceneSessionRoleApplication</key>
+          <array>
+            <dict>
+              <key>UISceneConfigurationName</key>
+              <string>CarPlay Configuration</string>
+              <key>UISceneClassName</key>
+              <string>CPTemplateApplicationScene</string>
+              <key>UISceneDelegateClassName</key>
+              <string>CDVCarPlaySceneDelegate</string>
+            </dict>
+          </array>
+        </dict>
+      </dict>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="com.apple.developer.carplay-audio">
+      <true/>
+    </config-file>
+
+    <!-- Source files -->
+    <header-file src="src/ios/CDVAutoMusicPlugin.h" />
+    <source-file src="src/ios/CDVAutoMusicPlugin.m" />
+    <header-file src="src/ios/CDVCarPlaySceneDelegate.h" />
+    <source-file src="src/ios/CDVCarPlaySceneDelegate.m" />
+    <header-file src="src/ios/CDVCarPlayManager.h" />
+    <source-file src="src/ios/CDVCarPlayManager.m" />
+    <header-file src="src/ios/CDVMusicPlayer.h" />
+    <source-file src="src/ios/CDVMusicPlayer.m" />
+    <header-file src="src/ios/CDVPlaylistProvider.h" />
+    <source-file src="src/ios/CDVPlaylistProvider.m" />
+    <header-file src="src/ios/CDVLogger.h" />
+    <source-file src="src/ios/CDVLogger.m" />
+    
+    <!-- CPNowPlayingTemplate extension category -->
+    <header-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.h" />
+    <source-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.m" />
+
+    <framework src="MediaPlayer.framework" />
+    <framework src="CarPlay.framework" weak="true" />
+  </platform>
 </plugin>
