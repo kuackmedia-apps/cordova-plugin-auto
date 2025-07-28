@@ -6,6 +6,7 @@ import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
+import androidx.media.session.MediaButtonReceiver
 import androidx.media.utils.MediaConstants
 import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.CordovaEvents
@@ -40,6 +41,11 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
   private lateinit var mediaSession: MediaSessionCompat
   private lateinit var playerAdapter: IPlayerAdapter
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    MediaButtonReceiver.handleIntent(mediaSession, intent)
+    return super.onStartCommand(intent, flags, startId)
+  }
 
   override fun onCreate() {
     super.onCreate()
