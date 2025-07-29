@@ -1,7 +1,12 @@
 package com.kuackmedia.androidauto.media
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +17,9 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.media.session.MediaButtonReceiver
 import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.CURRENT_TRACK_KEY
@@ -24,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.net.URL
+import kotlin.toString
 
 
 /**
@@ -39,6 +49,8 @@ class MediaSessionCallback(
   companion object {
     private const val PLAYBACK_POSITION_UPDATE_INTERVAL: Long = 1000
     private const val TAG = "MediaSessionCallback"
+    private const val NOTIFICATION_ID = 1
+    private const val CHANNEL_ID = "media_playback_channel"
   }
 
   private val handler: Handler = Handler(Looper.getMainLooper())
@@ -124,6 +136,8 @@ class MediaSessionCallback(
 
             mediaSession.setMetadata(metadata)
 
+            showNotification(PlaybackStateCompat.STATE_PLAYING)
+
             storeLocalData(extras, trackId)
           }
         } catch (e: Exception) {
@@ -150,6 +164,7 @@ class MediaSessionCallback(
       mediaPlayer.stop()
       updateState(PlaybackStateCompat.STATE_STOPPED, 0)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
+      showNotification(PlaybackStateCompat.STATE_STOPPED)
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "stop"))
@@ -161,6 +176,7 @@ class MediaSessionCallback(
     if(!mediaPlayer.isPreparing()) {
       mediaPlayer.pause()
       updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+      showNotification(PlaybackStateCompat.STATE_PAUSED)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
@@ -391,5 +407,124 @@ class MediaSessionCallback(
 
     }
   }
+
+  private fun showNotification(state: Int) {
+    val controller = mediaSession.controller
+    val mediaMetadata = controller.metadata
+    val description = mediaMetadata?.description
+
+    // Create notification channel for API 26+
+    val channelName = "Media Playback"
+    val channelDescription = "Media playback controls"
+    val importance = NotificationManager.IMPORTANCE_LOW
+    val channel = NotificationChannel(CHANNEL_ID, channelName, importance)
+    // Fix the assignment by using setDescription() method
+    channel.description = channelDescription
+    val notificationManager = context.getSystemService(NotificationManager::class.java)
+    notificationManager.createNotificationChannel(channel)
+
+    // Create the main activity pending intent
+    val mainActivityIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+    val contentIntent = PendingIntent.getActivity(
+      context, 0, mainActivityIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    // Build the notification
+    val builder = NotificationCompat.Builder(context, CHANNEL_ID).apply {
+      // Add the metadata
+      setContentTitle(description?.title)
+      setContentText(description?.subtitle)
+      setSubText(description?.description)
+      setContentIntent(contentIntent)
+      setSmallIcon(context.applicationInfo.icon)
+      setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+      // Add buttons for media control based on playback state
+      if (state == PlaybackStateCompat.STATE_PLAYING) {
+        addAction(NotificationCompat.Action(
+          android.R.drawable.ic_media_previous, "Previous",
+          MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+        ))
+        addAction(NotificationCompat.Action(
+          android.R.drawable.ic_media_pause, "Pause",
+          MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_PAUSE)
+        ))
+        addAction(NotificationCompat.Action(
+          android.R.drawable.ic_media_next, "Next",
+          MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+        ))
+      } else {
+        addAction(NotificationCompat.Action(
+          android.R.drawable.ic_media_previous, "Previous",
+          MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+        ))
+        addAction(NotificationCompat.Action(
+          android.R.drawable.ic_media_play, "Play",
+          MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_PLAY)
+        ))
+        addAction(NotificationCompat.Action(
+          android.R.drawable.ic_media_next, "Next",
+          MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+        ))
+      }
+
+      // Apply the media style
+      setStyle(androidx.media.app.NotificationCompat.MediaStyle()
+        .setMediaSession(mediaSession.sessionToken)
+        .setShowActionsInCompactView(0, 1, 2))
+
+      setWhen(System.currentTimeMillis() - (mediaPlayer.currentPosition))
+      setUsesChronometer(state == PlaybackStateCompat.STATE_PLAYING)
+
+      // Set ongoing to prevent the user from dismissing the notification
+      setOngoing(state == PlaybackStateCompat.STATE_PLAYING)
+    }
+
+    // Load album art asynchronously
+    val imageUrl = description?.iconUri?.toString()
+    if (imageUrl != null) {
+      CoroutineScope(Dispatchers.IO).launch {
+        try {
+          val url = URL(imageUrl)
+          val bitmap = BitmapFactory.decodeStream(url.openConnection().getInputStream())
+          withContext(Dispatchers.Main) {
+            builder.setLargeIcon(bitmap)
+            // Update notification with the album art safely
+            safelyShowNotification(NOTIFICATION_ID, builder.build())
+          }
+        } catch (e: Exception) {
+          Log.e(TAG, "Error loading notification image", e)
+        }
+      }
+    }
+    // Show the notification immediately (will be updated when image loads)
+    val notification = builder.build()
+    safelyShowNotification(NOTIFICATION_ID, notification)
+
+    // Make service foreground when playing
+    if (state == PlaybackStateCompat.STATE_PLAYING && context is Service) {
+      context.startForeground(NOTIFICATION_ID, notification)
+    } else if (context is Service) {
+      context.stopForeground(false)
+    }
+  }
+
+  // Add this helper method to check permissions before showing notifications
+  private fun safelyShowNotification(notificationId: Int, notification: android.app.Notification) {
+    // Check for notification permission on Android 13+
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+      } else {
+        Log.w(TAG, "Notification permission not granted")
+      }
+    } else {
+      // For Android 12 and below, no runtime permission needed
+      NotificationManagerCompat.from(context).notify(notificationId, notification)
+    }
+  }
+
 }
 

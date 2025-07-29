@@ -46,6 +46,12 @@
       <meta-data
               android:name="com.google.android.gms.car.application"
         android:resource="@xml/automotive_app_desc" />
+
+      <receiver android:enabled="true" android:exported="true" android:name="androidx.media.session.MediaButtonReceiver">
+        <intent-filter>
+          <action android:name="android.intent.action.MEDIA_BUTTON" />
+        </intent-filter>
+      </receiver>
     </config-file>
 
     <config-file target="AndroidManifest.xml" parent="/*">
@@ -106,6 +112,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/models/AutoNavigationExplorer.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/TrackAPIModels.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/QueueItem.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/SearchResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
 
   </platform>
 
