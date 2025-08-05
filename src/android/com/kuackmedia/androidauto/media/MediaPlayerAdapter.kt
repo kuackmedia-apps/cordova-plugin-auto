@@ -20,15 +20,28 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   private val mediaPlayer = MediaPlayer()
   private var currentTrackUri: Uri? = null
   private var isPreparing = false
+  private var isReleased = false
 
   override var currentTrackFromApp: Boolean = false
 
   override val currentPosition: Long
-    get() = if (mediaPlayer.isPlaying || isPreparing) {
+    get() = if (!isReleased && (mediaPlayer.isPlaying || isPreparing)) {
       mediaPlayer.currentPosition.toLong()
     } else {
       0L
     }
+
+  override fun release() {
+    Log.i(TAG, "[MediaPlayerAdapter] Release was executed")
+    isReleased = true
+    mediaPlayer.release()
+  }
+
+  override fun reset() {
+    Log.i(TAG, "[MediaPlayerAdapter] Reset was executed")
+    isReleased = false
+    mediaPlayer.reset()
+  }
 
   init {
     Log.i(TAG, "MediaPlayerAdapter init")
@@ -153,17 +166,6 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override fun setCurrentTrack(trackUri: Uri?){
     this.currentTrackUri = trackUri
-  }
-
-  /** Release when your service is destroyed */
-  override fun release() {
-    Log.i(TAG, "[MediaPlayerAdapter] Release was executed")
-    mediaPlayer.release()
-  }
-
-  override fun reset() {
-    Log.i(TAG, "[MediaPlayerAdapter] Reset was executed")
-    mediaPlayer.reset()
   }
 }
 
