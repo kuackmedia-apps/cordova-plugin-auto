@@ -113,6 +113,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/models/TrackAPIModels.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/QueueItem.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/SearchResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/TagTracksResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
 
   </platform>
 

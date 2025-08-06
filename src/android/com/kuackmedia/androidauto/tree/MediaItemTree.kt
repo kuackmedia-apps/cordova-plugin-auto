@@ -355,6 +355,23 @@ object MediaItemTree {
           MediaItemFactory.parseMediaItems(it, parentData)
         }
       }
+
+      "tag" -> {
+        result =  this.musicApi.getTagTracks(itemId).list.map {
+          val parentData = "{" +
+              " \"id\": $itemId,\n" +
+              "  \"type\": \"PLAYLIST\",\n" +
+              "  \"name\": ${parent.description.title}" +
+              "}"
+          val mediaItem = MediaItemFactory.parseMediaItems(it, parentData)
+          val mediaId = "item_" + it.itemType + "_" + it.id
+          treeNodes[mediaId] =
+            MediaItemNode(mediaItem!!)
+          treeNodes[ROOT_ID]!!.addChild(mediaId)
+
+          mediaItem
+        }
+      }
     }
     Log.i(TAG, "Remote children for $parentId - $mediaType size is ${result.size}")
     return result

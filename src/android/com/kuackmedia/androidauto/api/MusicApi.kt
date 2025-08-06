@@ -4,7 +4,7 @@ import com.kuackmedia.androidauto.models.AlbumTracks
 import com.kuackmedia.androidauto.models.ArtistTracks
 import com.kuackmedia.androidauto.models.PlaylistTracks
 import com.kuackmedia.androidauto.models.SearchResponse
-import com.kuackmedia.androidauto.models.Track
+import com.kuackmedia.androidauto.models.TagTracksResponse
 import com.kuackmedia.androidauto.models.TrackRequest
 import com.kuackmedia.androidauto.models.TrackResponse
 import retrofit2.http.Body
@@ -25,15 +25,14 @@ interface MusicApi {
   suspend fun getArtistTracks(@Path("artistId") artistId: String): ArtistTracks
 
   @Headers("Content-type: application/json")
-  @POST("track-url")
-  suspend fun getTrackUrl(@Body trackRequest: TrackRequest): TrackResponse
-
-  @Headers("Content-type: application/json")
-  @GET("stations/{tagId}/track?lastIdAlbumTrack={lastIdAlbumTrack}")
+  @GET("tags/{tagId}/playlists?limit=30&offset=0")
   suspend fun getTagTracks(
     @Path("tagId") tagId: String,
-    @Path("lastIdAlbumTrack") lastIdAlbumTrack: String,
-  ): Track
+  ): TagTracksResponse
+
+  @Headers("Content-type: application/json")
+  @POST("track-url")
+  suspend fun getTrackUrl(@Body trackRequest: TrackRequest): TrackResponse
 
   @Headers("Content-type: application/json")
   @GET("search")
