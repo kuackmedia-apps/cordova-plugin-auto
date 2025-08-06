@@ -267,9 +267,9 @@ object MediaItemTree {
       "playlist" -> {
         result = this.musicApi.getPlayListTracks(itemId).tracks.items.mapNotNull {
           val parentData = "{" +
-            " \"id\": $itemId,\n" +
+            " \"id\": \"${itemId}\",\n" +
             "  \"type\": \"PLAYLIST\",\n" +
-            "  \"name\": ${parent.description.title}" +
+            "  \"name\": \"${parent.description.title}\"" +
             "}"
           MediaItemFactory.parseMediaItems(it.track, parentData)
         }
@@ -278,9 +278,9 @@ object MediaItemTree {
       "album" -> {
         result =  this.musicApi.getAlbumTracks(itemId).tracks.items.mapNotNull {
           val parentData = "{" +
-            " \"id\": $itemId,\n" +
+            " \"id\": \"${itemId}\",\n" +
             "  \"type\": \"ALBUM\",\n" +
-            "  \"name\": ${parent.description.title}" +
+            "  \"name\": \"${parent.description.title}\"" +
             "}"
           MediaItemFactory.parseMediaItems(it, parentData)
         }
@@ -289,9 +289,9 @@ object MediaItemTree {
       "artist" -> {
         result =  this.musicApi.getArtistTracks(itemId).list.mapNotNull {
           val parentData = "{" +
-            " \"id\": $itemId,\n" +
+            " \"id\": \"${itemId}\",\n" +
             "  \"type\": \"ARTIST\",\n" +
-            "  \"name\": ${parent.description.title}" +
+            "  \"name\": \"${parent.description.title}\"" +
             "}"
           MediaItemFactory.parseMediaItems(it, parentData)
         }
@@ -300,9 +300,9 @@ object MediaItemTree {
       "tag" -> {
         result =  this.musicApi.getTagTracks(itemId).list.map {
           val parentData = "{" +
-              " \"id\": $itemId,\n" +
+              " \"id\": \"${itemId}\",\n" +
               "  \"type\": \"PLAYLIST\",\n" +
-              "  \"name\": ${parent.description.title}" +
+              "  \"name\": \"${parent.description.title}\"" +
               "}"
           val mediaItem = MediaItemFactory.parseMediaItems(it, parentData)
           val mediaId = "item_" + it.itemType + "_" + it.id
