@@ -171,8 +171,6 @@
     <source-file src="src/ios/CDVMusicPlayer.m" />
     <header-file src="src/ios/CDVPlaylistProvider.h" />
     <source-file src="src/ios/CDVPlaylistProvider.m" />
-    <header-file src="src/ios/CDVLogger.h" />
-    <source-file src="src/ios/CDVLogger.m" />
     
     <!-- CPNowPlayingTemplate extension category -->
     <header-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.h" />

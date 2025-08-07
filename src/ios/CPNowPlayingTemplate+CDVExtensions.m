@@ -1,12 +1,10 @@
 #import "CPNowPlayingTemplate+CDVExtensions.h"
 #import <MediaPlayer/MediaPlayer.h>
-#import "CDVLogger.h"
 
 @implementation CPNowPlayingTemplate (CDVExtensions)
 
 - (void)cdv_setTitle:(NSString *)title {
     NSLog(@"CPNowPlayingTemplate+CDVExtensions: Setting title to %@", title);
-    [CDVLogger log:[NSString stringWithFormat:@"CPNowPlayingTemplate+CDVExtensions: Setting title to %@", title]];
     
     // Use MPNowPlayingInfoCenter instead of direct KVC to avoid crashes
     NSMutableDictionary *info = [[[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [NSMutableDictionary dictionary] mutableCopy];
@@ -19,7 +17,6 @@
 
 - (void)cdv_setSubtitle:(NSString *)subtitle {
     NSLog(@"CPNowPlayingTemplate+CDVExtensions: Setting subtitle to %@", subtitle);
-    [CDVLogger log:[NSString stringWithFormat:@"CPNowPlayingTemplate+CDVExtensions: Setting subtitle to %@", subtitle]];
     
     // Use MPNowPlayingInfoCenter instead of direct KVC to avoid crashes
     NSMutableDictionary *info = [[[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [NSMutableDictionary dictionary] mutableCopy];
@@ -32,7 +29,6 @@
 
 - (void)cdv_setAlbumTitle:(NSString *)albumTitle {
     NSLog(@"CPNowPlayingTemplate+CDVExtensions: Setting album title to %@", albumTitle);
-    [CDVLogger log:[NSString stringWithFormat:@"CPNowPlayingTemplate+CDVExtensions: Setting album title to %@", albumTitle]];
     
     // Use MPNowPlayingInfoCenter instead of direct KVC to avoid crashes
     NSMutableDictionary *info = [[[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [NSMutableDictionary dictionary] mutableCopy];
@@ -45,7 +41,6 @@
 
 - (void)cdv_setImage:(UIImage *)image {
     NSLog(@"CPNowPlayingTemplate+CDVExtensions: Setting image");
-    [CDVLogger log:@"CPNowPlayingTemplate+CDVExtensions: Setting image"];
     
     // Use MPNowPlayingInfoCenter instead of direct KVC to avoid crashes
     if (!image) {

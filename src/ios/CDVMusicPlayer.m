@@ -45,7 +45,7 @@
         [self setupRemoteCommandCenter];
         
         // Setup time observer - reduced frequency (every 5 seconds instead of every 1)
-        __weak typeof(self) weakSelf = self;
+        __weak __typeof__(self) weakSelf = self;
         _timeObserver = [_player addPeriodicTimeObserverForInterval:CMTimeMake(5, 1) 
                                                               queue:dispatch_get_main_queue() 
                                                          usingBlock:^(CMTime time) {

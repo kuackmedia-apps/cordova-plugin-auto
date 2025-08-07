@@ -1,6 +1,5 @@
 #import "CDVAutoMusicPlugin.h"
 #import "CDVCarPlayManager.h"
-#import "CDVLogger.h"
 
 NSString * const CDVViewControllerIsReadyNotification = @"CDVViewControllerIsReadyNotification";
 
@@ -277,21 +276,16 @@ static CDVAutoMusicPlugin *gSharedInstance = nil;
 #pragma mark - Logging
 
 - (void)getLogs:(CDVInvokedUrlCommand*)command {
-    NSArray *logs = [CDVLogger getLogs];
-    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:logs];
-    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+    
 }
 
 - (void)clearLogs:(CDVInvokedUrlCommand*)command {
-    [CDVLogger clearLogs];
-    CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
-    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+    
 }
 
 - (void)addLog:(CDVInvokedUrlCommand*)command {
     NSString *message = [command argumentAtIndex:0];
     if (message) {
-        [CDVLogger log:message];
         CDVPluginResult* pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
         [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
     } else {
