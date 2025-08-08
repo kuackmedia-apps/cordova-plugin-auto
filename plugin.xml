@@ -139,8 +139,24 @@
     <!-- CarPlay app configuration -->
     <config-file target="*-Info.plist" parent="UIApplicationSceneManifest">
       <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <true/>
         <key>UISceneConfigurations</key>
         <dict>
+          <!-- Main application window scene -->
+          <key>UIWindowSceneSessionRoleApplication</key>
+          <array>
+            <dict>
+              <key>UISceneConfigurationName</key>
+              <string>Default Configuration</string>
+              <key>UISceneClassName</key>
+              <string>UIWindowScene</string>
+              <key>UISceneDelegateClassName</key>
+              <string>SceneDelegate</string>
+            </dict>
+          </array>
+
+          <!-- CarPlay template scene -->
           <key>CPTemplateApplicationSceneSessionRoleApplication</key>
           <array>
             <dict>
@@ -171,6 +187,8 @@
     <source-file src="src/ios/CDVMusicPlayer.m" />
     <header-file src="src/ios/CDVPlaylistProvider.h" />
     <source-file src="src/ios/CDVPlaylistProvider.m" />
+    <header-file src="src/ios/SceneDelegate.h" />
+    <source-file src="src/ios/SceneDelegate.m" />
     
     <!-- CPNowPlayingTemplate extension category -->
     <header-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.h" />
