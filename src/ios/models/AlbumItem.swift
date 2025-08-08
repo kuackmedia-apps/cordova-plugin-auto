@@ -1,6 +1,6 @@
 import Foundation
 
-struct AlbumItem: Codable {
+struct AlbumItem: MediaItem {
     let id: String
     let itemType: String
     let itemStyle: String

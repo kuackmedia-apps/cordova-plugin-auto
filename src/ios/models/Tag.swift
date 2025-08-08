@@ -11,6 +11,6 @@ struct Tag: MediaItem {
     let images: [CoverImage]
     let updateDate: Int64
     let imageUpdateDate: Int64
-    let amount: AnyCodable?
+    let amount: Int64?
     let imageColorInfo: ImageColorInfo?
 }

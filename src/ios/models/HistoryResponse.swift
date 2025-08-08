@@ -38,7 +38,6 @@ struct HistoryData: Codable {
     let amount: Int?
     let description: String?
     let imageColorInfo: ImageColorInfo?
-    let options: MixOptions?
     let indice: Int?
     let number: Int?
     let volume: Int?

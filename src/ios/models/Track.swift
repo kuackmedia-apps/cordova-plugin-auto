@@ -18,5 +18,4 @@ struct Track: MediaItem {
     let hasRelatedTracks: Bool
     let score: Double?
     let imageColorInfo: ImageColorInfo?
-    let context: ContextData?
 }

@@ -15,5 +15,5 @@ struct AlbumTracks: Codable {
     let images: [CoverImage]
     let artists: [Artist]
     let tracks: TracksContainer
-    let imageColorInfo: AnyCodable?
+    let imageColorInfo: ImageColorInfo?
 }

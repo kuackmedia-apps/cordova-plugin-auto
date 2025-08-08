@@ -1,5 +1,5 @@
 import Foundation
 
 struct QueueItem: Codable {
-    let data: MediaItem
+    let data: AnyMediaItem
 }

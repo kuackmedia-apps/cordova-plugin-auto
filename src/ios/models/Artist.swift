@@ -1,6 +1,6 @@
 import Foundation
 
-struct Artist: Codable {
+struct Artist: MediaItem {
     let id: String
     let itemType: String
     let itemStyle: String
@@ -9,5 +9,5 @@ struct Artist: Codable {
     let active: Bool?
     let role: String?
     let score: Double?
-    let imageColorInfo: AnyCodable?
+    let imageColorInfo: ImageColorInfo?
 }

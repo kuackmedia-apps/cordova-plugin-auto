@@ -1,6 +1,6 @@
 import Foundation
 
-struct EmptyModel: Codable {
+struct EmptyModel: MediaItem {
     let id: String
     let itemStyle: String
     let itemType: String

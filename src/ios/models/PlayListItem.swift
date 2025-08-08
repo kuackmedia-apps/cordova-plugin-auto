@@ -8,7 +8,7 @@ struct PlayListItem: MediaItem {
     let followers: Int
     let active: Bool
     let curator: Curator?
-    let user: AnyCodable?
+    let user: User?
     let updateDate: Int64
     let createDate: Int64
     let tags: [Tag]?

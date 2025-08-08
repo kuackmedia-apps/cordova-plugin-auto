@@ -118,6 +118,8 @@
   </platform>
 
   <platform name="ios">
+    <!-- Ensure Swift compiles with the correct version -->
+    <preference name="UseSwiftLanguageVersion" default="5.0" />
     <config-file target="config.xml" parent="/*">
       <feature name="AutoMusicPlugin">
         <param name="ios-package" value="CDVAutoMusicPlugin" />
@@ -193,6 +195,37 @@
     <!-- CPNowPlayingTemplate extension category -->
     <header-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.h" />
     <source-file src="src/ios/CPNowPlayingTemplate+CDVExtensions.m" />
+
+  <!-- Swift API files -->
+  <source-file src="src/ios/api/MusicApi.swift" />
+  <source-file src="src/ios/api/TokenInterceptor.swift" />
+
+  <!-- Swift model files -->
+  <source-file src="src/ios/models/AnyMediaItem.swift" />
+  <source-file src="src/ios/models/AlbumItem.swift" />
+  <source-file src="src/ios/models/AlbumSummary.swift" />
+  <source-file src="src/ios/models/AlbumTracks.swift" />
+  <source-file src="src/ios/models/Artist.swift" />
+  <source-file src="src/ios/models/ArtistTracks.swift" />
+  <source-file src="src/ios/models/AutoNavigationExplorer.swift" />
+  <source-file src="src/ios/models/CoverImage.swift" />
+  <source-file src="src/ios/models/Curator.swift" />
+  <source-file src="src/ios/models/EmptyModel.swift" />
+  <source-file src="src/ios/models/HistoryResponse.swift" />
+  <source-file src="src/ios/models/ImageColorInfo.swift" />
+  <source-file src="src/ios/models/MediaItem.swift" />
+  <source-file src="src/ios/models/NavigationData.swift" />
+  <source-file src="src/ios/models/PingResponse.swift" />
+  <source-file src="src/ios/models/PlayListItem.swift" />
+  <source-file src="src/ios/models/PlaylistTracks.swift" />
+  <source-file src="src/ios/models/QueueItem.swift" />
+  <source-file src="src/ios/models/RecentListened.swift" />
+  <source-file src="src/ios/models/SearchResponse.swift" />
+  <source-file src="src/ios/models/Tag.swift" />
+  <source-file src="src/ios/models/Track.swift" />
+  <source-file src="src/ios/models/TrackAPIModels.swift" />
+  <source-file src="src/ios/models/TracksContainer.swift" />
+  <source-file src="src/ios/models/User.swift" />
 
     <framework src="MediaPlayer.framework" />
     <framework src="CarPlay.framework" weak="true" />

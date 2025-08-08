@@ -9,7 +9,6 @@ protocol MusicApi {
     func search(text: String, limit: Int, completion: @escaping (Result<SearchResponse, Error>) -> Void)
 }
 
-@objc(MusicApiImpl)
 class MusicApiImpl: MusicApi {
     let baseURL = URL(string: "https://your.api.base.url/")!
     let session: URLSession
