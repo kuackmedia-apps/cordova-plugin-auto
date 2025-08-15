@@ -1,11 +1,11 @@
 package com.kuackmedia.androidauto.models
 
 data class SearchResponse(
-    val albums: AlbumResult,
-    val artists: ArtistResult,
-    val tracks: TrackResult,
-    val playlists: PlaylistResult,
-    val tags: TagResult,
+    val albums: AlbumResult? = null,
+    val artists: ArtistResult? = null,
+    val tracks: TrackResult? = null,
+    val playlists: PlaylistResult? = null,
+    val tags: TagResult? = null,
 )
 
 data class AlbumResult (

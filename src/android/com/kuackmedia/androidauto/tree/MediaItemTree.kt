@@ -211,26 +211,26 @@ object MediaItemTree {
   suspend fun search(query: String): MutableList<MediaBrowserCompat.MediaItem> {
     val matches: MutableList<MediaBrowserCompat.MediaItem> = mutableListOf()
     val result = this.musicApi.search(query)
+    Log.i(TAG, "Search results for query '\$query': \$result")
 
-    result.tracks.list!!.forEach { track ->
-      this.parseSearchResult(matches, track)
-    }
-
-    result.playlists.list!!.forEach { playlist ->
-      this.parseSearchResult(matches, playlist)
-    }
-
-    result.artists.list!!.forEach { artist ->
+    result.artists?.list?.forEach { artist ->
       this.parseSearchResult(matches, artist)
     }
 
-    result.albums.list!!.forEach { album ->
+    result.albums?.list?.forEach { album ->
       this.parseSearchResult(matches, album)
     }
+    result.playlists?.list?.forEach { playlist ->
+      this.parseSearchResult(matches, playlist)
+    }
 
-    result.tags.list!!.forEach { tag ->
+    result.tags?.list?.forEach { tag ->
       this.parseSearchResult(matches, tag)
     }
+    result.tracks?.list?.forEach { track ->
+      this.parseSearchResult(matches, track)
+    }
+
 
     return matches
   }
