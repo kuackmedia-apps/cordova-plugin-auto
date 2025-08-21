@@ -21,7 +21,7 @@ interface MusicApi {
   @GET("playlists/{playListId}?limit=100&offset=0")
   suspend fun getPlayListTracks(@Path("playListId") playListId: String): PlaylistTracks
 
-  @GET("artists/{artistId}/tracks?limit=100")
+  @GET("artists/{artistId}/tracks?order=popularity&limit=100")
   suspend fun getArtistTracks(@Path("artistId") artistId: String): ArtistTracks
 
   @Headers("Content-type: application/json")
@@ -38,7 +38,7 @@ interface MusicApi {
   @GET("search")
   suspend fun search(
     @Query("q") text: String,
-    @Query("limit") limit: Int = 30
+    @Query("limit") limit: Int = 4
   ): SearchResponse
 
 }
