@@ -8,6 +8,7 @@ data class AlbumTracks(
   override val id: String,
   override val itemType: String,
   override val itemStyle: String = "list",
+  override val score: Double? = null,
   val upc: String,
   val title: String,
   @Json(name = "subTitle") val subTitle: String?,

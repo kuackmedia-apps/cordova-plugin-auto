@@ -7,6 +7,7 @@ data class PlayListItem(
   override val id: String,
   override val itemType: String,
   override val itemStyle: String = "grid",
+  override val score: Double? = null,
   val name: String,
   val followers: Int,
   val active: Boolean,

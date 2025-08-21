@@ -1,6 +1,10 @@
 package com.kuackmedia.androidauto.models
 
+import com.kuackmedia.androidauto.models.MediaItem
+
 data class SearchResponse(
+    /** the single “best” item—can be artist, album, playlist, tag or track */
+    val best: MediaItem? = null,
     val albums: AlbumResult? = null,
     val artists: ArtistResult? = null,
     val tracks: TrackResult? = null,

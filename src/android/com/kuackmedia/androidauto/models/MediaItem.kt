@@ -4,4 +4,5 @@ sealed class MediaItem {
   abstract val id: String
   abstract val itemType: String
   abstract val itemStyle: String
+  abstract val score: Double?
 }

@@ -7,6 +7,7 @@ data class AlbumItem(
   override val id: String,
   override val itemType: String,
   override val itemStyle: String = "grid",
+  override val score: Double? = null,
   val upc: String?,
   val title: String,
   val subTitle: String?,
@@ -15,6 +16,5 @@ data class AlbumItem(
   val active: Boolean,
   val images: List<CoverImage>,
   val artists: List<Artist>,
-  val score: Double?,
   val imageColorInfo: ImageColorInfo? = null,
 ) : MediaItem()

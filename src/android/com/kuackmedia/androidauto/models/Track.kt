@@ -16,6 +16,7 @@ data class Track(
   override val id: String,
   override val itemType: String,
   override val itemStyle: String = "list",
+  override val score: Double? = null,
   val idAlbumTrack: Long?,
   val isrc: String?,
   val name: String,
@@ -28,7 +29,6 @@ data class Track(
   val volume: Int?,
   val number: Int?,
   val hasRelatedTracks: Boolean,
-  val score: Double?,                   // null in your payload
   val imageColorInfo: ImageColorInfo? = null,
   val context: ContextData? = null,
 ) : MediaItem()

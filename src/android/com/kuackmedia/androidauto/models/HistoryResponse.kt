@@ -16,6 +16,7 @@ data class HistoryData(
   override val id: String,
   override val itemType: String,
   override val itemStyle: String = "grid",
+  override val score: Double? = null,
   val ttl: Long? = null,
   val upc: String? = null,
   val title: String? = null,
