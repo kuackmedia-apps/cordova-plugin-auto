@@ -8,6 +8,8 @@ import com.kuackmedia.androidauto.api.MusicApi
 import com.kuackmedia.androidauto.models.AutoNavigationExplorer
 import com.kuackmedia.androidauto.models.EmptyModel
 import com.kuackmedia.androidauto.models.MediaItem
+import com.kuackmedia.androidauto.models.PlayListItem
+import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.NavigationData
 import com.kuackmedia.androidauto.models.RecentListened
 import com.squareup.moshi.JsonAdapter
@@ -209,28 +211,87 @@ object MediaItemTree {
   }
 
   suspend fun search(query: String): MutableList<MediaBrowserCompat.MediaItem> {
-    val matches: MutableList<MediaBrowserCompat.MediaItem> = mutableListOf()
+    // new grouped implementation with headers
+    val matches = mutableListOf<MediaBrowserCompat.MediaItem>()
     val result = this.musicApi.search(query)
-    Log.i(TAG, "Search results for query '\$query': \$result")
 
-    result.artists?.list?.forEach { artist ->
-      this.parseSearchResult(matches, artist)
-    }
-
-    result.albums?.list?.forEach { album ->
-      this.parseSearchResult(matches, album)
-    }
-    result.playlists?.list?.forEach { playlist ->
-      this.parseSearchResult(matches, playlist)
-    }
-
-    result.tags?.list?.forEach { tag ->
-      this.parseSearchResult(matches, tag)
-    }
-    result.tracks?.list?.forEach { track ->
-      this.parseSearchResult(matches, track)
+    // Mejor Resultado
+    result.best?.let { bestItem ->
+      val header = MediaItemFactory.buildMediaItem(
+        title = "Mejor Resultado",
+        subtitle = "",
+        mediaId = "header_best",
+        flags = 0
+      )
+      matches.add(header)
+      parseSearchResult(matches, bestItem)
     }
 
+    // Artistas
+    result.artists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+      val header = MediaItemFactory.buildMediaItem(
+        title = "Artistas",
+        subtitle = "",
+        mediaId = "header_artists",
+        flags = 0
+      )
+      matches.add(header)
+      list.forEach { parseSearchResult(matches, it) }
+    }
+
+    // Albums
+    result.albums?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+      val header = MediaItemFactory.buildMediaItem(
+        title = "Albums",
+        subtitle = "",
+        mediaId = "header_albums",
+        flags = 0
+      )
+      matches.add(header)
+      list.forEach { parseSearchResult(matches, it) }
+    }
+
+    // Playlists
+    result.playlists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+      val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
+      val header = MediaItemFactory.buildMediaItem(
+        title = "Playlists",
+        subtitle = "",
+        mediaId = "header_playlists",
+        flags = 0,
+        extras = extras
+      )
+      matches.add(header)
+      list.forEach { parseSearchResult(matches, it) }
+    }
+
+    // Tags
+    result.tags?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+      val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
+      val header = MediaItemFactory.buildMediaItem(
+        title = "Tags",
+        subtitle = "",
+        mediaId = "header_tags",
+        flags = 0,
+        extras = extras
+      )
+      matches.add(header)
+      list.forEach { parseSearchResult(matches, it) }
+    }
+
+    // Tracks
+    result.tracks?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+      val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
+      val header = MediaItemFactory.buildMediaItem(
+        title = "Tracks",
+        subtitle = "",
+        mediaId = "header_tracks",
+        flags = 0,
+        extras = extras
+      )
+      matches.add(header)
+      list.forEach { parseSearchResult(matches, it) }
+    }
 
     return matches
   }

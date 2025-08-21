@@ -25,6 +25,7 @@ import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.CURRENT_TRACK_KEY
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.QUEUE_ITEMS_KEY
 import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.PLAYLIST_DATA
+import com.kuackmedia.androidauto.tree.MediaItemTree
 import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.kuackmedia.androidauto.utils.MediaUtils
 import kotlinx.coroutines.CoroutineScope
@@ -99,6 +100,106 @@ class MediaSessionCallback(
     if (mediaSessionContext == "MEDIA_AUTOPLAY") {
       Log.d(TAG, "Blocking autoplay triggered by Android Auto")
       // Optionally reset state or ignore
+      return
+    }
+
+    val mediaType = extras?.getString("media_type")
+    // autoplay artist: queue all tracks and play first
+    if (mediaType == "artist" && mediaId != null) {
+      CoroutineScope(Dispatchers.IO).launch {
+        val tracks = MediaItemTree.getRemoteChildren(mediaId)
+        QueueManager.buildQueue(tracks)
+        withContext(Dispatchers.Main) {
+          QueueManager.setQueue(mediaSession)
+          tracks.firstOrNull()?.let { first ->
+            val fe = first.description.extras!!
+            val trackId = fe.getString("idAlbumTrack")
+            val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), trackId)
+            mediaPlayer.setCurrentTrack(uri)
+            mediaPlayer.playCurrentTrack(context)
+            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+            val duration = fe.getLong("length", 0).let { if (it > 0) it else MediaUtils.getMp3Duration(uri.toString()) }
+            mediaSession.setMetadata(
+              MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
+                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+                .build()
+            )
+            showNotification(PlaybackStateCompat.STATE_PLAYING)
+            storeLocalData(fe, trackId)
+          }
+        }
+      }
+      return
+    }
+
+    if (mediaType == "album" && mediaId != null) {
+      // autoplay album: fetch tracks, queue, and play first
+      CoroutineScope(Dispatchers.IO).launch {
+        val tracks = MediaItemTree.getRemoteChildren(mediaId)
+        QueueManager.buildQueue(tracks)
+        withContext(Dispatchers.Main) {
+          QueueManager.setQueue(mediaSession)
+          tracks.firstOrNull()?.let { first ->
+            val fe = first.description.extras!!
+            val trackId = fe.getString("idAlbumTrack")
+            val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), trackId)
+            mediaPlayer.setCurrentTrack(uri)
+            mediaPlayer.playCurrentTrack(context)
+            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+            val duration = fe.getLong("length", 0).let { if (it > 0) it else MediaUtils.getMp3Duration(uri.toString()) }
+            mediaSession.setMetadata(
+              MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
+                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+                .build()
+            )
+            showNotification(PlaybackStateCompat.STATE_PLAYING)
+            storeLocalData(fe, trackId)
+          }
+        }
+      }
+      return
+    }
+
+    // autoplay playlist: queue all tracks and play first
+    if (mediaType == "playlist" && mediaId != null) {
+      CoroutineScope(Dispatchers.IO).launch {
+        val tracks = MediaItemTree.getRemoteChildren(mediaId)
+        QueueManager.buildQueue(tracks)
+        withContext(Dispatchers.Main) {
+          QueueManager.setQueue(mediaSession)
+          tracks.firstOrNull()?.let { first ->
+            val fe = first.description.extras!!
+            val trackId = fe.getString("idAlbumTrack")
+            val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), trackId)
+            mediaPlayer.setCurrentTrack(uri)
+            mediaPlayer.playCurrentTrack(context)
+            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+            val duration = fe.getLong("length", 0).let { if (it > 0) it else MediaUtils.getMp3Duration(uri.toString()) }
+            mediaSession.setMetadata(
+              MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
+                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+                .build()
+            )
+            showNotification(PlaybackStateCompat.STATE_PLAYING)
+            storeLocalData(fe, trackId)
+          }
+        }
+      }
       return
     }
 
@@ -527,4 +628,3 @@ class MediaSessionCallback(
   }
 
 }
-

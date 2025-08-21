@@ -49,7 +49,7 @@ object MediaItemFactory {
           title = playlist.name,
           subtitle = if (mediaItem.curator != null) mediaItem.curator.name else "Playlist",
           mediaId = mediaId,
-          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(getImageUrl(playlist.images)),
           extras = extras
         )
@@ -62,7 +62,7 @@ object MediaItemFactory {
           title = album.title,
           subtitle = getArtistsNames(album.artists),
           mediaId = mediaId,
-          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(getImageUrl(album.images)),
           extras = extras
         )
@@ -70,12 +70,13 @@ object MediaItemFactory {
 
       "artist" -> {
         val artist = mediaItem as Artist
-
+        //LOG artist IMAGES
+        Log.i(TAG, "Artist images: ${artist.images}")
         result = this.buildMediaItem(
           title = artist.name,
           subtitle = "Artist",
           mediaId = mediaId,
-          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(getImageUrl(artist.images)),
           extras = extras
         )
@@ -202,7 +203,7 @@ object MediaItemFactory {
         return image.url
       }
     }
-    return null
+    return "https://example.com/default_image.png" // Default image URL
   }
 
   private fun getArtistsNames(artists: List<Artist>): String {
