@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.session.MediaButtonReceiver
 import androidx.media.utils.MediaConstants
@@ -12,6 +13,7 @@ import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.CordovaEvents
 import com.kuackmedia.androidauto.api.ServiceFactory
 import com.kuackmedia.androidauto.tree.MediaItemTree
+import com.kuackmedia.androidauto.utils.TextsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,6 +56,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       CordovaEvents.ON_CONNECTION_CHANGE,
       JSONObject().put("connected", true))
 
+    TextsManager.init(applicationContext)
+    Log.i(TAG, "TextsManager initialized")
+    Log.i(TAG, "MusicLibraryService test ${TextsManager.getText("artist")}");
     initApiData()
 
     val musicApi = ServiceFactory.create(applicationContext)
@@ -138,6 +143,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
       CordovaEvents.ON_CONNECTION_CHANGE,
       JSONObject().put("connected", false))
 
+    // Remove audio controls notification
+    stopForeground(STOP_FOREGROUND_REMOVE)
+    NotificationManagerCompat.from(this).cancel(1)
     super.onDestroy()
   }
 

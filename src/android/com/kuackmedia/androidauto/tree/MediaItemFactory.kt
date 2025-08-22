@@ -15,6 +15,7 @@ import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
+import com.kuackmedia.androidauto.utils.TextsManager
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.io.File
@@ -47,7 +48,7 @@ object MediaItemFactory {
 
         result = buildMediaItem(
           title = playlist.name,
-          subtitle = if (mediaItem.curator != null) mediaItem.curator.name else "Playlist",
+          subtitle = TextsManager.getText("playlist"),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(getImageUrl(playlist.images)),
@@ -60,7 +61,7 @@ object MediaItemFactory {
 
         result = buildMediaItem(
           title = album.title,
-          subtitle = getArtistsNames(album.artists),
+          subtitle = TextsManager.getText("album") + " - " +getArtistsNames(album.artists),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(getImageUrl(album.images)),
@@ -74,7 +75,7 @@ object MediaItemFactory {
         Log.i(TAG, "Artist images: ${artist.images}")
         result = this.buildMediaItem(
           title = artist.name,
-          subtitle = "Artist",
+          subtitle = TextsManager.getText("artist"),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(getImageUrl(artist.images)),
@@ -87,7 +88,7 @@ object MediaItemFactory {
 
         result = this.buildMediaItem(
           title = tag.name,
-          subtitle = tag.description,
+          subtitle = TextsManager.getText("tag"),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = Uri.parse(getImageUrl(tag.images)),
@@ -115,7 +116,7 @@ object MediaItemFactory {
 
         result = this.buildMediaItem(
           title = track.name,
-          subtitle = getArtistsNames(track.artists),
+          subtitle = TextsManager.getText("track") +  " " + getArtistsNames(track.artists),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = Uri.parse(imageUri),

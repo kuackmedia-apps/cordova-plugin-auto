@@ -12,6 +12,7 @@ import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.NavigationData
 import com.kuackmedia.androidauto.models.RecentListened
+import com.kuackmedia.androidauto.utils.TextsManager
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -122,7 +123,7 @@ object MediaItemTree {
         if (libraryItems != null && libraryItems.isNotEmpty()) {
           libraryItems.forEach {
             val libraryMediaItem = MediaItemFactory.createBrowsable(
-              mediaId = it.text,
+              mediaId = it.mediaId,
               title = it.text,
               iconStringPath = it.icon,
               itemStyle = "LIST",
@@ -230,7 +231,7 @@ object MediaItemTree {
     // Artistas
     result.artists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
       val header = MediaItemFactory.buildMediaItem(
-        title = "Artistas",
+        title = TextsManager.getText("artists"),
         subtitle = "",
         mediaId = "header_artists",
         flags = 0
@@ -242,7 +243,7 @@ object MediaItemTree {
     // Albums
     result.albums?.list?.takeIf { it.isNotEmpty() }?.let { list ->
       val header = MediaItemFactory.buildMediaItem(
-        title = "Albums",
+        title = TextsManager.getText("albums"),
         subtitle = "",
         mediaId = "header_albums",
         flags = 0
@@ -255,7 +256,7 @@ object MediaItemTree {
     result.playlists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
       val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
       val header = MediaItemFactory.buildMediaItem(
-        title = "Playlists",
+        title = TextsManager.getText("playlists"),
         subtitle = "",
         mediaId = "header_playlists",
         flags = 0,
@@ -269,7 +270,7 @@ object MediaItemTree {
     result.tags?.list?.takeIf { it.isNotEmpty() }?.let { list ->
       val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
       val header = MediaItemFactory.buildMediaItem(
-        title = "Tags",
+        title = TextsManager.getText("tags"),
         subtitle = "",
         mediaId = "header_tags",
         flags = 0,
@@ -283,7 +284,7 @@ object MediaItemTree {
     result.tracks?.list?.takeIf { it.isNotEmpty() }?.let { list ->
       val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
       val header = MediaItemFactory.buildMediaItem(
-        title = "Tracks",
+        title = TextsManager.getText("tracks"),
         subtitle = "",
         mediaId = "header_tracks",
         flags = 0,
