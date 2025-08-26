@@ -88,6 +88,8 @@
 
     <source-file src="src/android/com/kuackmedia/androidauto/utils/LocalStorageUtils.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/utils" />
     <source-file src="src/android/com/kuackmedia/androidauto/utils/MediaUtils.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/utils" />
+    <source-file src="src/android/com/kuackmedia/androidauto/utils/TextsManager.kt"
+                 target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/utils" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumItem.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/AlbumSummary.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
