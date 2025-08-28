@@ -7,14 +7,29 @@ class CDVPlaylistProvider: NSObject {
 
     @objc static func loadPlaylistsFromJSON() -> [[String: Any]] {
         print("[CDVPlaylistProvider] loadPlaylistsFromJSON: begin")
+        // Prefer app folder (supports extensionless files and Library/NoCloud)
+        if let arr = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY", in: nil) as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadPlaylistsFromJSON: using app folder root AUTO_NAVIGATION_LIBRARY count=\(arr.count)")
+            return extractPlaylistItems(arr)
+        }
+        if let arr = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY", in: "navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadPlaylistsFromJSON: using app folder navigation/AUTO_NAVIGATION_LIBRARY count=\(arr.count)")
+            return extractPlaylistItems(arr)
+        }
+        // Fallback to bundled resources
         guard let arr = loadJSON(from: "AUTO_NAVIGATION_LIBRARY", in: "navigation") as? [[String: Any]] else {
-            print("[CDVPlaylistProvider] loadPlaylistsFromJSON: AUTO_NAVIGATION_LIBRARY not found in bundle, falling back to hardcoded")
+            print("[CDVPlaylistProvider] loadPlaylistsFromJSON: AUTO_NAVIGATION_LIBRARY not found in bundle or app folder, falling back to hardcoded")
             return hardcodedPlaylists()
         }
-        print("[CDVPlaylistProvider] loadPlaylistsFromJSON: navigation sections count=\(arr.count)")
+        print("[CDVPlaylistProvider] loadPlaylistsFromJSON: using bundled navigation/AUTO_NAVIGATION_LIBRARY count=\(arr.count)")
+        return extractPlaylistItems(arr)
+    }
+
+    private static func extractPlaylistItems(_ arr: [[String: Any]]) -> [[String: Any]] {
+        print("[CDVPlaylistProvider] extractPlaylistItems: navigation sections count=\(arr.count)")
         let section = arr.first { ($0["text"] as? String) == "Playlists" }
         let items = section?["items"] as? [[String: Any]] ?? []
-        print("[CDVPlaylistProvider] loadPlaylistsFromJSON: playlists items count=\(items.count)")
+        print("[CDVPlaylistProvider] extractPlaylistItems: playlists items count=\(items.count)")
         return items.map { p in
             [
                 "id": String(describing: p["id"] ?? ""),
@@ -26,6 +41,15 @@ class CDVPlaylistProvider: NSObject {
 
     @objc static func loadTracks(forPlaylist playlistId: String) -> [[String: Any]] {
         print("[CDVPlaylistProvider] loadTracks(forPlaylist:) pid=\(playlistId)")
+        // Prefer app folder first (supports extensionless files in Library/NoCloud)
+        if let tracks = loadJSONFromAppFolder(filename: "QUEUE_ITEMS_KEY", in: nil) as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadTracks: loaded from app folder QUEUE_ITEMS_KEY count=\(tracks.count)")
+            return tracks
+        }
+        if let tracks = loadJSONFromAppFolder(filename: "QUEUE_ITEMS_KEY", in: "navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadTracks: loaded from app folder navigation/QUEUE_ITEMS_KEY count=\(tracks.count)")
+            return tracks
+        }
         if let tracks = loadJSON(from: "QUEUE_ITEMS_KEY", in: "navigation") as? [[String: Any]] {
             print("[CDVPlaylistProvider] loadTracks: loaded from bundle QUEUE_ITEMS_KEY count=\(tracks.count)")
             return tracks
@@ -49,6 +73,84 @@ class CDVPlaylistProvider: NSObject {
         let bundled = (loadJSON(from: "AUTO_NAVIGATION", in: "navigation") as? [[String: Any]]) ?? []
         print("[CDVPlaylistProvider] loadNavigationFromJSON: using bundled navigation/AUTO_NAVIGATION count=\(bundled.count)")
         return bundled
+    }
+
+    // Load full library sections (e.g., Playlists, Albums, Artists) from AUTO_NAVIGATION_LIBRARY
+    // Mirrors Android behavior when AUTO_NAVIGATION is not provided.
+    @objc static func loadLibrarySectionsFromJSON() -> [[String: Any]] {
+        print("[CDVPlaylistProvider] loadLibrarySectionsFromJSON: begin")
+        // Prefer app folder first (Library/NoCloud and common subfolders), extensionless supported
+        if let arr = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY", in: nil) as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadLibrarySectionsFromJSON: app folder root count=\(arr.count)")
+            return arr
+        }
+        if let arr = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY", in: "navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadLibrarySectionsFromJSON: app folder navigation count=\(arr.count)")
+            return arr
+        }
+        if let arr = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY", in: "data/navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadLibrarySectionsFromJSON: app folder data/navigation count=\(arr.count)")
+            return arr
+        }
+        // Fallback to bundled
+        if let arr = loadJSON(from: "AUTO_NAVIGATION_LIBRARY", in: "navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadLibrarySectionsFromJSON: bundled navigation count=\(arr.count)")
+            return arr
+        }
+        print("[CDVPlaylistProvider] loadLibrarySectionsFromJSON: not found, returning empty")
+        return []
+    }
+
+    // MARK: - Navigation children loader (mirrors Android MediaItemTree.loadNavigationDataChildren)
+    // Reads a child file referenced by AUTO_NAVIGATION.section.fileName and normalizes into
+    // an array of dictionaries with best-effort keys: id, name/title, description, itemType/type
+    @objc static func loadNavigationChildren(fileName: String) -> [[String: Any]] {
+        print("[CDVPlaylistProvider] loadNavigationChildren: fileName=\(fileName)")
+        // Try app folder first (Library/NoCloud and common subfolders), extensionless supported
+        let appFolderJson = (
+            loadJSONFromAppFolder(filename: fileName, in: nil)
+            ?? loadJSONFromAppFolder(filename: fileName, in: "navigation")
+            ?? loadJSONFromAppFolder(filename: fileName, in: "data/navigation")
+        )
+
+        if let json = appFolderJson {
+            return normalizeChildrenPayload(fileName: fileName, json: json)
+        }
+
+        // Bundle fallbacks
+        if let json = loadJSON(from: fileName, in: "navigation") {
+            return normalizeChildrenPayload(fileName: fileName, json: json)
+        }
+
+        print("[CDVPlaylistProvider] loadNavigationChildren: not found for \(fileName)")
+        return []
+    }
+
+    // Best-effort normalization to a flat array of dicts consumable by CarPlay lists
+    private static func normalizeChildrenPayload(fileName: String, json: Any) -> [[String: Any]] {
+        print("[CDVPlaylistProvider] normalizeChildrenPayload: fileName=\(fileName)")
+        // Direct array of dictionaries
+        if let arr = json as? [[String: Any]] {
+            print("[CDVPlaylistProvider] normalizeChildrenPayload: array dict count=\(arr.count)")
+            // Special case: AUTO_NAVIGATION_LIBRARY contains sections; return as-is so caller can decide
+            if fileName == "AUTO_NAVIGATION_LIBRARY" { return arr }
+            // Special case: RECENT_LISTENED often wrapped as [{ data: {...} }]
+            if let first = arr.first, first["data"] != nil {
+                let mapped = arr.compactMap { $0["data"] as? [String: Any] }
+                print("[CDVPlaylistProvider] normalizeChildrenPayload: unwrapped 'data' count=\(mapped.count)")
+                return mapped
+            }
+            return arr
+        }
+        // Some payloads can be a dictionary with key "items"
+        if let dict = json as? [String: Any] {
+            if let items = dict["items"] as? [[String: Any]] {
+                print("[CDVPlaylistProvider] normalizeChildrenPayload: dict items count=\(items.count)")
+                return items
+            }
+        }
+        print("[CDVPlaylistProvider] normalizeChildrenPayload: unsupported json shape")
+        return []
     }
 
     @objc static func loadJSON(from filename: String, in directory: String) -> Any? {
