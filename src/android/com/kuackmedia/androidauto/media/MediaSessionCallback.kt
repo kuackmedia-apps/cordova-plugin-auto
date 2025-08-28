@@ -103,7 +103,16 @@ class MediaSessionCallback(
       return
     }
 
-    val mediaType = extras?.getString("media_type")
+    // Extraer mediaType del mediaId si extras es nulo
+    var mediaType: String? = extras?.getString("media_type")
+    if (mediaType == null && mediaId != null) {
+      // Espera formato: item_type_id
+      val parts = mediaId.split("_")
+      if (parts.size >= 3) {
+        mediaType = parts[1]
+      }
+    }
+
     // autoplay artist: queue all tracks and play first
     if (mediaType == "artist" && mediaId != null) {
       CoroutineScope(Dispatchers.IO).launch {
