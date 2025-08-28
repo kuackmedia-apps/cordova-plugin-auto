@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import MediaPlayer
 import CarPlay
+import UIKit
 
 @objc(CDVMusicPlayer)
 class CDVMusicPlayer: NSObject {
@@ -84,10 +85,43 @@ class CDVMusicPlayer: NSObject {
     @objc func updateNowPlayingInfo() {
         guard let track = currentTrack else { return }
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        info[MPMediaItemPropertyTitle] = track["title"] as? String
-        info[MPMediaItemPropertyArtist] = track["artist"] as? String
-        info[MPMediaItemPropertyAlbumTitle] = track["album"] as? String
+
+        // Core metadata
+        let title = track["title"] as? String
+        let artist = track["artist"] as? String
+        let album = track["album"] as? String
+        info[MPMediaItemPropertyTitle] = title
+        info[MPMediaItemPropertyArtist] = artist
+        info[MPMediaItemPropertyAlbumTitle] = album
+
+        // Playback timing
+        let elapsed = CMTimeGetSeconds(player.currentTime())
+        if elapsed.isFinite {
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
+        }
+        if let durationTime = player.currentItem?.asset.duration {
+            let duration = CMTimeGetSeconds(durationTime)
+            if duration.isFinite && duration > 0 {
+                info[MPMediaItemPropertyPlaybackDuration] = duration
+            }
+        }
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+
+        // Media type
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+
+        // Optional artwork
+        if let artStr = track["artwork"] as? String, let artURL = URL(string: artStr) {
+            if let data = try? Data(contentsOf: artURL), let image = UIImage(data: data) {
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                info[MPMediaItemPropertyArtwork] = artwork
+            }
+        }
+
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+
+        // Lightweight diagnostics
+        print("[CDVMusicPlayer] NowPlaying updated — title=\(title ?? "-") artist=\(artist ?? "-") elapsed=\(elapsed.isFinite ? elapsed : 0) rate=\(isPlaying ? 1.0 : 0.0)")
     }
 
     @objc func updateNowPlayingInfoIfNeeded() { updateNowPlayingInfo() }

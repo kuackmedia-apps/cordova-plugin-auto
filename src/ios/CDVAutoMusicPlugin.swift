@@ -23,6 +23,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
         NotificationCenter.default.addObserver(self, selector: #selector(carPlayConnectionChanged(_:)), name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(mediaTrackChanged(_:)), name: Notification.Name("CDVMediaTrackChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(playbackStateChanged(_:)), name: Notification.Name("CDVPlaybackStateChanged"), object: nil)
+        print("[AutoMusicPlugin] pluginInitialize: manager created, observers registered")
     }
 
     override func onAppTerminate() {
@@ -34,12 +35,14 @@ class CDVAutoMusicPlugin: CDVPlugin {
     // MARK: - Connection
     @objc(isConnected:)
     func isConnected(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] isConnected called")
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: carPlayManager?.isConnected() ?? false)
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 
     @objc(registerAutoConnectListener:)
     func registerAutoConnectListener(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] registerAutoConnectListener called")
         connectionCallbackId = command.callbackId
         let result = CDVPluginResult(status: CDVCommandStatus_NO_RESULT)
         result?.setKeepCallbackAs(true)
@@ -48,6 +51,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(unregisterAutoConnectListener:)
     func unregisterAutoConnectListener(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] unregisterAutoConnectListener called")
         connectionCallbackId = nil
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -56,6 +60,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
     // MARK: - Playback Control
     @objc(play:)
     func play(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] play called")
         carPlayManager?.musicPlayer?.play()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -63,6 +68,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(pause:)
     func pause(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] pause called")
         carPlayManager?.musicPlayer?.pause()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -70,6 +76,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(skipToNext:)
     func skipToNext(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] skipToNext called")
         carPlayManager?.musicPlayer?.skipToNext()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -77,6 +84,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(skipToPrevious:)
     func skipToPrevious(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] skipToPrevious called")
         carPlayManager?.musicPlayer?.skipToPrevious()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -85,6 +93,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
     @objc(seekTo:)
     func seekTo(command: CDVInvokedUrlCommand) {
         let position = (command.argument(at: 0) as? NSNumber)?.doubleValue ?? 0
+        print("[AutoMusicPlugin] seekTo called position=\(position)")
         carPlayManager?.musicPlayer?.seekToPosition(position)
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -92,6 +101,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(getPosition:)
     func getPosition(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] getPosition called")
         let pos = carPlayManager?.musicPlayer?.currentPlaybackPosition() ?? 0
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: pos)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -99,6 +109,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(getCurrentPlaybackState:)
     func getCurrentPlaybackState(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] getCurrentPlaybackState called")
         let state = carPlayManager?.musicPlayer?.currentPlaybackState() ?? "stopped"
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: state)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -108,6 +119,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
     @objc(updateQueue:)
     func updateQueue(command: CDVInvokedUrlCommand) {
         let queue = command.argument(at: 0) as? [[String: Any]] ?? []
+        print("[AutoMusicPlugin] updateQueue called count=\(queue.count)")
         carPlayManager?.musicPlayer?.updateQueue(queue)
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -115,6 +127,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(notifyQueueStorageUpdated:)
     func notifyQueueStorageUpdated(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] notifyQueueStorageUpdated called")
         carPlayManager?.musicPlayer?.reloadQueue()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -122,6 +135,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(notifyCurrentTrackUpdated:)
     func notifyCurrentTrackUpdated(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] notifyCurrentTrackUpdated called")
         carPlayManager?.musicPlayer?.updateCurrentTrack()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -130,6 +144,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
     // MARK: - Hardcoded content
     @objc(getHardcodedPlaylists:)
     func getHardcodedPlaylists(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] getHardcodedPlaylists called")
         let playlists = CDVPlaylistProvider.loadPlaylistsFromJSON()
         // Map to JS-expected shape
         let mapped: [[String: Any]] = playlists.map { p in
@@ -145,6 +160,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(getHardcodedPlaylistTracks:)
     func getHardcodedPlaylistTracks(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] getHardcodedPlaylistTracks called")
         let playlistId = command.argument(at: 0) as? String ?? ""
         let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: playlistId)
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: tracks)
@@ -162,6 +178,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
         track["title"] = metadata["title"] ?? "Unknown Title"
         track["artist"] = metadata["artist"] ?? "Unknown Artist"
         track["album"] = metadata["album"] ?? "Unknown Album"
+        print("[AutoMusicPlugin] playHardcodedTrack called url=\(trackUrl) title=\(track["title"] ?? "-") artist=\(track["artist"] ?? "-")")
         carPlayManager?.musicPlayer?.playTrack(track)
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: "Playing hardcoded track")
         commandDelegate.send(result, callbackId: command.callbackId)

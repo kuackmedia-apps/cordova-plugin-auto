@@ -1,4 +1,9 @@
 var exec = require('cordova/exec');
+  // Select correct native service per platform
+  var SERVICE = (typeof cordova !== 'undefined' && cordova.platformId === 'ios')
+    ? 'AutoMusicPlugin'  // iOS feature name in plugin.xml
+    : 'AndroidAutoPlugin'; // Android feature name in plugin.xml
+
   var AutoPlugin = {
     onConnectionChangeCallback: null,
     onMediaUpdateCallback: null,
@@ -15,7 +20,7 @@ var exec = require('cordova/exec');
         function(err) {
           console.error('AutoPlugin listener error:', err);
         },
-        'AndroidAutoPlugin',
+        SERVICE,
         'registerEvents',
         ['onConnectionChange']
       );
@@ -33,7 +38,7 @@ var exec = require('cordova/exec');
           function (err) {
             console.error('AutoPlugin onMediaUpdate error:', err);
           },
-          'AndroidAutoPlugin',
+          SERVICE,
           'registerEvents',
           ['onMediaUpdate']
         );
@@ -51,7 +56,7 @@ var exec = require('cordova/exec');
         function (err) {
           console.error('AutoPlugin onPlaybackStateChange error:', err);
         },
-        'AndroidAutoPlugin',
+        SERVICE,
         'registerEvents',
         ['onPlaybackStateChange']
       );
@@ -70,7 +75,7 @@ var exec = require('cordova/exec');
             errorCb(err);
           }
         },
-        'AndroidAutoPlugin',
+        SERVICE,
         'play',
         [],
       );
@@ -90,7 +95,7 @@ var exec = require('cordova/exec');
               errorCb(err);
             }
           },
-          'AndroidAutoPlugin',
+          SERVICE,
           'pause',
           [],
         );
@@ -108,7 +113,7 @@ var exec = require('cordova/exec');
             errorCb(err);
           }
         },
-        'AndroidAutoPlugin',
+        SERVICE,
         'getCurrentPlaybackState',
         [],
       );
@@ -128,7 +133,7 @@ var exec = require('cordova/exec');
             errorCb(err);
           }
         },
-        'AndroidAutoPlugin',
+        SERVICE,
         'isConnected',
         [],
       );
@@ -147,7 +152,7 @@ var exec = require('cordova/exec');
                 errorCb(err);
               }
            },
-           'AndroidAutoPlugin',
+           SERVICE,
            'getPosition',
            [],
          );
@@ -166,7 +171,7 @@ var exec = require('cordova/exec');
                 errorCb(err);
               }
            },
-           'AndroidAutoPlugin',
+           SERVICE,
            'playCurrentTrack',
            [],
          );

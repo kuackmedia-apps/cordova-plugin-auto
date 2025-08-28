@@ -6,9 +6,15 @@ class CDVPlaylistProvider: NSObject {
     @objc static func tracksForPlaylist(_ playlistId: String) -> [[String: Any]] { return [] }
 
     @objc static func loadPlaylistsFromJSON() -> [[String: Any]] {
-        guard let arr = loadJSON(from: "AUTO_NAVIGATION_LIBRARY", in: "navigation") as? [[String: Any]] else { return hardcodedPlaylists() }
+        print("[CDVPlaylistProvider] loadPlaylistsFromJSON: begin")
+        guard let arr = loadJSON(from: "AUTO_NAVIGATION_LIBRARY", in: "navigation") as? [[String: Any]] else {
+            print("[CDVPlaylistProvider] loadPlaylistsFromJSON: AUTO_NAVIGATION_LIBRARY not found in bundle, falling back to hardcoded")
+            return hardcodedPlaylists()
+        }
+        print("[CDVPlaylistProvider] loadPlaylistsFromJSON: navigation sections count=\(arr.count)")
         let section = arr.first { ($0["text"] as? String) == "Playlists" }
         let items = section?["items"] as? [[String: Any]] ?? []
+        print("[CDVPlaylistProvider] loadPlaylistsFromJSON: playlists items count=\(items.count)")
         return items.map { p in
             [
                 "id": String(describing: p["id"] ?? ""),
@@ -19,21 +25,30 @@ class CDVPlaylistProvider: NSObject {
     }
 
     @objc static func loadTracks(forPlaylist playlistId: String) -> [[String: Any]] {
-        if let tracks = loadJSON(from: "QUEUE_ITEMS_KEY", in: "navigation") as? [[String: Any]] { return tracks }
+        print("[CDVPlaylistProvider] loadTracks(forPlaylist:) pid=\(playlistId)")
+        if let tracks = loadJSON(from: "QUEUE_ITEMS_KEY", in: "navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadTracks: loaded from bundle QUEUE_ITEMS_KEY count=\(tracks.count)")
+            return tracks
+        }
+        print("[CDVPlaylistProvider] loadTracks: bundle QUEUE_ITEMS_KEY not found, using hardcoded provider")
         return tracksForPlaylist(playlistId)
     }
 
     @objc static func loadNavigationFromJSON() -> [[String: Any]] {
         // 1) Prefer app filesystem root (filesDir-like), e.g., Library/Application Support/AUTO_NAVIGATION
         if let fsRoot = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION", in: nil) as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadNavigationFromJSON: using app folder root AUTO_NAVIGATION count=\(fsRoot.count)")
             return fsRoot
         }
         // 2) Then try within a navigation subfolder for backward compatibility
         if let fsNav = loadJSONFromAppFolder(filename: "AUTO_NAVIGATION", in: "navigation") as? [[String: Any]] {
+            print("[CDVPlaylistProvider] loadNavigationFromJSON: using app folder navigation/AUTO_NAVIGATION count=\(fsNav.count)")
             return fsNav
         }
         // 3) Fallback to bundled resources
-        return (loadJSON(from: "AUTO_NAVIGATION", in: "navigation") as? [[String: Any]]) ?? []
+        let bundled = (loadJSON(from: "AUTO_NAVIGATION", in: "navigation") as? [[String: Any]]) ?? []
+        print("[CDVPlaylistProvider] loadNavigationFromJSON: using bundled navigation/AUTO_NAVIGATION count=\(bundled.count)")
+        return bundled
     }
 
     @objc static func loadJSON(from filename: String, in directory: String) -> Any? {
@@ -49,11 +64,17 @@ class CDVPlaylistProvider: NSObject {
             bundle.path(forResource: filename, ofType: "json", inDirectory: "data/\(directory)"),
             bundle.path(forResource: filename, ofType: nil),
         ]
+        print("[CDVPlaylistProvider] loadJSON(bundle): filename=\(filename) directory=\(directory)")
         for path in candidates.compactMap({ $0 }) {
-            if let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
-                if let json = try? JSONSerialization.jsonObject(with: data, options: [.allowFragments]) {
-                    return json
-                }
+            print("[CDVPlaylistProvider] loadJSON(bundle): trying path=\(path)")
+            let url = URL(fileURLWithPath: path)
+            do {
+                let data = try Data(contentsOf: url)
+                let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments])
+                print("[CDVPlaylistProvider] loadJSON(bundle): success bytes=\(data.count) from=\(url.lastPathComponent)")
+                return json
+            } catch {
+                print("[CDVPlaylistProvider] loadJSON(bundle): failed at path=\(path) error=\(error)")
             }
         }
         return nil
@@ -68,6 +89,11 @@ class CDVPlaylistProvider: NSObject {
     if let appSup = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first { bases.append(appSup) }
     if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first { bases.append(docs) }
     if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first { bases.append(caches) }
+    // Also check Library and Library/NoCloud, which is where the host app stores dynamic assets
+    if let lib = fm.urls(for: .libraryDirectory, in: .userDomainMask).first {
+        bases.append(lib)
+        bases.append(lib.appendingPathComponent("NoCloud", isDirectory: true))
+    }
 
         // Candidate relative paths inside each base
         var rels: [String] = []
