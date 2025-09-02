@@ -14,6 +14,8 @@ class CDVMusicPlayer: NSObject {
     private(set) var isPlaying: Bool = false
     private var nowPlayingTemplate: CPNowPlayingTemplate?
     private var timeObserverToken: Any?
+    private let artworkCache = NSCache<NSURL, UIImage>()
+    private var forceClearOnNextApply: Bool = false
 
     @objc var currentTrack: [String: Any]? {
         guard currentIndex < queue.count else { return nil }
@@ -29,6 +31,11 @@ class CDVMusicPlayer: NSObject {
 
     @objc func setNowPlayingTemplate(_ template: CPNowPlayingTemplate) {
         self.nowPlayingTemplate = template
+    }
+
+    // Request a one-time clear to force UI refresh on next metadata apply
+    @objc func requestNowPlayingClearRefresh() {
+        forceClearOnNextApply = true
     }
 
     // MARK: - Playback
@@ -140,7 +147,8 @@ class CDVMusicPlayer: NSObject {
 
     @objc func updateNowPlayingInfo() {
         guard let track = currentTrack else { return }
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        // Build a fresh dictionary to avoid carrying over stale keys
+        var info: [String: Any] = [:]
 
         // Core metadata
         let title = (track["title"] as? String) ?? ""
@@ -161,6 +169,10 @@ class CDVMusicPlayer: NSObject {
                 info[MPMediaItemPropertyPlaybackDuration] = duration
             }
         }
+        // Include asset URL if available so CarPlay can better bind to the media
+        if let src = (track["source"] as? String), let u = URL(string: src) {
+            info[MPNowPlayingInfoPropertyAssetURL] = u
+        }
         // Reflect actual player rate when possible
         let rate = isPlaying ? (player.rate == 0 ? 1.0 : player.rate) : 0.0
         info[MPNowPlayingInfoPropertyPlaybackRate] = rate
@@ -169,12 +181,34 @@ class CDVMusicPlayer: NSObject {
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
 
-        // Optional artwork
+        // Optional artwork (async, non-blocking)
         if let artStr = track["artwork"] as? String, let artURL = URL(string: artStr) {
-            if let data = try? Data(contentsOf: artURL), let image = UIImage(data: data) {
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            print("[CDVMusicPlayer][ART] artwork URL found: \(artStr)")
+            let nsurl = artURL as NSURL
+            if let cached = artworkCache.object(forKey: nsurl) {
+                print("[CDVMusicPlayer][ART] cache hit for artwork: \(artStr) size=\(Int(cached.size.width))x\(Int(cached.size.height)))")
+                let artwork = MPMediaItemArtwork(boundsSize: cached.size) { _ in cached }
                 info[MPMediaItemPropertyArtwork] = artwork
+            } else {
+                print("[CDVMusicPlayer][ART] cache miss, downloading artwork: \(artStr)")
+                URLSession.shared.dataTask(with: artURL) { [weak self] data, resp, err in
+                    if let err = err { print("[CDVMusicPlayer][ART][ERROR] download failed: \(err.localizedDescription)"); return }
+                    guard let self = self, let data = data, let image = UIImage(data: data) else {
+                        print("[CDVMusicPlayer][ART][ERROR] invalid image data for: \(artStr)")
+                        return
+                    }
+                    print("[CDVMusicPlayer][ART] download success bytes=\(data.count) size=\(Int(image.size.width))x\(Int(image.size.height))) for \(artStr)")
+                    self.artworkCache.setObject(image, forKey: nsurl)
+                    DispatchQueue.main.async {
+                        var current: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                        current[MPMediaItemPropertyArtwork] = artwork
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = current
+                    }
+                }.resume()
             }
+        } else {
+            print("[CDVMusicPlayer][ART] no artwork URL in current track dict keys=\(Array(track.keys))")
         }
 
         let applyInfo: () -> Void = {
@@ -182,7 +216,18 @@ class CDVMusicPlayer: NSObject {
             // Provide default playback rate key as well; some UIs consult this
             let rate = enriched[MPNowPlayingInfoPropertyPlaybackRate] as? Float ?? 0.0
             enriched[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rate == 0 ? 1.0 : rate
+            // Provide queue metadata when possible
+            enriched[MPNowPlayingInfoPropertyPlaybackQueueCount] = self.queue.count
+            enriched[MPNowPlayingInfoPropertyPlaybackQueueIndex] = min(self.currentIndex, max(0, self.queue.count - 1))
+            // If a one-time refresh was requested, clear then apply
+            if self.forceClearOnNextApply {
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = [:]
+                self.forceClearOnNextApply = false
+            }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = enriched
+            MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
+            let keys = Array(enriched.keys).map { String(describing: $0) }
+            print("[CDVMusicPlayer] Applied NowPlayingInfo keys=\(keys)")
         }
         if Thread.isMainThread { applyInfo() } else { DispatchQueue.main.async { applyInfo() } }
 

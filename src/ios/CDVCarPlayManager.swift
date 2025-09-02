@@ -1,6 +1,7 @@
 import Foundation
 import CarPlay
 import MediaPlayer
+import UIKit
 
 @objc(CDVCarPlayManager)
 class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
@@ -10,6 +11,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     @objc var interfaceController: CPInterfaceController?
     @objc private(set) var connected: Bool = false
     private var isNowPlayingShown: Bool = false
+    private let listImageCache = NSCache<NSURL, UIImage>()
 
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
@@ -18,6 +20,30 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     }
 
     // MARK: - Helpers
+    private func setListItemImage(_ li: CPListItem, from urlString: String?) {
+        guard let s = urlString, !s.isEmpty, let url = URL(string: s) else {
+            if let s = urlString, s.isEmpty { print("[CarPlay][IMG] empty image URL string") }
+            else { print("[CarPlay][IMG] no image URL present for list item") }
+            return
+        }
+        let nsurl = url as NSURL
+        if let cached = listImageCache.object(forKey: nsurl) {
+            print("[CarPlay][IMG] cache hit for list image: \(s) size=\(Int(cached.size.width))x\(Int(cached.size.height)))")
+            li.setImage(cached)
+            return
+        }
+        print("[CarPlay][IMG] cache miss, downloading list item image: \(s)")
+        URLSession.shared.dataTask(with: url) { [weak self] data, resp, err in
+            if let err = err { print("[CarPlay][IMG][ERROR] download failed for: \(s) error=\(err.localizedDescription)"); return }
+            guard let self = self, let data = data, let img = UIImage(data: data) else {
+                print("[CarPlay][IMG][ERROR] invalid image data for: \(s)")
+                return
+            }
+            print("[CarPlay][IMG] download success bytes=\(data.count) size=\(Int(img.size.width))x\(Int(img.size.height))) url=\(s)")
+            self.listImageCache.setObject(img, forKey: nsurl)
+            DispatchQueue.main.async { li.setImage(img) }
+        }.resume()
+    }
     private func makeListItems(from dicts: [[String: Any]], parentTitle: String) -> [CPListItem] {
         var cpItems: [CPListItem] = []
         for d in dicts {
@@ -28,6 +54,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             let childFileName = d["fileName"] as? String
             let inlineItems = d["items"] as? [[String: Any]]
             let li = CPListItem(text: name, detailText: subtitle)
+            // Try to attach image if available on item
+            let imageUrl = (d["artwork"] as? String) ?? (d["image"] as? String) ?? (d["icon"] as? String)
+            if let imageUrl, !imageUrl.isEmpty { print("[CarPlay][IMG] list item has image URL: \(imageUrl)") }
+            else { print("[CarPlay][IMG] list item without image URL. keys=\(Array(d.keys)) name=\(name)") }
+            setListItemImage(li, from: imageUrl)
             li.handler = { [weak self] _, completion in
                 guard let self else { completion(); return }
                 print("[CarPlay] select item name=\(name) id=\(id) mediaType=\(mediaType ?? "-") fileName=\(childFileName ?? "<nil>") in parent=\(parentTitle)")
@@ -96,11 +127,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 api.getTrackUrl(trackRequest: req) { res in
                     defer { group.leave() }
                     guard let signed = try? res.get() else { return }
+                    // Prefer largest album image URL when possible
+                    let artUrl: String? = {
+                        guard let images = t.album?.images, !images.isEmpty else { return nil }
+                        // If size is provided, choose the max; else fallback to the first URL
+                        if let best = images.max(by: { (a, b) in (a.size ?? 0) < (b.size ?? 0) }) { return best.url }
+                        return images.first?.url
+                    }()
                     let dict: [String: Any] = [
                         "title": t.name,
                         "artist": t.artists.first?.name ?? "",
                         "album": t.album?.title ?? parentTitle,
-                        "source": signed.signedUrl
+                        "source": signed.signedUrl,
+                        "artwork": artUrl as Any
                     ]
                     results.append(dict)
                 }
@@ -181,6 +220,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 // Load children from referenced file (e.g., RECENT_LISTENED, AUTO_NAVIGATION_LIBRARY, AUTO_NAVIGATION_EXPLORER)
                 let children = CDVPlaylistProvider.loadNavigationChildren(fileName: fileName)
                 print("[CarPlay] [NAV] fileName=\(fileName) childrenCount=\(children.count)")
+                if children.isEmpty { print("[CarPlay][TAB][EMPTY] fileName=\(fileName) produced 0 children") }
 
                 // If this is AUTO_NAVIGATION_LIBRARY, children are sections: [{ text, items: [...] }]
                 if fileName == "AUTO_NAVIGATION_LIBRARY", let first = children.first, first["items"] != nil {
@@ -189,6 +229,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                         let subTitle = (subSection["text"] as? String) ?? "Section \(sidx+1)"
                         let subItems = subSection["items"] as? [[String: Any]] ?? []
                         let li = CPListItem(text: subTitle, detailText: "\(subItems.count) items")
+                        // Subsections may include a representative image key
+                        let subImage = (subSection["artwork"] as? String) ?? (subSection["image"] as? String) ?? (subSection["icon"] as? String)
+                        if let subImage, !subImage.isEmpty { print("[CarPlay][IMG] subsection image URL: \(subImage)") }
+                        setListItemImage(li, from: subImage)
                         li.handler = { [weak self] _, completion in
                             guard let self, let controller = self.interfaceController else { completion(); return }
                             print("[CarPlay] [NAV][LIB] open subsection title=\(subTitle) items=\(subItems.count)")
@@ -207,10 +251,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 } else {
                     // Generic flat list
                     let items = makeListItems(from: children, parentTitle: sectionTitle)
+                    if items.isEmpty { print("[CarPlay][TAB][EMPTY] section=\(sectionTitle) (file=\(fileName)) returned 0 list items") }
                     cpSections.append(CPListSection(items: items))
                 }
             } else if let sectionItems = explicitItems {
                 let items = makeListItems(from: sectionItems, parentTitle: sectionTitle)
+                if items.isEmpty { print("[CarPlay][TAB][EMPTY] explicit items section=\(sectionTitle) returned 0 list items") }
                 cpSections.append(CPListSection(items: items))
             }
 
@@ -219,9 +265,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             let cpList = CPListTemplate(title: safeTitle, sections: cpSections)
             cpList.tabTitle = safeTitle
             if #available(iOS 13.0, *) { cpList.tabImage = UIImage(systemName: "music.note.list") }
-            print("[CarPlay] [NAV] building section title=\(safeTitle) sections=\(cpSections.count)")
+            let totalItems = cpSections.reduce(0) { $0 + $1.items.count }
+            print("[CarPlay] [NAV] building tab title=\(safeTitle) sections=\(cpSections.count) totalItems=\(totalItems)")
+            if totalItems == 0 { print("[CarPlay][TAB][EMPTY] tab title=\(safeTitle) has no items") }
             // Ensure sections are applied on main thread for reliability
             DispatchQueue.main.async {
+                cpList.updateSections(cpSections)
+            }
+            // Re-apply after a short delay to avoid race with presentation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 cpList.updateSections(cpSections)
             }
             tabTemplates.append(cpList)
@@ -277,6 +329,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                             print("[CarPlay] [LIB][WARN] item with empty name. keys=\(Array(itemDict.keys))")
                         }
                         let listItem = CPListItem(text: name, detailText: subtitle)
+                        let itemImage = (itemDict["artwork"] as? String) ?? (itemDict["image"] as? String) ?? (itemDict["icon"] as? String)
+                        if let itemImage, !itemImage.isEmpty { print("[CarPlay][IMG] library item image URL: \(itemImage)") }
+                        setListItemImage(listItem, from: itemImage)
                         listItem.handler = { [weak self] _, completion in
                             guard let self else { completion(); return }
                             print("[CarPlay] [LIB] list item selected in section=\(title) id=\(pid) name=\(name)")
@@ -294,6 +349,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                     }
                     let safeTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Section \(idx+1)" : title
                     print("[CarPlay] [LIB] building section title=\(safeTitle) items=\(cpItems.count)")
+                    if cpItems.isEmpty { print("[CarPlay][TAB][EMPTY] library section title=\(safeTitle) has 0 items") }
                     let cpSection = CPListSection(items: cpItems)
                     let cpList = CPListTemplate(title: safeTitle, sections: [cpSection])
                     cpList.tabTitle = safeTitle
@@ -301,6 +357,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                         cpList.tabImage = UIImage(systemName: "music.note.list")
                     }
                     DispatchQueue.main.async {
+                        cpList.updateSections([cpSection])
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         cpList.updateSections([cpSection])
                     }
                     tabTemplates.append(cpList)
@@ -329,6 +388,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
         // Log final tabs
         let titles = tabTemplates.compactMap { ($0 as? CPListTemplate)?.tabTitle ?? "(unknown)" }
         print("[CarPlay] Final tabs count=\(tabTemplates.count) titles=\(titles)")
+        for t in tabTemplates {
+            if let l = t as? CPListTemplate {
+                let title = l.tabTitle ?? l.title ?? "(untitled)"
+                let count = l.sections.reduce(0) { $0 + $1.items.count }
+                if count == 0 { print("[CarPlay][TAB][EMPTY] presenting empty tab: \(title)") }
+            }
+        }
 
         // Configure Now Playing template (cannot be part of TabBar templates)
         let now = CPNowPlayingTemplate.shared
@@ -383,9 +449,16 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             return
         }
         // Ensure Now Playing metadata is populated before presenting
+        // Request a one-shot clear to avoid stale UI without causing repeated blinking
+        self.musicPlayer.requestNowPlayingClearRefresh()
         self.musicPlayer.updateNowPlayingInfo()
         self.isNowPlayingShown = true
         controller.pushTemplate(now, animated: true)
+        // Single re-apply shortly after presentation to avoid races (no clearing this time)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            print("[CarPlay] showNowPlayingTemplate: reapply NowPlayingInfo (+0.25s)")
+            self.musicPlayer.updateNowPlayingInfo()
+        }
       }
     }
 }

@@ -303,11 +303,39 @@ class CDVPlaylistProvider: NSObject {
                             diag += " index=\(idx) snippet=\n\(snippet)\n"
                         }
                         print("[CDVPlaylistProvider] Failed to load/parse JSON at \(url.path): \(nsErr).\(diag)")
+                        // Attempt a non-destructive repair for common corruption (concatenated arrays/garbage at end)
+                        if let data = try? Data(contentsOf: url), let repaired = attemptRepairJSON(data: data) {
+                            print("[CDVPlaylistProvider][REPAIR] Successfully repaired JSON at \(url.lastPathComponent). Using repaired content.")
+                            return repaired
+                        } else {
+                            print("[CDVPlaylistProvider][CORRUPT] Unable to repair JSON at \(url.lastPathComponent). Will continue searching/fallback.")
+                        }
                     }
                 }
             }
         }
         print("[CDVPlaylistProvider] No JSON found in app folder for filename=\(filename) directory=\(directory ?? "")")
+        return nil
+    }
+
+    // Best-effort repair for common malformed JSON cases written by the host app.
+    // Tries to trim garbage before the first '{' or '[' and after the last '}' or ']'.
+    private static func attemptRepairJSON(data: Data) -> Any? {
+        let text = String(decoding: data, as: UTF8.self)
+        // Prefer array repair
+        if let firstArr = text.firstIndex(of: "["), let lastArr = text.lastIndex(of: "]"), firstArr < lastArr {
+            let slice = text[firstArr...lastArr]
+            if let d = slice.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: d, options: [.allowFragments]) {
+                return json
+            }
+        }
+        // Fallback to object repair
+        if let firstObj = text.firstIndex(of: "{"), let lastObj = text.lastIndex(of: "}"), firstObj < lastObj {
+            let slice = text[firstObj...lastObj]
+            if let d = slice.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: d, options: [.allowFragments]) {
+                return json
+            }
+        }
         return nil
     }
 }
