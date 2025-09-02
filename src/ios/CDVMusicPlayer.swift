@@ -13,6 +13,7 @@ class CDVMusicPlayer: NSObject {
     @objc var currentIndex: Int = 0
     private(set) var isPlaying: Bool = false
     private var nowPlayingTemplate: CPNowPlayingTemplate?
+    private var timeObserverToken: Any?
 
     @objc var currentTrack: [String: Any]? {
         guard currentIndex < queue.count else { return nil }
@@ -35,11 +36,13 @@ class CDVMusicPlayer: NSObject {
         if player.currentItem == nil { loadCurrentTrack() }
         player.play()
         isPlaying = true
+        startPeriodicUpdates()
         updateNowPlayingInfoIfNeeded()
+        MPNowPlayingInfoCenter.default().playbackState = .playing
         NotificationCenter.default.post(name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
     }
 
-    @objc func pause() { player.pause(); isPlaying = false; updateNowPlayingInfoIfNeeded() }
+    @objc func pause() { player.pause(); isPlaying = false; updateNowPlayingInfoIfNeeded(); MPNowPlayingInfoCenter.default().playbackState = .paused }
     @objc func togglePlayPause() { isPlaying ? pause() : play() }
 
     @objc func skipToNext() { guard !queue.isEmpty else { return }; currentIndex = (currentIndex + 1) % queue.count; loadCurrentTrack(); play() }
@@ -65,6 +68,8 @@ class CDVMusicPlayer: NSObject {
             let item = AVPlayerItem(url: url)
             attachItemObservers(item)
             player.replaceCurrentItem(with: item)
+            // restart periodic updates for new item
+            if isPlaying { startPeriodicUpdates() }
             return
         }
 
@@ -94,7 +99,7 @@ class CDVMusicPlayer: NSObject {
                             let item = AVPlayerItem(url: url)
                             self.attachItemObservers(item)
                             self.player.replaceCurrentItem(with: item)
-                            if self.isPlaying { self.player.play() }
+                            if self.isPlaying { self.player.play(); self.startPeriodicUpdates() }
                             self.updateNowPlayingInfoIfNeeded()
                         }
                     }
@@ -114,10 +119,16 @@ class CDVMusicPlayer: NSObject {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetooth])
         try? session.setActive(true)
+        UIApplication.shared.beginReceivingRemoteControlEvents()
     }
 
     @objc func setupRemoteCommandCenter() {
         let cc = MPRemoteCommandCenter.shared()
+        cc.playCommand.isEnabled = true
+        cc.pauseCommand.isEnabled = true
+        cc.nextTrackCommand.isEnabled = true
+        cc.previousTrackCommand.isEnabled = true
+        cc.togglePlayPauseCommand.isEnabled = true
         cc.playCommand.addTarget { [weak self] _ in self?.play(); return .success }
         cc.pauseCommand.addTarget { [weak self] _ in self?.pause(); return .success }
         cc.nextTrackCommand.addTarget { [weak self] _ in self?.skipToNext(); return .success }
@@ -132,12 +143,12 @@ class CDVMusicPlayer: NSObject {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
         // Core metadata
-        let title = track["title"] as? String
-        let artist = track["artist"] as? String
-        let album = track["album"] as? String
-        info[MPMediaItemPropertyTitle] = title
-        info[MPMediaItemPropertyArtist] = artist
-        info[MPMediaItemPropertyAlbumTitle] = album
+        let title = (track["title"] as? String) ?? ""
+        let artist = (track["artist"] as? String) ?? ""
+        let album = (track["album"] as? String) ?? ""
+        if !title.isEmpty { info[MPMediaItemPropertyTitle] = title }
+        if !artist.isEmpty { info[MPMediaItemPropertyArtist] = artist }
+        if !album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = album }
 
         // Playback timing
         let elapsed = CMTimeGetSeconds(player.currentTime())
@@ -150,10 +161,13 @@ class CDVMusicPlayer: NSObject {
                 info[MPMediaItemPropertyPlaybackDuration] = duration
             }
         }
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        // Reflect actual player rate when possible
+        let rate = isPlaying ? (player.rate == 0 ? 1.0 : player.rate) : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = rate
 
-        // Media type
+        // Media type and stream flags
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        info[MPNowPlayingInfoPropertyIsLiveStream] = false
 
         // Optional artwork
         if let artStr = track["artwork"] as? String, let artURL = URL(string: artStr) {
@@ -163,10 +177,17 @@ class CDVMusicPlayer: NSObject {
             }
         }
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let applyInfo: () -> Void = {
+            var enriched = info
+            // Provide default playback rate key as well; some UIs consult this
+            let rate = enriched[MPNowPlayingInfoPropertyPlaybackRate] as? Float ?? 0.0
+            enriched[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rate == 0 ? 1.0 : rate
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = enriched
+        }
+        if Thread.isMainThread { applyInfo() } else { DispatchQueue.main.async { applyInfo() } }
 
         // Lightweight diagnostics
-        print("[CDVMusicPlayer] NowPlaying updated — title=\(title ?? "-") artist=\(artist ?? "-") elapsed=\(elapsed.isFinite ? elapsed : 0) rate=\(isPlaying ? 1.0 : 0.0)")
+        print("[CDVMusicPlayer] NowPlaying updated — title=\(title) artist=\(artist) elapsed=\(elapsed.isFinite ? elapsed : 0) rate=\(isPlaying ? 1.0 : 0.0)")
     }
 
     @objc func updateNowPlayingInfoIfNeeded() { updateNowPlayingInfo() }
@@ -180,6 +201,7 @@ class CDVMusicPlayer: NSObject {
     private func attachItemObservers(_ item: AVPlayerItem) {
         NotificationCenter.default.addObserver(self, selector: #selector(itemFailed(_:)), name: .AVPlayerItemFailedToPlayToEndTime, object: item)
         item.addObserver(self, forKeyPath: "status", options: [.new, .initial], context: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(itemDidPlayToEnd(_:)), name: .AVPlayerItemDidPlayToEndTime, object: item)
     }
 
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
@@ -187,6 +209,7 @@ class CDVMusicPlayer: NSObject {
         switch item.status {
         case .readyToPlay:
             print("[CDVMusicPlayer] AVPlayerItem ready to play")
+            updateNowPlayingInfo()
         case .failed:
             print("[CDVMusicPlayer][ERROR] AVPlayerItem failed: \(item.error?.localizedDescription ?? "unknown error")")
         case .unknown:
@@ -199,6 +222,24 @@ class CDVMusicPlayer: NSObject {
     @objc private func itemFailed(_ notification: Notification) {
         if let item = notification.object as? AVPlayerItem {
             print("[CDVMusicPlayer][ERROR] FailedToPlayToEnd: \(item.error?.localizedDescription ?? "unknown")")
+        }
+    }
+
+    @objc private func itemDidPlayToEnd(_ notification: Notification) {
+        // Auto-advance to next track
+        skipToNext()
+    }
+
+    private func startPeriodicUpdates() {
+        // Remove any existing observer first
+        if let token = timeObserverToken {
+            player.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        let interval = CMTime(seconds: 1.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            self.updateNowPlayingInfo()
         }
     }
 }

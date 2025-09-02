@@ -9,6 +9,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     @objc var musicPlayer: CDVMusicPlayer!
     @objc var interfaceController: CPInterfaceController?
     @objc private(set) var connected: Bool = false
+    private var isNowPlayingShown: Bool = false
 
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
@@ -39,6 +40,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                     let section = CPListSection(items: nextItems)
                     let next = CPListTemplate(title: name, sections: [section])
                     DispatchQueue.main.async {
+                        self.isNowPlayingShown = false
                         controller.pushTemplate(next, animated: true)
                         completion()
                     }
@@ -50,6 +52,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                     let section = CPListSection(items: nextItems)
                     let next = CPListTemplate(title: name, sections: [section])
                     DispatchQueue.main.async {
+                        self.isNowPlayingShown = false
                         controller.pushTemplate(next, animated: true)
                         completion()
                     }
@@ -193,6 +196,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                             let section = CPListSection(items: leafItems)
                             let next = CPListTemplate(title: subTitle, sections: [section])
                             DispatchQueue.main.async {
+                                self.isNowPlayingShown = false
                                 controller.pushTemplate(next, animated: true)
                                 completion()
                             }
@@ -335,7 +339,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             let openNowItem = CPListItem(text: "Open Now Playing", detailText: nil)
             openNowItem.handler = { [weak self] _, completion in
                 guard let self, let controller = self.interfaceController else { completion(); return }
+                // Avoid pushing the shared instance more than once
+                if self.isNowPlayingShown || controller.topTemplate === now {
+                    print("[CarPlay] Now Playing already shown, skipping push")
+                    completion(); return
+                }
                 print("[CarPlay] Now Playing list tab selected -> push CPNowPlayingTemplate")
+                self.isNowPlayingShown = true
                 controller.pushTemplate(now, animated: true)
                 completion()
             }
@@ -353,6 +363,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 if let error = error { print("[CarPlay] setRootTemplate(TabBar) error: \(error)") }
                 else { print("[CarPlay] setRootTemplate(TabBar) success: \(success)") }
             })
+            self.isNowPlayingShown = false
         }
 
         NotificationCenter.default.addObserver(self, selector: #selector(showNowPlayingTemplate), name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
@@ -364,9 +375,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
         print("[CarPlay] showNowPlayingTemplate: interfaceController nil")
         return
       }
+      let now = CPNowPlayingTemplate.shared
       print("[CarPlay] showNowPlayingTemplate: presenting")
       DispatchQueue.main.async {
-        controller.pushTemplate(CPNowPlayingTemplate.shared, animated: true)
+        if self.isNowPlayingShown || controller.topTemplate === now {
+            print("[CarPlay] showNowPlayingTemplate: already shown, skipping push")
+            return
+        }
+        // Ensure Now Playing metadata is populated before presenting
+        self.musicPlayer.updateNowPlayingInfo()
+        self.isNowPlayingShown = true
+        controller.pushTemplate(now, animated: true)
       }
     }
 }
