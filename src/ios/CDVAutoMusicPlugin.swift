@@ -57,6 +57,31 @@ class CDVAutoMusicPlugin: CDVPlugin {
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 
+    // Unified JS event registration used by www/myplugin.js (registerEvents)
+    // Supported events: onConnectionChange, onMediaUpdate, onPlaybackStateChange
+    @objc(registerEvents:)
+    func registerEvents(command: CDVInvokedUrlCommand) {
+        let event = (command.argument(at: 0) as? String) ?? ""
+        print("[AutoMusicPlugin] registerEvents called event=\(event)")
+
+        switch event {
+        case "onConnectionChange":
+            connectionCallbackId = command.callbackId
+        case "onMediaUpdate":
+            mediaUpdateCallbackId = command.callbackId
+        case "onPlaybackStateChange":
+            playbackStateCallbackId = command.callbackId
+        default:
+            let err = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Unknown event: \(event)")
+            commandDelegate.send(err, callbackId: command.callbackId)
+            return
+        }
+
+        let result = CDVPluginResult(status: CDVCommandStatus_NO_RESULT)
+        result?.setKeepCallbackAs(true)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
     // MARK: - Playback Control
     @objc(play:)
     func play(command: CDVInvokedUrlCommand) {
@@ -200,6 +225,59 @@ class CDVAutoMusicPlugin: CDVPlugin {
     @objc(addLog:)
     func addLog(command: CDVInvokedUrlCommand) {
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
+    // MARK: - Auth Config (UserDefaults bridge)
+    @objc(setAuthConfig:)
+    func setAuthConfig(command: CDVInvokedUrlCommand) {
+        // Expected args: accessToken, refreshToken, appCode, baseUrl, expirationAt
+        let accessToken = command.argument(at: 0) as? String
+        let refreshToken = command.argument(at: 1) as? String
+        let appCode = command.argument(at: 2) as? String
+        let baseUrlRaw = command.argument(at: 3) as? String
+        let expirationAt = command.argument(at: 4) as? String
+
+        // Normalize base URL: trim and ensure trailing '/'
+        let normalizedBaseUrl: String? = {
+            guard let raw = baseUrlRaw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+            return raw.hasSuffix("/") ? raw : raw + "/"
+        }()
+
+        let defaults = UserDefaults.standard
+        if let accessToken = accessToken { defaults.setValue(accessToken, forKey: "AT_TOKEN_KEY") }
+        if let refreshToken = refreshToken { defaults.setValue(refreshToken, forKey: "REFRESH_TOKEN_KEY") }
+        if let appCode = appCode { defaults.setValue(appCode, forKey: "APP_KUACK_CODE") }
+        if let normalizedBaseUrl = normalizedBaseUrl { defaults.setValue(normalizedBaseUrl, forKey: "API_URL") }
+        if let expirationAt = expirationAt { defaults.setValue(expirationAt, forKey: "AT_EXP_TIME_KEY") }
+
+        defaults.synchronize()
+
+        print("[AutoMusicPlugin] setAuthConfig called baseUrl=\(normalizedBaseUrl ?? "<nil>") appCode=\(appCode ?? "<nil>")")
+
+        let payload: [String: Any] = [
+            "accessToken": accessToken as Any,
+            "refreshToken": refreshToken as Any,
+            "appCode": appCode as Any,
+            "baseUrl": normalizedBaseUrl as Any,
+            "expirationAt": expirationAt as Any
+        ]
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
+    @objc(getAuthConfig:)
+    func getAuthConfig(command: CDVInvokedUrlCommand) {
+        let defaults = UserDefaults.standard
+        let payload: [String: Any] = [
+            "accessToken": defaults.string(forKey: "AT_TOKEN_KEY") as Any,
+            "refreshToken": defaults.string(forKey: "REFRESH_TOKEN_KEY") as Any,
+            "appCode": defaults.string(forKey: "APP_KUACK_CODE") as Any,
+            "baseUrl": defaults.string(forKey: "API_URL") as Any,
+            "expirationAt": defaults.string(forKey: "AT_EXP_TIME_KEY") as Any
+        ]
+        print("[AutoMusicPlugin] getAuthConfig -> baseUrl=\(payload["baseUrl"] ?? "<nil>") appCode=\(payload["appCode"] ?? "<nil>")")
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 

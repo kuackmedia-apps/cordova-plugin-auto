@@ -4,6 +4,53 @@ import Foundation
 class CDVPlaylistProvider: NSObject {
     @objc static func hardcodedPlaylists() -> [[String: Any]] { return [] }
     @objc static func tracksForPlaylist(_ playlistId: String) -> [[String: Any]] { return [] }
+    private static var didPrintSandboxListing = false
+
+    // Debug helper: list files under common app folders (Library/NoCloud, Application Support, Documents, Caches)
+    @objc static func debugListAppJSONDirs() {
+        let fm = FileManager.default
+        var bases: [(name: String, url: URL)] = []
+        if let appSup = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first { bases.append(("ApplicationSupport", appSup)) }
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first { bases.append(("Documents", docs)) }
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first { bases.append(("Caches", caches)) }
+        if let lib = fm.urls(for: .libraryDirectory, in: .userDomainMask).first {
+            bases.append(("Library", lib))
+            bases.append(("Library/NoCloud", lib.appendingPathComponent("NoCloud", isDirectory: true)))
+        }
+        print("[CDVPlaylistProvider][DEBUG] Listing app JSON directories...")
+        for (label, base) in bases {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: base.path, isDirectory: &isDir), isDir.boolValue else {
+                print("[CDVPlaylistProvider][DEBUG] Missing dir: \(label) => \(base.path)")
+                continue
+            }
+            do {
+                let contents = try fm.contentsOfDirectory(at: base, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: [.skipsHiddenFiles])
+                print("[CDVPlaylistProvider][DEBUG] \(label) => \(base.path) items=\(contents.count)")
+                for url in contents {
+                    let res = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+                    let isDir = res?.isDirectory ?? false
+                    let size = res?.fileSize ?? 0
+                    print("[CDVPlaylistProvider][DEBUG]   - \(isDir ? "[D]" : "[F]") \(url.lastPathComponent) \(isDir ? "" : "(\(size) bytes)")")
+                }
+                // Also peek into common subpaths used by loader
+                for rel in ["data/navigation", "navigation"] {
+                    let sub = base.appendingPathComponent(rel, isDirectory: true)
+                    var isSubDir: ObjCBool = false
+                    if fm.fileExists(atPath: sub.path, isDirectory: &isSubDir), isSubDir.boolValue {
+                        let subItems = (try? fm.contentsOfDirectory(at: sub, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])) ?? []
+                        print("[CDVPlaylistProvider][DEBUG]   -> \(rel) items=\(subItems.count)")
+                        for u in subItems {
+                            let size = (try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                            print("[CDVPlaylistProvider][DEBUG]      * \(u.lastPathComponent) (\(size) bytes)")
+                        }
+                    }
+                }
+            } catch {
+                print("[CDVPlaylistProvider][DEBUG] Failed to list \(label): \(error)")
+            }
+        }
+    }
 
     @objc static func loadPlaylistsFromJSON() -> [[String: Any]] {
         print("[CDVPlaylistProvider] loadPlaylistsFromJSON: begin")
@@ -41,6 +88,10 @@ class CDVPlaylistProvider: NSObject {
 
     @objc static func loadTracks(forPlaylist playlistId: String) -> [[String: Any]] {
         print("[CDVPlaylistProvider] loadTracks(forPlaylist:) pid=\(playlistId)")
+        if !didPrintSandboxListing { // run once per app session to avoid log spam
+            didPrintSandboxListing = true
+            debugListAppJSONDirs()
+        }
         // Prefer app folder first (supports extensionless files in Library/NoCloud)
         if let tracks = loadJSONFromAppFolder(filename: "QUEUE_ITEMS_KEY", in: nil) as? [[String: Any]] {
             print("[CDVPlaylistProvider] loadTracks: loaded from app folder QUEUE_ITEMS_KEY count=\(tracks.count)")
@@ -176,7 +227,22 @@ class CDVPlaylistProvider: NSObject {
                 print("[CDVPlaylistProvider] loadJSON(bundle): success bytes=\(data.count) from=\(url.lastPathComponent)")
                 return json
             } catch {
-                print("[CDVPlaylistProvider] loadJSON(bundle): failed at path=\(path) error=\(error)")
+                // Enhanced diagnostics for bundled JSON failures
+                let nsErr = error as NSError
+                var diag = ""
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                   let size = attrs[.size] as? NSNumber {
+                    diag += " size=\(size.intValue)"
+                }
+                if let data = try? Data(contentsOf: url),
+                   let idx = nsErr.userInfo["NSJSONSerializationErrorIndex"] as? Int {
+                    let start = max(0, idx - 160)
+                    let end = min(data.count, idx + 160)
+                    let range = start..<end
+                    let snippet = String(decoding: data[range], as: UTF8.self)
+                    diag += " index=\(idx) snippet=\n\(snippet)\n"
+                }
+                print("[CDVPlaylistProvider] loadJSON(bundle): failed at path=\(path) error=\(nsErr).\(diag)")
             }
         }
         return nil
@@ -221,7 +287,22 @@ class CDVPlaylistProvider: NSObject {
                         print("[CDVPlaylistProvider] Loaded JSON from app folder: \(url.lastPathComponent) (\(data.count) bytes)")
                         return json
                     } catch {
-                        print("[CDVPlaylistProvider] Failed to load/parse JSON at \(url.path): \(error)")
+                        // Enhanced diagnostics: byte length and snippet around parse error index if available
+                        let nsErr = error as NSError
+                        var diag = ""
+                        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                           let size = attrs[.size] as? NSNumber {
+                            diag += " size=\(size.intValue)"
+                        }
+                        if let data = try? Data(contentsOf: url),
+                           let idx = nsErr.userInfo["NSJSONSerializationErrorIndex"] as? Int {
+                            let start = max(0, idx - 160)
+                            let end = min(data.count, idx + 160)
+                            let range = start..<end
+                            let snippet = String(decoding: data[range], as: UTF8.self)
+                            diag += " index=\(idx) snippet=\n\(snippet)\n"
+                        }
+                        print("[CDVPlaylistProvider] Failed to load/parse JSON at \(url.path): \(nsErr).\(diag)")
                     }
                 }
             }

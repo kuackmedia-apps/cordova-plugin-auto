@@ -176,6 +176,37 @@ var exec = require('cordova/exec');
            [],
          );
     },
+    
+    // ---- Auth Config bridge (iOS) ----
+    setAuthConfig: function(accessToken, refreshToken, appCode, baseUrl, expirationAt, cb, errorCb) {
+      exec(
+        function success(result) {
+          if (typeof cb === 'function') cb(result);
+        },
+        function error(err) {
+          console.error('setAuthConfig error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'setAuthConfig',
+        [accessToken, refreshToken, appCode, baseUrl, expirationAt]
+      );
+    },
+
+    getAuthConfig: function(cb, errorCb) {
+      exec(
+        function success(result) {
+          if (typeof cb === 'function') cb(result);
+        },
+        function error(err) {
+          console.error('getAuthConfig error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'getAuthConfig',
+        []
+      );
+    },
   }
 
   module.exports = AutoPlugin;

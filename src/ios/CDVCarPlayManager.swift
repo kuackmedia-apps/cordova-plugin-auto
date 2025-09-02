@@ -164,8 +164,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                             let leafItems = self.makeListItems(from: subItems, parentTitle: subTitle)
                             let section = CPListSection(items: leafItems)
                             let next = CPListTemplate(title: subTitle, sections: [section])
-                            controller.pushTemplate(next, animated: true)
-                            completion()
+                            DispatchQueue.main.async {
+                                controller.pushTemplate(next, animated: true)
+                                completion()
+                            }
                         }
                         topItems.append(li)
                     }
@@ -186,6 +188,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             cpList.tabTitle = safeTitle
             if #available(iOS 13.0, *) { cpList.tabImage = UIImage(systemName: "music.note.list") }
             print("[CarPlay] [NAV] building section title=\(safeTitle) sections=\(cpSections.count)")
+            // Ensure sections are applied on main thread for reliability
+            DispatchQueue.main.async {
+                cpList.updateSections(cpSections)
+            }
             tabTemplates.append(cpList)
             if tabTemplates.count >= 4 { break }
         }
@@ -220,6 +226,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 list.tabTitle = "Playlists"
                 if #available(iOS 13.0, *) {
                     list.tabImage = UIImage(systemName: "music.note.list")
+                }
+                DispatchQueue.main.async {
+                    list.updateSections([section])
                 }
                 tabTemplates.append(list)
             } else {
@@ -258,6 +267,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                     cpList.tabTitle = safeTitle
                     if #available(iOS 13.0, *) {
                         cpList.tabImage = UIImage(systemName: "music.note.list")
+                    }
+                    DispatchQueue.main.async {
+                        cpList.updateSections([cpSection])
                     }
                     tabTemplates.append(cpList)
                     if tabTemplates.count >= 4 { break }
