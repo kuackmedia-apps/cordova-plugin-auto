@@ -24,10 +24,38 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             let subtitle = d["description"] as? String
             let id = String(describing: d["id"] ?? "")
             let mediaType = (d["itemType"] as? String) ?? (d["type"] as? String) // PLAYLIST, ALBUM, ARTIST, TAG
+            let childFileName = d["fileName"] as? String
+            let inlineItems = d["items"] as? [[String: Any]]
             let li = CPListItem(text: name, detailText: subtitle)
             li.handler = { [weak self] _, completion in
                 guard let self else { completion(); return }
-                print("[CarPlay] select item name=\(name) id=\(id) mediaType=\(mediaType ?? "-") in parent=\(parentTitle)")
+                print("[CarPlay] select item name=\(name) id=\(id) mediaType=\(mediaType ?? "-") fileName=\(childFileName ?? "<nil>") in parent=\(parentTitle)")
+
+                // Drill-down navigation takes precedence if a child file or inline items exist
+                if let file = childFileName, !file.isEmpty, let controller = self.interfaceController {
+                    let children = CDVPlaylistProvider.loadNavigationChildren(fileName: file)
+                    print("[CarPlay][NAV] drill-down file=\(file) children=\(children.count)")
+                    let nextItems = self.makeListItems(from: children, parentTitle: name)
+                    let section = CPListSection(items: nextItems)
+                    let next = CPListTemplate(title: name, sections: [section])
+                    DispatchQueue.main.async {
+                        controller.pushTemplate(next, animated: true)
+                        completion()
+                    }
+                    return
+                }
+                if let items = inlineItems, !items.isEmpty, let controller = self.interfaceController {
+                    print("[CarPlay][NAV] drill-down inline items=\(items.count)")
+                    let nextItems = self.makeListItems(from: items, parentTitle: name)
+                    let section = CPListSection(items: nextItems)
+                    let next = CPListTemplate(title: name, sections: [section])
+                    DispatchQueue.main.async {
+                        controller.pushTemplate(next, animated: true)
+                        completion()
+                    }
+                    return
+                }
+
                 // 1) Try local queue file first
                 var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
                 // 2) If empty, attempt remote by mediaType
@@ -307,8 +335,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             let openNowItem = CPListItem(text: "Open Now Playing", detailText: nil)
             openNowItem.handler = { [weak self] _, completion in
                 guard let self, let controller = self.interfaceController else { completion(); return }
-                print("[CarPlay] Now Playing list tab selected -> present CPNowPlayingTemplate")
-                controller.presentTemplate(now, animated: true)
+                print("[CarPlay] Now Playing list tab selected -> push CPNowPlayingTemplate")
+                controller.pushTemplate(now, animated: true)
                 completion()
             }
             let nowSection = CPListSection(items: [openNowItem])
@@ -338,7 +366,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
       }
       print("[CarPlay] showNowPlayingTemplate: presenting")
       DispatchQueue.main.async {
-        controller.presentTemplate(CPNowPlayingTemplate.shared, animated: true)
+        controller.pushTemplate(CPNowPlayingTemplate.shared, animated: true)
       }
     }
 }
