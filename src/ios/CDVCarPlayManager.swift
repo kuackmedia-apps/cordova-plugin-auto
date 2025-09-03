@@ -12,6 +12,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     @objc private(set) var connected: Bool = false
     private var isNowPlayingShown: Bool = false
     private let listImageCache = NSCache<NSURL, UIImage>()
+    private var nowPlayingRetryCount: Int = 0
 
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
@@ -183,6 +184,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
         print("[CarPlay] didConnect: interfaceController received")
         connected = true
         self.interfaceController = interfaceController
+        // Present a lightweight placeholder to avoid gray screen while we build templates
+        presentLoadingPlaceholder(interfaceController)
+        // Build and replace with real templates
         setupTemplates(interfaceController)
         NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": true])
     }
@@ -195,6 +199,22 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     }
 
     // MARK: - Templates
+    private func presentLoadingPlaceholder(_ controller: CPInterfaceController) {
+        let loadingItem = CPListItem(text: "Initializing…", detailText: nil)
+        if #available(iOS 15.0, *) {
+            loadingItem.isEnabled = false
+        }
+        let section = CPListSection(items: [loadingItem])
+        let loadingList = CPListTemplate(title: "Loading", sections: [section])
+        loadingList.tabTitle = "Loading"
+        let placeholder = CPTabBarTemplate(templates: [loadingList])
+        DispatchQueue.main.async {
+            controller.setRootTemplate(placeholder, animated: false, completion: { success, error in
+                if let error = error { print("[CarPlay] setRootTemplate(Loading) error: \(error)") }
+                else { print("[CarPlay] setRootTemplate(Loading) success: \(success)") }
+            })
+        }
+    }
     private func setupTemplates(_ controller: CPInterfaceController) {
       print("[CarPlay] setupTemplates: begin")
       let autoNavigation = CDVPlaylistProvider.loadNavigationFromJSON()
@@ -448,6 +468,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             print("[CarPlay] showNowPlayingTemplate: already shown, skipping push")
             return
         }
+        // Ensure we have a current track; otherwise, retry briefly to avoid presenting a blank Now Playing
+        if self.musicPlayer.currentTrack == nil {
+            if self.nowPlayingRetryCount < 3 {
+                self.nowPlayingRetryCount += 1
+                print("[CarPlay] showNowPlayingTemplate: no track yet, retry #\(self.nowPlayingRetryCount) in 0.5s")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showNowPlayingTemplate() }
+            } else {
+                print("[CarPlay] showNowPlayingTemplate: giving up after retries due to no track")
+                self.nowPlayingRetryCount = 0
+            }
+            return
+        }
+        self.nowPlayingRetryCount = 0
         // Ensure Now Playing metadata is populated before presenting
         // Request a one-shot clear to avoid stale UI without causing repeated blinking
         self.musicPlayer.requestNowPlayingClearRefresh()
