@@ -76,6 +76,8 @@
     <source-file src="src/android/com/kuackmedia/androidauto/media/CurrentMedia.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/QueueManager.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/MediaControlBridge.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
+    <source-file src="src/android/com/kuackmedia/androidauto/media/NotificationHolder.kt"
+                 target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/api/LocalAssetInterceptor.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/MusicApi.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />

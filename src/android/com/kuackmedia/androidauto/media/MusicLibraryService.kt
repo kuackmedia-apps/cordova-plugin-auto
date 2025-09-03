@@ -1,6 +1,8 @@
 package com.kuackmedia.androidauto.media
 
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -45,7 +47,19 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
   private lateinit var playerAdapter: IPlayerAdapter
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    MediaButtonReceiver.handleIntent(mediaSession, intent)
+    if (intent?.action == "com.kuackmedia.androidauto.SHOW_NOTIFICATION") {
+      val notificationId = intent.getIntExtra("notificationId", 1)
+      val notification = NotificationHolder.currentNotification
+
+      if (notification != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          startForeground(notificationId, notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+          startForeground(notificationId, notification)
+        }
+      }
+    }
     return super.onStartCommand(intent, flags, startId)
   }
 
