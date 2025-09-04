@@ -13,6 +13,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     private var isNowPlayingShown: Bool = false
     private let listImageCache = NSCache<NSURL, UIImage>()
     private var nowPlayingRetryCount: Int = 0
+    private var didReopenNowPlayingOnce: Bool = false
+    private var isPresentingNowPlaying: Bool = false
 
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
@@ -227,8 +229,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
           print("[CarPlay] setupTemplates: AUTO_NAVIGATION is empty")
       }
 
-        // Build list templates from AUTO_NAVIGATION sections (max 4 to satisfy CarPlay UI guidance)
-        var tabTemplates: [CPTemplate] = []
+        // Build list templates from AUTO_NAVIGATION sections (collect all; we'll trim/compose later)
+        var navTemplates: [CPTemplate] = []
         for (idx, sectionDict) in autoNavigation.enumerated() {
             let sectionTitle = (sectionDict["text"] as? String) ?? "Section \(idx+1)"
             let fileName = (sectionDict["fileName"] as? String) ?? ""
@@ -296,12 +298,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 cpList.updateSections(cpSections)
             }
-            tabTemplates.append(cpList)
-            if tabTemplates.count >= 4 { break }
+            navTemplates.append(cpList)
         }
 
         // Fallback: if no AUTO_NAVIGATION sections, mirror Android by using AUTO_NAVIGATION_LIBRARY sections
-        if tabTemplates.isEmpty {
+        if navTemplates.isEmpty {
             let librarySections = CDVPlaylistProvider.loadLibrarySectionsFromJSON()
             print("[CarPlay] setupTemplates: library sections loaded count=\(librarySections.count)")
             if librarySections.isEmpty {
@@ -334,7 +335,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 DispatchQueue.main.async {
                     list.updateSections([section])
                 }
-                tabTemplates.append(list)
+                navTemplates.append(list)
             } else {
                 for (idx, sectionDict) in librarySections.enumerated() {
                     let title = (sectionDict["text"] as? String) ?? "Section \(idx+1)"
@@ -382,14 +383,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         cpList.updateSections([cpSection])
                     }
-                    tabTemplates.append(cpList)
-                    if tabTemplates.count >= 4 { break }
+                    navTemplates.append(cpList)
                 }
             }
         }
 
         // If after all attempts titles are empty or templates invalid, add a static Browse tab as a fail-safe
-        if tabTemplates.isEmpty {
+        if navTemplates.isEmpty {
             print("[CarPlay][FALLBACK] No valid templates found. Adding static Browse tab.")
             let placeholders = [
                 CPListItem(text: "Playlists", detailText: nil),
@@ -402,13 +402,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             if #available(iOS 13.0, *) {
                 list.tabImage = UIImage(systemName: "music.note.list")
             }
-            tabTemplates.append(list)
+            navTemplates.append(list)
         }
 
-        // Log final tabs
-        let titles = tabTemplates.compactMap { ($0 as? CPListTemplate)?.tabTitle ?? "(unknown)" }
-        print("[CarPlay] Final tabs count=\(tabTemplates.count) titles=\(titles)")
-        for t in tabTemplates {
+        // Log navigation tabs before composing final tab bar
+        let titles = navTemplates.compactMap { ($0 as? CPListTemplate)?.tabTitle ?? "(unknown)" }
+        print("[CarPlay] Nav tabs (pre-compose) count=\(navTemplates.count) titles=\(titles)")
+        for t in navTemplates {
             if let l = t as? CPListTemplate {
                 let title = l.tabTitle ?? l.title ?? "(untitled)"
                 let count = l.sections.reduce(0) { $0 + $1.items.count }
@@ -420,24 +420,29 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
         let now = CPNowPlayingTemplate.shared
         musicPlayer.setNowPlayingTemplate(now)
 
-        // Optional: add a "Now Playing" list tab that opens the Now Playing screen when tapped
-        if tabTemplates.count < 4 {
-            let openNowItem = CPListItem(text: "Open Now Playing", detailText: nil)
-            openNowItem.handler = { [weak self] _, completion in
-                guard let self, let controller = self.interfaceController else { completion(); return }
-                // Avoid pushing the shared instance more than once
-                if self.isNowPlayingShown || controller.topTemplate === now {
-                    print("[CarPlay] Now Playing already shown, skipping push")
-                    completion(); return
-                }
-                print("[CarPlay] Now Playing list tab selected -> push CPNowPlayingTemplate")
-                self.isNowPlayingShown = true
-                controller.pushTemplate(now, animated: true)
-                completion()
-            }
-            let nowSection = CPListSection(items: [openNowItem])
-            let nowList = CPListTemplate(title: "Now Playing", sections: [nowSection])
-            nowList.tabTitle = "Now Playing"
+        // Compose final tab templates according to rules:
+        // - If we have <=3 navigation tabs, make Now Playing the 4th visible tab
+        // - If we have >=4 navigation tabs, append Now Playing as an extra template so CarPlay shows "More"
+        var tabTemplates: [CPTemplate] = []
+        tabTemplates = navTemplates
+
+        // Build a Now Playing opener list tab
+        let openNowItem = CPListItem(text: "Open Now Playing", detailText: nil)
+        openNowItem.handler = { [weak self] _, completion in
+            guard let self else { completion(); return }
+            print("[CarPlay] Now Playing list tab selected -> showNowPlayingTemplate()")
+            self.showNowPlayingTemplate()
+            completion()
+        }
+        let nowSection = CPListSection(items: [openNowItem])
+        let nowList = CPListTemplate(title: "Now Playing", sections: [nowSection])
+        nowList.tabTitle = "Now Playing"
+
+        if tabTemplates.count <= 3 {
+            // Ensure Now Playing is the last (4th)
+            tabTemplates.append(nowList)
+        } else {
+            // More than 4: include Now Playing as an additional template so CarPlay provides the More button
             tabTemplates.append(nowList)
         }
 
@@ -464,7 +469,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
       let now = CPNowPlayingTemplate.shared
       print("[CarPlay] showNowPlayingTemplate: presenting")
       DispatchQueue.main.async {
-        if self.isNowPlayingShown || controller.topTemplate === now {
+        if self.isPresentingNowPlaying || self.isNowPlayingShown || controller.topTemplate === now {
             print("[CarPlay] showNowPlayingTemplate: already shown, skipping push")
             return
         }
@@ -480,18 +485,59 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
             }
             return
         }
+        // Extra guard: require NowPlayingInfo to contain at least a title or artist before presenting
+        let np = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let hasTitle = (np?[MPMediaItemPropertyTitle] as? String)?.isEmpty == false
+        let hasArtist = (np?[MPMediaItemPropertyArtist] as? String)?.isEmpty == false
+        if !(hasTitle || hasArtist) {
+            if self.nowPlayingRetryCount < 5 {
+                self.nowPlayingRetryCount += 1
+                print("[CarPlay] showNowPlayingTemplate: missing title/artist in NowPlayingInfo, retry #\(self.nowPlayingRetryCount) in 0.3s")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.showNowPlayingTemplate() }
+            } else {
+                print("[CarPlay] showNowPlayingTemplate: proceeding without visible metadata after retries")
+                self.nowPlayingRetryCount = 0
+            }
+            return
+        }
+        // Also require the AVPlayerItem to be ready, to avoid CarPlay binding to an unknown/idle item state
+        if !self.musicPlayer.isCurrentItemReady() {
+            if self.nowPlayingRetryCount < 7 {
+                self.nowPlayingRetryCount += 1
+                print("[CarPlay] showNowPlayingTemplate: player item not ready, retry #\(self.nowPlayingRetryCount) in 0.2s")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.showNowPlayingTemplate() }
+            } else {
+                print("[CarPlay] showNowPlayingTemplate: proceeding even though item not ready (after retries)")
+                self.nowPlayingRetryCount = 0
+            }
+            return
+        }
         self.nowPlayingRetryCount = 0
         // Ensure Now Playing metadata is populated before presenting
-        // Request a one-shot clear to avoid stale UI without causing repeated blinking
-        self.musicPlayer.requestNowPlayingClearRefresh()
-        self.musicPlayer.updateNowPlayingInfo()
-        self.isNowPlayingShown = true
-        controller.pushTemplate(now, animated: true)
-        // Single re-apply shortly after presentation to avoid races (no clearing this time)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            print("[CarPlay] showNowPlayingTemplate: reapply NowPlayingInfo (+0.25s)")
+        // Avoid clearing here to reduce visible flicker; rely on track-change clears instead
+        // Apply a minimal set first to help CarPlay bind quickly
+        self.musicPlayer.applyMinimalNowPlayingInfo()
+        // Then apply the full metadata shortly after
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             self.musicPlayer.updateNowPlayingInfo()
         }
+        // Slightly increase delay to give the system time to register NowPlayingInfo before template push
+        let pushDelay: TimeInterval = 0.3
+        self.isPresentingNowPlaying = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + pushDelay) {
+            controller.pushTemplate(now, animated: true)
+            // Mark as shown and clear presenting flag shortly after push
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.isNowPlayingShown = true
+                self.isPresentingNowPlaying = false
+            }
+        }
+        // Single re-apply after presentation to avoid races (no clearing this time)
+        DispatchQueue.main.asyncAfter(deadline: .now() + pushDelay + 0.15) {
+            print("[CarPlay] showNowPlayingTemplate: reapply NowPlayingInfo (post-push)")
+            self.musicPlayer.updateNowPlayingInfo()
+        }
+        // Removed extra minimal nudge and pop/push repaint to avoid visible flicker
       }
     }
 }

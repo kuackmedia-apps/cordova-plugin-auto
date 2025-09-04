@@ -38,6 +38,11 @@ class CDVMusicPlayer: NSObject {
         forceClearOnNextApply = true
     }
 
+    // Indicates whether the current AVPlayerItem is ready to play.
+    @objc func isCurrentItemReady() -> Bool {
+        return player.currentItem?.status == .readyToPlay
+    }
+
     // MARK: - Playback
     @objc func play() {
         if player.currentItem == nil { loadCurrentTrack() }
@@ -129,6 +134,7 @@ class CDVMusicPlayer: NSObject {
         UIApplication.shared.beginReceivingRemoteControlEvents()
     }
 
+
     @objc func setupRemoteCommandCenter() {
         let cc = MPRemoteCommandCenter.shared()
         cc.playCommand.isEnabled = true
@@ -169,8 +175,9 @@ class CDVMusicPlayer: NSObject {
                 info[MPMediaItemPropertyPlaybackDuration] = duration
             }
         }
-        // Include asset URL if available so CarPlay can better bind to the media
-        if let src = (track["source"] as? String), let u = URL(string: src) {
+        // Include asset URL only for local file URLs. Supplying remote http(s) URLs here can
+        // cause CarPlay to ignore/break Now Playing rendering on some iOS versions.
+        if let src = (track["source"] as? String), let u = URL(string: src), u.isFileURL {
             info[MPNowPlayingInfoPropertyAssetURL] = u
         }
         // Reflect actual player rate when possible
@@ -221,8 +228,18 @@ class CDVMusicPlayer: NSObject {
             enriched[MPNowPlayingInfoPropertyPlaybackQueueIndex] = min(self.currentIndex, max(0, self.queue.count - 1))
             // If a one-time refresh was requested, clear then apply
             if self.forceClearOnNextApply {
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = [:]
+                // Use nil to force a stronger UI refresh in CarPlay before reapplying metadata
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
                 self.forceClearOnNextApply = false
+                // Give the system a brief moment to register the clear before applying new metadata
+                let enrichedCopy = enriched
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = enrichedCopy
+                    MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
+                    let keys = Array(enrichedCopy.keys).map { String(describing: $0) }
+                    print("[CDVMusicPlayer] Applied NowPlayingInfo (delayed after clear) keys=\(keys)")
+                }
+                return
             }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = enriched
             MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
@@ -241,6 +258,34 @@ class CDVMusicPlayer: NSObject {
     @objc func playTrack(_ track: [String: Any]) { self.queue = [track]; currentIndex = 0; loadCurrentTrack(); play() }
 
     @objc func cleanup() { player.pause(); player.replaceCurrentItem(with: nil) }
+
+    // MARK: - Minimal Now Playing apply (for CarPlay binding)
+    // Applies a minimal set of keys to help CarPlay bind without tripping over artwork/duration races
+    @objc func applyMinimalNowPlayingInfo() {
+        guard let track = currentTrack else { return }
+        var info: [String: Any] = [:]
+        let title = (track["title"] as? String) ?? ""
+        let artist = (track["artist"] as? String) ?? ""
+        let album = (track["album"] as? String) ?? ""
+        if !title.isEmpty { info[MPMediaItemPropertyTitle] = title }
+        if !artist.isEmpty { info[MPMediaItemPropertyArtist] = artist }
+        if !album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = album }
+        let elapsed = CMTimeGetSeconds(player.currentTime())
+        if elapsed.isFinite { info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed }
+        let rate = isPlaying ? (player.rate == 0 ? 1.0 : player.rate) : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = rate
+        info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rate == 0 ? 1.0 : rate
+        info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        // queue hints
+        info[MPNowPlayingInfoPropertyPlaybackQueueCount] = self.queue.count
+        info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = min(self.currentIndex, max(0, self.queue.count - 1))
+        DispatchQueue.main.async {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
+            let keys = Array(info.keys).map { String(describing: $0) }
+            print("[CDVMusicPlayer] Applied MINIMAL NowPlayingInfo keys=\(keys)")
+        }
+    }
 
     // MARK: - Diagnostics
     private func attachItemObservers(_ item: AVPlayerItem) {
