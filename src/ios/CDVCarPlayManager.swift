@@ -98,10 +98,18 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                 // 2) If empty, attempt remote by mediaType
                 if tracks.isEmpty, let mediaType = mediaType?.lowercased(), !id.isEmpty {
                     self.fetchTracksRemote(mediaType: mediaType, itemId: id, parentTitle: name) { remote in
-                        if !remote.isEmpty { self.musicPlayer.updateQueue(remote); self.musicPlayer.play() }
+                        if !remote.isEmpty {
+                            // Reset shown flag before kicking off playback so Now Playing can be presented again
+                            self.isNowPlayingShown = false
+                            self.musicPlayer.updateQueue(remote)
+                            self.musicPlayer.play()
+                        }
                     }
                 } else if !tracks.isEmpty {
-                    self.musicPlayer.updateQueue(tracks); self.musicPlayer.play()
+                    // Reset shown flag before kicking off playback so Now Playing can be presented again
+                    self.isNowPlayingShown = false
+                    self.musicPlayer.updateQueue(tracks)
+                    self.musicPlayer.play()
                 }
                 completion()
             }
@@ -320,6 +328,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                         print("[CarPlay] list item selected: pid=\(pid) title=\(title)")
                         let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: pid)
                         print("[CarPlay] tracks loaded for pid=\(pid) count=\(tracks.count)")
+                        // Reset shown flag before starting playback
+                        self.isNowPlayingShown = false
                         self.musicPlayer.updateQueue(tracks)
                         self.musicPlayer.play()
                         completion()
@@ -360,6 +370,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
                                 let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: pid)
                                 print("[CarPlay] [LIB] tracks loaded for id=\(pid) count=\(tracks.count)")
                                 if !tracks.isEmpty {
+                                    // Reset shown flag before starting playback
+                                    self.isNowPlayingShown = false
                                     self.musicPlayer.updateQueue(tracks)
                                     self.musicPlayer.play()
                                 }
