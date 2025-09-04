@@ -4,7 +4,7 @@ import MediaPlayer
 import UIKit
 
 @objc(CDVCarPlayManager)
-class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
+class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarTemplateDelegate {
     private weak var plugin: CDVAutoMusicPlugin?
 
     @objc var musicPlayer: CDVMusicPlayer!
@@ -15,11 +15,23 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
     private var nowPlayingRetryCount: Int = 0
     private var didReopenNowPlayingOnce: Bool = false
     private var isPresentingNowPlaying: Bool = false
+    private weak var nowPlayingListTab: CPListTemplate?
 
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
         super.init()
         self.musicPlayer = CDVMusicPlayer(manager: self)
+    }
+
+    // MARK: - CPTabBarTemplateDelegate
+    func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect template: CPTemplate) {
+        // If user taps the "Now Playing" tab, open the CarPlay Now Playing template immediately
+        if let nowList = nowPlayingListTab, template === nowList {
+            print("[CarPlay][TAB] Now Playing tab selected -> showNowPlayingTemplate()")
+            // Reset flag to allow presentation if previously shown from another selection
+            self.isNowPlayingShown = false
+            showNowPlayingTemplate()
+        }
     }
 
     // MARK: - Helpers
@@ -449,6 +461,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
         let nowSection = CPListSection(items: [openNowItem])
         let nowList = CPListTemplate(title: "Now Playing", sections: [nowSection])
         nowList.tabTitle = "Now Playing"
+        if #available(iOS 13.0, *) { nowList.tabImage = UIImage(systemName: "play.circle") }
+        self.nowPlayingListTab = nowList
 
         if tabTemplates.count <= 3 {
             // Ensure Now Playing is the last (4th)
@@ -460,6 +474,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate {
 
         // Set Tab Bar as root
         let tabBar = CPTabBarTemplate(templates: tabTemplates)
+        tabBar.delegate = self
         print("[CarPlay] setupTemplates: presenting TabBar with \(tabTemplates.count) tabs")
         DispatchQueue.main.async {
             controller.setRootTemplate(tabBar, animated: true, completion: { success, error in
