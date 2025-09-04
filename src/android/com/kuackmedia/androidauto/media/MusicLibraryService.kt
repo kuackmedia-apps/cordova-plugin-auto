@@ -167,7 +167,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     query: String, extras: Bundle?,
     result: Result<MutableList<MediaBrowserCompat.MediaItem?>?>
   ) {
-    Log.d("Search", "Received search query: $query")
+    Log.d(TAG, "Received search query: $query")
     result.detach() // Notify the system you'll send the result asynchronously
     serviceScope.launch {
       try {

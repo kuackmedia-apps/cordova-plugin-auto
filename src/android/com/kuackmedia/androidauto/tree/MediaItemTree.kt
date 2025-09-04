@@ -215,6 +215,17 @@ object MediaItemTree {
     // new grouped implementation with headers
     val matches = mutableListOf<MediaBrowserCompat.MediaItem>()
     val result = this.musicApi.search(query)
+   // Log.d(TAG, "Received search query: $query")
+    // search over tree nodes titles
+    val normalizedQuery = normalizeSearchText(query)
+    if (normalizedQuery.isNotEmpty()) {
+      titleMap.forEach { (title, node) ->
+       // Log.d(TAG, "Searching in title: $title")
+        if (normalizeSearchText(title).contains(normalizedQuery)) {
+          matches.add(node.item)
+        }
+      }
+    }
 
     // Mejor Resultado
     result.best?.let { bestItem ->
