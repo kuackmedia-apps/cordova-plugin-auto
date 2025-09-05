@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -613,44 +614,28 @@ class MediaSessionCallback(
     val notification = builder.build()
     safelyShowNotification(NOTIFICATION_ID, notification)
 
-    // Make service foreground when playing, otherwise stop foreground
-    if (context is Service) {
-      if (state != PlaybackStateCompat.STATE_PLAYING) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-          (context as Service).stopForeground(Service.STOP_FOREGROUND_DETACH)
-        } else {
-          (context as Service).stopForeground(false)
-        }
-      }
+    // Make service foreground when playing
+    if (state == PlaybackStateCompat.STATE_PLAYING && context is Service) {
+      context.startForeground(NOTIFICATION_ID, notification)
+    } else if (context is Service) {
+      context.stopForeground(false)
     }
   }
 
   // Add this helper method to check permissions before showing notifications
   private fun safelyShowNotification(notificationId: Int, notification: android.app.Notification) {
-    if (context is Service) {
-      // If the context is already a Service, use it directly
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-        (context as Service).startForeground(
-          notificationId, notification,
-          android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-        )
+    // Check for notification permission on Android 13+
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+        android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
       } else {
-        (context as Service).startForeground(notificationId, notification)
+        Log.w(TAG, "Notification permission not granted")
       }
     } else {
-      // Otherwise use an Intent to communicate with MusicLibraryService
-      val intent = Intent(context, MusicLibraryService::class.java)
-      intent.action = "com.kuackmedia.androidauto.SHOW_NOTIFICATION"
-      intent.putExtra("notificationId", notificationId)
-      // Store notification temporarily
-      NotificationHolder.currentNotification = notification
-
-      // Start or bind to the service
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-        context.startForegroundService(intent)
-      } else {
-        context.startService(intent)
-      }
+      // For Android 12 and below, no runtime permission needed
+      NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
   }
+
 }

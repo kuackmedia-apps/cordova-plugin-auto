@@ -1,11 +1,10 @@
 package com.kuackmedia.androidauto.media
 
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.media.MediaBrowserServiceCompat
@@ -47,19 +46,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
   private lateinit var playerAdapter: IPlayerAdapter
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (intent?.action == "com.kuackmedia.androidauto.SHOW_NOTIFICATION") {
-      val notificationId = intent.getIntExtra("notificationId", 1)
-      val notification = NotificationHolder.currentNotification
-
-      if (notification != null) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-          startForeground(notificationId, notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-          startForeground(notificationId, notification)
-        }
-      }
-    }
+    MediaButtonReceiver.handleIntent(mediaSession, intent)
     return super.onStartCommand(intent, flags, startId)
   }
 
@@ -88,6 +75,24 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
           MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
       )
       mediaSession.setCallback(MediaSessionCallback(playerAdapter, mediaSession, applicationContext))
+
+      // Agrega acciones de voz/search al PlaybackStateCompat
+      val actions = (PlaybackStateCompat.ACTION_PLAY or
+        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+        PlaybackStateCompat.ACTION_PAUSE or
+        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+        PlaybackStateCompat.ACTION_SEEK_TO or
+        PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH or
+        PlaybackStateCompat.ACTION_PREPARE or
+        PlaybackStateCompat.ACTION_PREPARE_FROM_SEARCH)
+
+      mediaSession.setPlaybackState(
+        PlaybackStateCompat.Builder()
+          .setActions(actions)
+          .setState(PlaybackStateCompat.STATE_NONE, 0L, 1f)
+          .build()
+      )
     }
 
     setSessionToken(mediaSession.sessionToken)
