@@ -444,33 +444,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let now = CPNowPlayingTemplate.shared
         musicPlayer.setNowPlayingTemplate(now)
 
-        // Compose final tab templates according to rules:
-        // - If we have <=3 navigation tabs, make Now Playing the 4th visible tab
-        // - If we have >=4 navigation tabs, append Now Playing as an extra template so CarPlay shows "More"
-        var tabTemplates: [CPTemplate] = []
-        tabTemplates = navTemplates
-
-        // Build a Now Playing opener list tab
-        let openNowItem = CPListItem(text: "Open Now Playing", detailText: nil)
-        openNowItem.handler = { [weak self] _, completion in
-            guard let self else { completion(); return }
-            print("[CarPlay] Now Playing list tab selected -> showNowPlayingTemplate()")
-            self.showNowPlayingTemplate()
-            completion()
-        }
-        let nowSection = CPListSection(items: [openNowItem])
-        let nowList = CPListTemplate(title: "Now Playing", sections: [nowSection])
-        nowList.tabTitle = "Now Playing"
-        if #available(iOS 13.0, *) { nowList.tabImage = UIImage(systemName: "play.circle") }
-        self.nowPlayingListTab = nowList
-
-        if tabTemplates.count <= 3 {
-            // Ensure Now Playing is the last (4th)
-            tabTemplates.append(nowList)
-        } else {
-            // More than 4: include Now Playing as an additional template so CarPlay provides the More button
-            tabTemplates.append(nowList)
-        }
+        // Compose final tab templates with ONLY navigation templates.
+        // Do not add a dedicated "Now Playing" tab; rely on CarPlay's default Now Playing button.
+        let tabTemplates: [CPTemplate] = navTemplates
 
         // Set Tab Bar as root
         let tabBar = CPTabBarTemplate(templates: tabTemplates)
