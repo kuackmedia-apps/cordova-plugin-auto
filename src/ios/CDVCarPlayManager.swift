@@ -23,6 +23,22 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         self.musicPlayer = CDVMusicPlayer(manager: self)
     }
 
+    // MARK: - Icons
+    @available(iOS 13.0, *)
+    private func carPlayTabImage(from apiValue: Any?) -> UIImage? {
+        let fallback = UIImage(systemName: "music.note.list")
+        guard let raw = (apiValue as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return fallback
+        }
+        // Try SF Symbol name first
+        if let symbol = UIImage(systemName: raw) {
+            let config = UIImage.SymbolConfiguration(weight: .regular)
+            return symbol.applyingSymbolConfiguration(config) ?? symbol
+        }
+        // Not a valid SF Symbol -> fallback. For URLs/paths, we keep the standard tab glyph.
+        return fallback
+    }
+
     // MARK: - CPTabBarTemplateDelegate
     func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect template: CPTemplate) {
         // If user taps the "Now Playing" tab, open the CarPlay Now Playing template immediately
@@ -240,6 +256,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     private func setupTemplates(_ controller: CPInterfaceController) {
       print("[CarPlay] setupTemplates: begin")
       let autoNavigation = CDVPlaylistProvider.loadNavigationFromJSON()
+      // Pretty-print full AUTO_NAVIGATION for diagnostics
+      if let data = try? JSONSerialization.data(withJSONObject: autoNavigation, options: [.prettyPrinted]),
+         let pretty = String(data: data, encoding: .utf8) {
+          print("[CarPlay][NAV][FULL] AUTO_NAVIGATION=\n\(pretty)")
+      } else {
+          print("[CarPlay][NAV][FULL][WARN] could not serialize AUTO_NAVIGATION to JSON")
+      }
       print("[CarPlay] setupTemplates: AUTO_NAVIGATION sections count=\(autoNavigation.count)")
       if let first = autoNavigation.first {
           print("[CarPlay] setupTemplates: first section keys=\(Array(first.keys))")
@@ -255,6 +278,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let sectionTitle = (sectionDict["text"] as? String) ?? "Section \(idx+1)"
             let fileName = (sectionDict["fileName"] as? String) ?? ""
             let explicitItems = sectionDict["items"] as? [[String: Any]]
+            let sectionIcon = sectionDict["icon"]
+            if let iconStr = sectionIcon as? String, !iconStr.isEmpty {
+                print("[CarPlay][TAB] section icon value=\(iconStr) for title=\(sectionTitle)")
+            } else {
+                print("[CarPlay][TAB] no icon for title=\(sectionTitle); will use fallback")
+            }
 
             var cpSections: [CPListSection] = []
 
@@ -306,7 +335,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let safeTitle = sectionTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Section \(idx+1)" : sectionTitle
             let cpList = CPListTemplate(title: safeTitle, sections: cpSections)
             cpList.tabTitle = safeTitle
-            if #available(iOS 13.0, *) { cpList.tabImage = UIImage(systemName: "music.note.list") }
+            if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: sectionIcon) }
             let totalItems = cpSections.reduce(0) { $0 + $1.items.count }
             print("[CarPlay] [NAV] building tab title=\(safeTitle) sections=\(cpSections.count) totalItems=\(totalItems)")
             if totalItems == 0 { print("[CarPlay][TAB][EMPTY] tab title=\(safeTitle) has no items") }
@@ -351,9 +380,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let section = CPListSection(items: items)
                 let list = CPListTemplate(title: "Playlists", sections: [section])
                 list.tabTitle = "Playlists"
-                if #available(iOS 13.0, *) {
-                    list.tabImage = UIImage(systemName: "music.note.list")
-                }
+                if #available(iOS 13.0, *) { list.tabImage = carPlayTabImage(from: nil) }
                 DispatchQueue.main.async {
                     list.updateSections([section])
                 }
@@ -398,9 +425,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     let cpSection = CPListSection(items: cpItems)
                     let cpList = CPListTemplate(title: safeTitle, sections: [cpSection])
                     cpList.tabTitle = safeTitle
-                    if #available(iOS 13.0, *) {
-                        cpList.tabImage = UIImage(systemName: "music.note.list")
-                    }
+                    if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: nil) }
                     DispatchQueue.main.async {
                         cpList.updateSections([cpSection])
                     }
@@ -423,9 +448,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let section = CPListSection(items: placeholders)
             let list = CPListTemplate(title: "Browse", sections: [section])
             list.tabTitle = "Browse"
-            if #available(iOS 13.0, *) {
-                list.tabImage = UIImage(systemName: "music.note.list")
-            }
+            if #available(iOS 13.0, *) { list.tabImage = carPlayTabImage(from: nil) }
             navTemplates.append(list)
         }
 
