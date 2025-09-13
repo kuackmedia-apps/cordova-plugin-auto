@@ -207,8 +207,58 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 resolveSignedUrls(from: artistTracks.list, completion: completion)
             }
         case "tag":
-            print("[CarPlay][remote] tag not implemented for track listing")
-            DispatchQueue.main.async { completion([]) }
+            // Mirror Android: station/tag returns a sequence of tracks via getTagTracks(lastIdAlbumTrack)
+            // We'll fetch a small batch (e.g., 10) sequentially and resolve signed URLs.
+            let maxItems = 10
+            var results: [[String: Any]] = []
+            var lastIdAlbumTrack: String = "0"
+            func pullNext() {
+                if results.count >= maxItems { DispatchQueue.main.async { completion(results) }; return }
+                api.getTagTracks(tagId: itemId, lastIdAlbumTrack: lastIdAlbumTrack) { res in
+                    switch res {
+                    case .success(let t):
+                        // Update lastIdAlbumTrack to continue pagination
+                        if let last = t.idAlbumTrack { lastIdAlbumTrack = String(last) }
+                        // Resolve signed URL, then append dict
+                        let req = TrackRequest(
+                            idAlbumTrack: String(t.idAlbumTrack ?? 0),
+                            idTrack: t.id,
+                            forceDevice: false,
+                            useCloudFront: true,
+                            forcePreview: false,
+                            extraLife: false
+                        )
+                        api.getTrackUrl(trackRequest: req) { r in
+                            switch r {
+                            case .success(let signed):
+                                let artUrl: String? = {
+                                    if let images = t.album?.images, !images.isEmpty {
+                                        if let best = images.max(by: { (a, b) in (a.size ?? 0) < (b.size ?? 0) }) { return best.url }
+                                        return images.first?.url
+                                    }
+                                    return nil
+                                }()
+                                let dict: [String: Any] = [
+                                    "title": t.name,
+                                    "artist": t.artists.first?.name ?? "",
+                                    "album": t.album?.title ?? parentTitle,
+                                    "source": signed.signedUrl,
+                                    "artwork": artUrl as Any
+                                ]
+                                results.append(dict)
+                                pullNext()
+                            case .failure(let e):
+                                print("[CarPlay][remote][tag] getTrackUrl failed: \(e)")
+                                pullNext()
+                            }
+                        }
+                    case .failure(let e):
+                        print("[CarPlay][remote][tag] getTagTracks failed: \(e)")
+                        DispatchQueue.main.async { completion(results) }
+                    }
+                }
+            }
+            pullNext()
         default:
             print("[CarPlay][remote] unknown mediaType=\(mediaType)")
             DispatchQueue.main.async { completion([]) }

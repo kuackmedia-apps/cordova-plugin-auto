@@ -79,8 +79,18 @@ class MusicApiImpl: MusicApi {
     }
 
     func getTagTracks(tagId: String, lastIdAlbumTrack: String, completion: @escaping (Result<Track, Error>) -> Void) {
-        let url = baseURL.appendingPathComponent("stations/\(tagId)/track?lastIdAlbumTrack=\(lastIdAlbumTrack)")
-        var request = URLRequest(url: url)
+        // Build URL with proper query encoding; do NOT include '?' inside a path component
+        let pathURL = baseURL
+            .appendingPathComponent("stations")
+            .appendingPathComponent(tagId)
+            .appendingPathComponent("track")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "lastIdAlbumTrack", value: lastIdAlbumTrack)]
+        guard let finalURL = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid stations URL"])) )
+            return
+        }
+        var request = URLRequest(url: finalURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         dataTask(request: request, completion: completion)
     }
