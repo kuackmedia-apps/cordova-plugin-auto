@@ -39,6 +39,30 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         return fallback
     }
 
+    // MARK: - Image URL extraction for list items
+    private func extractImageURL(from dict: [String: Any]) -> String? {
+        // 1) Direct keys commonly used by API payloads
+        if let s = dict["artwork"] as? String, !s.isEmpty { return s }
+        if let s = dict["image"] as? String, !s.isEmpty { return s }
+        if let s = dict["icon"] as? String, !s.isEmpty { return s }
+        // 2) images: [ { url, size, type } ] — choose the largest by size, else first with url
+        if let images = dict["images"] as? [[String: Any]], !images.isEmpty {
+            let sorted = images.sorted { (a, b) -> Bool in
+                let sa = (a["size"] as? Int) ?? 0
+                let sb = (b["size"] as? Int) ?? 0
+                return sa > sb
+            }
+            for im in sorted {
+                if let url = im["url"] as? String, !url.isEmpty { return url }
+                // Some payloads use type=create_svg with list: ["https://…svg"]
+                if let type = im["type"] as? String, type == "create_svg", let arr = im["list"] as? [String], let first = arr.first, !first.isEmpty { return first }
+            }
+        }
+        // 3) Nested album.images (e.g., for tracks)
+        if let album = dict["album"] as? [String: Any], let url = extractImageURL(from: album) { return url }
+        return nil
+    }
+
     // MARK: - CPTabBarTemplateDelegate
     func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect template: CPTemplate) {
         // If user taps the "Now Playing" tab, open the CarPlay Now Playing template immediately
@@ -52,28 +76,59 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     // MARK: - Helpers
     private func setListItemImage(_ li: CPListItem, from urlString: String?) {
-        guard let s = urlString, !s.isEmpty, let url = URL(string: s) else {
-            if let s = urlString, s.isEmpty { print("[CarPlay][IMG] empty image URL string") }
-            else { print("[CarPlay][IMG] no image URL present for list item") }
+        guard let s = urlString, !s.isEmpty else {
+            print("[CarPlay][IMG] no image URL present for list item")
             return
         }
-        let nsurl = url as NSURL
-        if let cached = listImageCache.object(forKey: nsurl) {
-            print("[CarPlay][IMG] cache hit for list image: \(s) size=\(Int(cached.size.width))x\(Int(cached.size.height)))")
-            li.setImage(cached)
-            return
-        }
-        print("[CarPlay][IMG] cache miss, downloading list item image: \(s)")
-        URLSession.shared.dataTask(with: url) { [weak self] data, resp, err in
-            if let err = err { print("[CarPlay][IMG][ERROR] download failed for: \(s) error=\(err.localizedDescription)"); return }
-            guard let self = self, let data = data, let img = UIImage(data: data) else {
-                print("[CarPlay][IMG][ERROR] invalid image data for: \(s)")
+        // First, try remote URL
+        if let url = URL(string: s), url.scheme != nil {
+            let nsurl = url as NSURL
+            if let cached = listImageCache.object(forKey: nsurl) {
+                print("[CarPlay][IMG] cache hit for list image: \(s) size=\(Int(cached.size.width))x\(Int(cached.size.height)))")
+                li.setImage(cached)
                 return
             }
-            print("[CarPlay][IMG] download success bytes=\(data.count) size=\(Int(img.size.width))x\(Int(img.size.height))) url=\(s)")
-            self.listImageCache.setObject(img, forKey: nsurl)
-            DispatchQueue.main.async { li.setImage(img) }
-        }.resume()
+            print("[CarPlay][IMG] cache miss, downloading list item image: \(s)")
+            URLSession.shared.dataTask(with: url) { [weak self] data, resp, err in
+                if let err = err { print("[CarPlay][IMG][ERROR] download failed for: \(s) error=\(err.localizedDescription)"); return }
+                guard let self = self, let data = data, let img = UIImage(data: data) else {
+                    print("[CarPlay][IMG][ERROR] invalid image data for: \(s)")
+                    return
+                }
+                print("[CarPlay][IMG] download success bytes=\(data.count) size=\(Int(img.size.width))x\(Int(img.size.height))) url=\(s)")
+                self.listImageCache.setObject(img, forKey: nsurl)
+                DispatchQueue.main.async {
+                    li.setImage(img)
+                    // Nudge UI to refresh if needed
+                    if let list = self.interfaceController?.topTemplate as? CPListTemplate {
+                        list.updateSections(list.sections)
+                    }
+                }
+            }.resume()
+            return
+        }
+        // Fallback: attempt to resolve a bundled/app-container image by name or relative path
+        let candidates: [String] = [
+            s,
+            "www/\(s)",
+            "img/\(s)",
+            (s as NSString).lastPathComponent
+        ]
+        for candidate in candidates {
+            if let img = UIImage(named: candidate) {
+                print("[CarPlay][IMG] loaded bundled image: \(candidate) size=\(Int(img.size.width))x\(Int(img.size.height)))")
+                li.setImage(img)
+                return
+            }
+            // App container Library/NoCloud
+            let noCloud = (NSSearchPathForDirectoriesInDomains(.libraryDirectory, .userDomainMask, true).first ?? "") + "/NoCloud/" + candidate
+            if FileManager.default.fileExists(atPath: noCloud), let img = UIImage(contentsOfFile: noCloud) {
+                print("[CarPlay][IMG] loaded app-container image: \(candidate) size=\(Int(img.size.width))x\(Int(img.size.height)))")
+                li.setImage(img)
+                return
+            }
+        }
+        print("[CarPlay][IMG][WARN] unable to resolve image reference: \(s)")
     }
     private func makeListItems(from dicts: [[String: Any]], parentTitle: String) -> [CPListItem] {
         var cpItems: [CPListItem] = []
@@ -85,8 +140,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let childFileName = d["fileName"] as? String
             let inlineItems = d["items"] as? [[String: Any]]
             let li = CPListItem(text: name, detailText: subtitle)
-            // Try to attach image if available on item
-            let imageUrl = (d["artwork"] as? String) ?? (d["image"] as? String) ?? (d["icon"] as? String)
+            // Try to attach image if available on item (supports artwork/image/icon or images array)
+            let imageUrl = extractImageURL(from: d)
             if let imageUrl, !imageUrl.isEmpty { print("[CarPlay][IMG] list item has image URL: \(imageUrl)") }
             else { print("[CarPlay][IMG] list item without image URL. keys=\(Array(d.keys)) name=\(name)") }
             setListItemImage(li, from: imageUrl)
@@ -351,7 +406,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         let subItems = subSection["items"] as? [[String: Any]] ?? []
                         let li = CPListItem(text: subTitle, detailText: "\(subItems.count) items")
                         // Subsections may include a representative image key
-                        let subImage = (subSection["artwork"] as? String) ?? (subSection["image"] as? String) ?? (subSection["icon"] as? String)
+                        let subImage = extractImageURL(from: subSection)
                         if let subImage, !subImage.isEmpty { print("[CarPlay][IMG] subsection image URL: \(subImage)") }
                         setListItemImage(li, from: subImage)
                         li.handler = { [weak self] _, completion in
