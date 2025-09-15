@@ -175,6 +175,23 @@ object MediaItemTree {
         )
       )
 
+    // Add hardcoded playlists menu
+    val playlistsMenuId = "PLAYLISTS_MENU"
+    treeNodes[playlistsMenuId] =
+      MediaItemNode(
+        MediaItemFactory.buildMediaItem(
+          title = "Playlists",
+          subtitle = "Featured playlists",
+          mediaId = playlistsMenuId,
+          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+        )
+      )
+    treeNodes[ROOT_ID]!!.addChild(playlistsMenuId)
+
+    // Add hardcoded playlists
+    addHardcodedPlaylists(context, playlistsMenuId)
+
+    // Add existing navigation data
     navigationData.forEach {
       val mediaId = it.fileName + "_MENU"
       treeNodes[mediaId] =
@@ -190,6 +207,48 @@ object MediaItemTree {
       treeNodes[ROOT_ID]!!.addChild(mediaId)
 
       loadNavigationDataChildren(context, it.fileName)
+    }
+  }
+
+  private fun addHardcodedPlaylists(context: Context, parentId: String) {
+    // Create three hardcoded playlists
+    val playlists = listOf(
+      Triple("playlist_1", "Featured Tracks", "Our featured music collection"),
+      Triple("playlist_2", "Sample Music", "Sample tracks for demonstration"),
+      Triple("playlist_3", "Favorites", "Your favorite tracks")
+    )
+
+    playlists.forEach { (id, title, description) ->
+      val playlistId = "hardcoded_$id"
+      val playlistItem = MediaItemFactory.buildMediaItem(
+        title = title,
+        subtitle = description,
+        mediaId = playlistId,
+        flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE
+      )
+
+      treeNodes[playlistId] = MediaItemNode(playlistItem)
+      treeNodes[parentId]!!.addChild(playlistId)
+
+      // Add the sample track to each playlist
+      val trackId = "${playlistId}_track_1"
+      val extras = Bundle().apply {
+        putString("media_uri", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3")
+        putString("title", "SoundHelix Song 1")
+        putString("artist", "T. Schürger")
+        putString("album", "SoundHelix Samples")
+      }
+
+      val trackItem = MediaItemFactory.buildMediaItem(
+        title = "SoundHelix Song 1",
+        subtitle = "T. Schürger - SoundHelix Samples",
+        mediaId = trackId,
+        flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+        extras = extras
+      )
+
+      treeNodes[trackId] = MediaItemNode(trackItem)
+      treeNodes[playlistId]!!.addChild(trackId)
     }
   }
 

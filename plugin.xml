@@ -4,6 +4,7 @@
 
   <engines>
       <engine name="cordova-android" version=">=12.0.0" />
+      <engine name="cordova-ios" version=">=6.0.0" />
   </engines>
 
   <js-module src="www/myplugin.js" name="auto">
@@ -118,4 +119,110 @@
 
   </platform>
 
+  <platform name="ios">
+    <!-- Ensure Swift compiles with the correct version -->
+    <preference name="UseSwiftLanguageVersion" default="5.0" />
+  <!-- Expose Cordova headers to Swift -->
+  <preference name="ios-XCBuildConfiguration-SWIFT_OBJC_BRIDGING_HEADER" default="$(PROJECT_DIR)/$(PROJECT_NAME)/Plugins/cordova-plugin-auto/CordovaAuto-Bridging-Header.h" />
+    <config-file target="config.xml" parent="/*">
+      <feature name="AutoMusicPlugin">
+        <param name="ios-package" value="CDVAutoMusicPlugin" />
+        <param name="onload" value="true" />
+      </feature>
+    </config-file>
+
+    <!-- CarPlay entitlement and Info.plist configuration -->
+    <config-file target="*-Info.plist" parent="UIBackgroundModes">
+      <array>
+        <string>audio</string>
+      </array>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="NSAppleMusicUsageDescription">
+      <string>This app needs access to Apple Music to play your music in CarPlay.</string>
+    </config-file>
+
+    <!-- CarPlay app configuration -->
+    <config-file target="*-Info.plist" parent="UIApplicationSceneManifest">
+      <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <true/>
+        <key>UISceneConfigurations</key>
+        <dict>
+          <!-- Main application window scene -->
+          <key>UIWindowSceneSessionRoleApplication</key>
+          <array>
+            <dict>
+              <key>UISceneConfigurationName</key>
+              <string>Default Configuration</string>
+              <key>UISceneClassName</key>
+              <string>UIWindowScene</string>
+              <key>UISceneDelegateClassName</key>
+              <string>SceneDelegate</string>
+            </dict>
+          </array>
+
+          <!-- CarPlay template scene -->
+          <key>CPTemplateApplicationSceneSessionRoleApplication</key>
+          <array>
+            <dict>
+              <key>UISceneConfigurationName</key>
+              <string>CarPlay Configuration</string>
+              <key>UISceneClassName</key>
+              <string>CPTemplateApplicationScene</string>
+              <key>UISceneDelegateClassName</key>
+              <string>CDVCarPlaySceneDelegate</string>
+            </dict>
+          </array>
+        </dict>
+      </dict>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="com.apple.developer.carplay-audio">
+      <true/>
+    </config-file>
+
+    <!-- Swift Source files (Objective-C versions removed) -->
+    <source-file src="src/ios/CDVAutoMusicPlugin.swift" />
+    <source-file src="src/ios/CDVCarPlayManager.swift" />
+    <source-file src="src/ios/CDVCarPlaySceneDelegate.swift" />
+    <source-file src="src/ios/CDVMusicPlayer.swift" />
+    <source-file src="src/ios/CDVPlaylistProvider.swift" />
+    <source-file src="src/ios/SceneDelegate.swift" />
+    
+
+    <!-- Swift API files -->
+    <source-file src="src/ios/api/MusicApi.swift" />
+    <source-file src="src/ios/api/TokenInterceptor.swift" />
+
+    <!-- Swift model files -->
+    <source-file src="src/ios/models/AnyMediaItem.swift" />
+    <source-file src="src/ios/models/AlbumItem.swift" />
+    <source-file src="src/ios/models/AlbumSummary.swift" />
+    <source-file src="src/ios/models/AlbumTracks.swift" />
+    <source-file src="src/ios/models/Artist.swift" />
+    <source-file src="src/ios/models/ArtistTracks.swift" />
+    <source-file src="src/ios/models/AutoNavigationExplorer.swift" />
+    <source-file src="src/ios/models/CoverImage.swift" />
+    <source-file src="src/ios/models/Curator.swift" />
+    <source-file src="src/ios/models/EmptyModel.swift" />
+    <source-file src="src/ios/models/HistoryResponse.swift" />
+    <source-file src="src/ios/models/ImageColorInfo.swift" />
+    <source-file src="src/ios/models/MediaItem.swift" />
+    <source-file src="src/ios/models/NavigationData.swift" />
+    <source-file src="src/ios/models/PingResponse.swift" />
+    <source-file src="src/ios/models/PlayListItem.swift" />
+    <source-file src="src/ios/models/PlaylistTracks.swift" />
+    <source-file src="src/ios/models/QueueItem.swift" />
+    <source-file src="src/ios/models/RecentListened.swift" />
+    <source-file src="src/ios/models/SearchResponse.swift" />
+    <source-file src="src/ios/models/Tag.swift" />
+    <source-file src="src/ios/models/Track.swift" />
+    <source-file src="src/ios/models/TrackAPIModels.swift" />
+    <source-file src="src/ios/models/TracksContainer.swift" />
+    <source-file src="src/ios/models/User.swift" />
+
+    <framework src="MediaPlayer.framework" />
+    <framework src="CarPlay.framework" weak="true" />
+  </platform>
 </plugin>
