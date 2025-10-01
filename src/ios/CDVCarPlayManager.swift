@@ -132,6 +132,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
     private func makeListItems(from dicts: [[String: Any]], parentTitle: String) -> [CPListItem] {
         var cpItems: [CPListItem] = []
+        let allowedMediaTypes = ["PLAYLIST", "ALBUM", "ARTIST", "TAG"]
+
         for d in dicts {
             let name = (d["name"] as? String) ?? (d["title"] as? String) ?? (d["text"] as? String) ?? "Item"
             let subtitle = d["description"] as? String
@@ -139,6 +141,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let mediaType = (d["itemType"] as? String) ?? (d["type"] as? String) // PLAYLIST, ALBUM, ARTIST, TAG
             let childFileName = d["fileName"] as? String
             let inlineItems = d["items"] as? [[String: Any]]
+
+            // Validar que el mediaType exista y sea permitido
+            guard let mediaType = mediaType, allowedMediaTypes.contains(mediaType.uppercased()) else {
+                print("[CarPlay] Skipping item with missing or unsupported mediaType: \(mediaType ?? "nil")")
+                continue
+            }
+
             let li = CPListItem(text: name, detailText: subtitle)
             // Try to attach image if available on item (supports artwork/image/icon or images array)
             let imageUrl = extractImageURL(from: d)
@@ -179,8 +188,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 // 1) Try local queue file first
                 var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
                 // 2) If empty, attempt remote by mediaType
-                if tracks.isEmpty, let mediaType = mediaType?.lowercased(), !id.isEmpty {
-                    self.fetchTracksRemote(mediaType: mediaType, itemId: id, parentTitle: name) { remote in
+                if tracks.isEmpty, !mediaType.lowercased().isEmpty, !id.isEmpty {
+                    self.fetchTracksRemote(mediaType: mediaType.lowercased(), itemId: id, parentTitle: name) { remote in
                         if !remote.isEmpty {
                             // Reset shown flag before kicking off playback so Now Playing can be presented again
                             self.isNowPlayingShown = false
