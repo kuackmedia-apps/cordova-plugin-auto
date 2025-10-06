@@ -13,8 +13,8 @@ data class Tag(
   val isGenre: Boolean,
   val isStation: Boolean,
   val images: List<CoverImage>,
-  val updateDate: Long,
-  val imageUpdateDate: Long,
+  val updateDate: Long? = null,
+  val imageUpdateDate: Long? = null,
   val amount: Any?,
   val imageColorInfo: ImageColorInfo? = null
 ) : MediaItem()

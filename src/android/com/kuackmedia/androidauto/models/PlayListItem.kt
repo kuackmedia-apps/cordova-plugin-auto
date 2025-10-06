@@ -13,8 +13,8 @@ data class PlayListItem(
   val active: Boolean,
   val curator: Curator?,
   val user: Any?,
-  val updateDate: Long,
-  val createDate: Long,
+  val updateDate: Long? = null,
+  val createDate: Long? = null,
   val tags: List<Tag>?,
   val images: List<CoverImage>,
   val imageColorInfo: ImageColorInfo? = null
