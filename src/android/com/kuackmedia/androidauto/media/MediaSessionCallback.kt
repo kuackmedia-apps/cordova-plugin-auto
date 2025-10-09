@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URL
+import kotlin.or
 import kotlin.toString
 
 
@@ -525,34 +526,41 @@ class MediaSessionCallback(
     val mediaMetadata = controller.metadata
     val description = mediaMetadata?.description
 
+    // Check for notification permission on Android 13+
+    val hasNotificationPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+              android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else {
+      true
+    }
+
+    if (!hasNotificationPermission) {
+      Log.w(TAG, "Notification permission not granted, not showing notification")
+      return
+    }
+
     // Create notification channel for API 26+
     val channelName = "Media Playback"
     val channelDescription = "Media playback controls"
     val importance = NotificationManager.IMPORTANCE_LOW
     val channel = NotificationChannel(CHANNEL_ID, channelName, importance)
-    // Fix the assignment by using setDescription() method
     channel.description = channelDescription
     val notificationManager = context.getSystemService(NotificationManager::class.java)
     notificationManager.createNotificationChannel(channel)
 
-    // Create the main activity pending intent
     val mainActivityIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     val contentIntent = PendingIntent.getActivity(
       context, 0, mainActivityIntent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    // Build the notification
     val builder = NotificationCompat.Builder(context, CHANNEL_ID).apply {
-      // Add the metadata
       setContentTitle(description?.title)
       setContentText(description?.subtitle)
       setSubText(description?.description)
       setContentIntent(contentIntent)
       setSmallIcon(context.applicationInfo.icon)
       setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-
-      // Add buttons for media control based on playback state
       if (state == PlaybackStateCompat.STATE_PLAYING) {
         addAction(NotificationCompat.Action(
           android.R.drawable.ic_media_previous, "Previous",
@@ -580,20 +588,14 @@ class MediaSessionCallback(
           MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
         ))
       }
-
-      // Apply the media style
       setStyle(androidx.media.app.NotificationCompat.MediaStyle()
         .setMediaSession(mediaSession.sessionToken)
         .setShowActionsInCompactView(0, 1, 2))
-
       setWhen(System.currentTimeMillis() - (mediaPlayer.currentPosition))
       setUsesChronometer(state == PlaybackStateCompat.STATE_PLAYING)
-
-      // Set ongoing to prevent the user from dismissing the notification
       setOngoing(state == PlaybackStateCompat.STATE_PLAYING)
     }
 
-    // Load album art asynchronously
     val imageUrl = description?.iconUri?.toString()
     if (imageUrl != null) {
       CoroutineScope(Dispatchers.IO).launch {
@@ -602,7 +604,6 @@ class MediaSessionCallback(
           val bitmap = BitmapFactory.decodeStream(url.openConnection().getInputStream())
           withContext(Dispatchers.Main) {
             builder.setLargeIcon(bitmap)
-            // Update notification with the album art safely
             safelyShowNotification(NOTIFICATION_ID, builder.build())
           }
         } catch (e: Exception) {
@@ -610,17 +611,21 @@ class MediaSessionCallback(
         }
       }
     }
-    // Show the notification immediately (will be updated when image loads)
     val notification = builder.build()
     safelyShowNotification(NOTIFICATION_ID, notification)
 
-    // Make service foreground when playing
+    // Only call startForeground if permission is granted
     if (state == PlaybackStateCompat.STATE_PLAYING && context is Service) {
-      context.startForeground(NOTIFICATION_ID, notification)
+      try {
+        context.startForeground(NOTIFICATION_ID, notification)
+      } catch (e: SecurityException) {
+        Log.w(TAG, "No notification permission for startForeground", e)
+      }
     } else if (context is Service) {
       context.stopForeground(false)
     }
   }
+
 
   // Add this helper method to check permissions before showing notifications
   private fun safelyShowNotification(notificationId: Int, notification: android.app.Notification) {
