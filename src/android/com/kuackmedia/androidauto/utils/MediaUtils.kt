@@ -38,4 +38,30 @@ object MediaUtils {
     }
     return duration
   }
+  fun parseDuration(duration: String?): Long {
+    if (duration.isNullOrEmpty()) {
+      return 0
+    }
+
+    return try {
+      val parts = duration.split(":")
+      when (parts.size) {
+        3 -> { // HH:MM:SS
+          val hours = parts[0].toLong()
+          val minutes = parts[1].toLong()
+          val seconds = parts[2].toLong()
+          ((hours * 3600) + (minutes * 60) + seconds) * 1000
+        }
+        2 -> { // MM:SS
+          val minutes = parts[0].toLong()
+          val seconds = parts[1].toLong()
+          ((minutes * 60) + seconds) * 1000
+        }
+        else -> 0
+      }
+    } catch (e: NumberFormatException) {
+      Log.e(TAG, "Failed to parse duration: $duration", e)
+      0
+    }
+  }
 }

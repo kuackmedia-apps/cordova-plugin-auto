@@ -100,6 +100,20 @@ class MediaSessionCallback(
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
     val mediaSessionContext = extras?.getString("MEDIA_SESSION_SERVICE_CONTEXT")
 
+    fun getDurationStringLength(length: String?, filePath: String?): Long {
+      var duration: Long = 0
+      if( !length.isNullOrEmpty()) {
+        duration = MediaUtils.parseDuration(length)
+        Log.i(TAG, "[onPlayFromMediaId] Duration esta vale $duration")
+      } else {
+        if (!filePath.isNullOrEmpty()) duration = MediaUtils.getMp3Duration(filePath);
+         else duration = 0
+
+        Log.i(TAG, "[onPlayFromMediaId] Duration esta no vale $duration")
+      }
+      return duration
+    }
+
     if (mediaSessionContext == "MEDIA_AUTOPLAY") {
       Log.d(TAG, "Blocking autoplay triggered by Android Auto")
       // Optionally reset state or ignore
@@ -130,7 +144,7 @@ class MediaSessionCallback(
             mediaPlayer.setCurrentTrack(uri)
             mediaPlayer.playCurrentTrack(context)
             updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-            val duration = fe.getLong("length", 0).let { if (it > 0) it else MediaUtils.getMp3Duration(uri.toString()) }
+            val duration = getDurationStringLength(fe.getString("length",), uri.toString())
             mediaSession.setMetadata(
               MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
@@ -163,7 +177,7 @@ class MediaSessionCallback(
             mediaPlayer.setCurrentTrack(uri)
             mediaPlayer.playCurrentTrack(context)
             updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-            val duration = fe.getLong("length", 0).let { if (it > 0) it else MediaUtils.getMp3Duration(uri.toString()) }
+            val duration = getDurationStringLength(fe.getString("length",), uri.toString())
             mediaSession.setMetadata(
               MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
@@ -196,7 +210,7 @@ class MediaSessionCallback(
             mediaPlayer.setCurrentTrack(uri)
             mediaPlayer.playCurrentTrack(context)
             updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-            val duration = fe.getLong("length", 0).let { if (it > 0) it else MediaUtils.getMp3Duration(uri.toString()) }
+            var duration: Long = getDurationStringLength(fe.getString("length",), uri.toString())
             mediaSession.setMetadata(
               MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
@@ -231,27 +245,23 @@ class MediaSessionCallback(
             mediaPlayer.playCurrentTrack(context)
 
             updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-
-            val duration = extras?.getLong("Length")?.let {
-              if (it <= 0) MediaUtils.getMp3Duration(trackUrl.toString())
-              else it
-            }
-            Log.i(TAG, "[onPlayFromMediaId] Duration $duration")
-
+            var durationText = extras?.getString("length", "0");
+           val durationMs = getDurationStringLength(durationText, trackUrl.toString())
             val metadata = MediaMetadataCompat.Builder()
               .putString(MediaMetadataCompat.METADATA_KEY_TITLE, extras?.getString("title"))
               .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras?.getString("artist"))
               .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras?.getString("album"))
               .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
               .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, extras?.getString("image"))
-              .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration!!)
+              .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs)
               .build()
 
             mediaSession.setMetadata(metadata)
 
             showNotification(PlaybackStateCompat.STATE_PLAYING)
 
-            storeLocalData(extras, trackId)
+            //storeLocalData(extras, trackId)
+            extras?.let { storeLocalData(it, trackId) }
           }
         } catch (e: Exception) {
           Log.e("MediaSession", "Failed to load track URI", e)
@@ -375,7 +385,7 @@ class MediaSessionCallback(
     state: Int,
     position: Long = mediaPlayer.currentPosition
   ) {
-    Log.i(TAG, "[MediaSessionCallback] Update state $state")
+    //Log.i(TAG, "[MediaSessionCallback] Update state $state")
     val actions = (
       PlaybackStateCompat.ACTION_PLAY or
         PlaybackStateCompat.ACTION_PAUSE or
@@ -506,7 +516,7 @@ class MediaSessionCallback(
     override fun run() {
       try {
         if (mediaPlayer.isPlaying()) {
-          Log.i(TAG, "[MediaSessionCallback] Update Playback position, player is playing")
+        //  Log.i(TAG, "[MediaSessionCallback] Update Playback position, player is playing")
           val currentPosition = mediaPlayer.currentPosition
           val currentState =
             PlaybackStateCompat.STATE_PLAYING

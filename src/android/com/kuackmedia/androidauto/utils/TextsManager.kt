@@ -37,13 +37,13 @@ object TextsManager {
   // returns the localized text or "" if not found
   fun getText(key: String): String {
     //log all texts
-    Log.d(TAG, "Available texts: $texts")
+    //Log.d(TAG, "Available texts: $texts")
     if (!::texts.isInitialized) {
       Log.e(TAG, "TextsManager not initialized. Call init() first.")
       return ""
     }
     // Log the key being accessed
-    Log.d(TAG, "Accessing text for key: $key");
+    //Log.d(TAG, "Accessing text for key: $key");
     //log all texts
     if (texts.isEmpty()) {
       Log.w(TAG, "No texts available. Check if init() was called successfully.")
