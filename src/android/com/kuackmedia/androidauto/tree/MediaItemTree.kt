@@ -105,7 +105,7 @@ object MediaItemTree {
         val items: List<RecentListened>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it.data !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it.data, "")!! }
+          ?.map { MediaItemFactory.parseMediaItems(it.data, "", context)!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -135,7 +135,7 @@ object MediaItemTree {
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
 
             it.items.forEach {
-              val categoryMediaItem = MediaItemFactory.parseMediaItems(it, "")!!
+              val categoryMediaItem = MediaItemFactory.parseMediaItems(it, "", context)!!
               treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
               titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
               treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
@@ -150,7 +150,7 @@ object MediaItemTree {
         val items: List<MediaItem>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it, "")!! }
+          ?.map { MediaItemFactory.parseMediaItems(it, "", context)!! }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -211,7 +211,7 @@ object MediaItemTree {
     return null
   }
 
-  suspend fun search(query: String): MutableList<MediaBrowserCompat.MediaItem> {
+  suspend fun search(query: String, context: Context): MutableList<MediaBrowserCompat.MediaItem> {
     // new grouped implementation with headers
     val matches = mutableListOf<MediaBrowserCompat.MediaItem>()
     val result = this.musicApi.search(query)
@@ -236,7 +236,7 @@ object MediaItemTree {
         flags = 0
       )
       matches.add(header)
-      parseSearchResult(matches, bestItem)
+      parseSearchResult(matches, bestItem, context)
     }
 
     // Artistas
@@ -248,7 +248,7 @@ object MediaItemTree {
         flags = 0
       )
       matches.add(header)
-      list.forEach { parseSearchResult(matches, it) }
+      list.forEach { parseSearchResult(matches, it, context) }
     }
 
     // Albums
@@ -260,7 +260,7 @@ object MediaItemTree {
         flags = 0
       )
       matches.add(header)
-      list.forEach { parseSearchResult(matches, it) }
+      list.forEach { parseSearchResult(matches, it, context) }
     }
 
     // Playlists
@@ -274,7 +274,7 @@ object MediaItemTree {
         extras = extras
       )
       matches.add(header)
-      list.forEach { parseSearchResult(matches, it) }
+      list.forEach { parseSearchResult(matches, it, context) }
     }
 
     // Tags
@@ -288,7 +288,7 @@ object MediaItemTree {
         extras = extras
       )
       matches.add(header)
-      list.forEach { parseSearchResult(matches, it) }
+      list.forEach { parseSearchResult(matches, it, context) }
     }
 
     // Tracks
@@ -302,14 +302,14 @@ object MediaItemTree {
         extras = extras
       )
       matches.add(header)
-      list.forEach { parseSearchResult(matches, it) }
+      list.forEach { parseSearchResult(matches, it, context) }
     }
 
     return matches
   }
 
-  fun parseSearchResult(matches: MutableList<MediaBrowserCompat.MediaItem>, mediaItem: MediaItem) {
-    val parsedItem = MediaItemFactory.parseMediaItems(mediaItem, "")
+  fun parseSearchResult(matches: MutableList<MediaBrowserCompat.MediaItem>, mediaItem: MediaItem, context: Context) {
+    val parsedItem = MediaItemFactory.parseMediaItems(mediaItem, "", context)
     if(parsedItem !== null) {
       treeNodes[parsedItem.mediaId!!] = MediaItemNode(parsedItem)
       titleMap[parsedItem.description.title.toString()] = treeNodes[parsedItem.mediaId!!]!!
@@ -322,10 +322,11 @@ object MediaItemTree {
   }
 
   fun getChildren(id: String): List<MediaBrowserCompat.MediaItem> {
+    Log.i(TAG, "getChildren $id ")
     return treeNodes[id]?.getChildren() ?: listOf()
   }
 
-  suspend fun getRemoteChildren(parentId: String): List<MediaBrowserCompat.MediaItem> {
+  suspend fun getRemoteChildren(parentId: String, context: Context): List<MediaBrowserCompat.MediaItem> {
     val parent = getItem(parentId)
     val mediaType = parent?.description?.extras?.getString("media_type")
     var result: List<MediaBrowserCompat.MediaItem> = emptyList()
@@ -344,7 +345,7 @@ object MediaItemTree {
             "  \"type\": \"PLAYLIST\",\n" +
             "  \"name\": \"${parent.description.title}\"" +
             "}"
-          MediaItemFactory.parseMediaItems(it.track, parentData)
+          MediaItemFactory.parseMediaItems(it.track, parentData, context)
         }
       }
 
@@ -355,7 +356,7 @@ object MediaItemTree {
             "  \"type\": \"ALBUM\",\n" +
             "  \"name\": \"${parent.description.title}\"" +
             "}"
-          MediaItemFactory.parseMediaItems(it, parentData)
+          MediaItemFactory.parseMediaItems(it, parentData, context)
         }
       }
 
@@ -366,7 +367,7 @@ object MediaItemTree {
             "  \"type\": \"ARTIST\",\n" +
             "  \"name\": \"${parent.description.title}\"" +
             "}"
-          MediaItemFactory.parseMediaItems(it, parentData)
+          MediaItemFactory.parseMediaItems(it, parentData, context)
         }
       }
 
@@ -377,7 +378,7 @@ object MediaItemTree {
               "  \"type\": \"PLAYLIST\",\n" +
               "  \"name\": \"${parent.description.title}\"" +
               "}"
-          val mediaItem = MediaItemFactory.parseMediaItems(it, parentData)
+          val mediaItem = MediaItemFactory.parseMediaItems(it, parentData, context)
           val mediaId = "item_" + it.itemType + "_" + it.id
           treeNodes[mediaId] =
             MediaItemNode(mediaItem!!)

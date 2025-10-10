@@ -60,7 +60,7 @@ object QueueManager {
       this.queue = items
         ?.map { it.data }
         ?.filter { it !is EmptyModel }
-        ?.map { MediaItemFactory.parseMediaItems(it, "")!! }
+        ?.map { MediaItemFactory.parseMediaItems(it, "", context)!! }
         ?.mapIndexed { index, track ->
           MediaSessionCompat.QueueItem(track.description, index.toLong())
         }

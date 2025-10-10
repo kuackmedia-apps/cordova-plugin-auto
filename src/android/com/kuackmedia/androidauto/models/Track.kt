@@ -30,7 +30,7 @@ data class Track(
   val number: Int?,
   val hasRelatedTracks: Boolean,
   val imageColorInfo: ImageColorInfo? = null,
-  val context: ContextData? = null,
+  //val context: ContextData? = null,
 ) : MediaItem()
 
 

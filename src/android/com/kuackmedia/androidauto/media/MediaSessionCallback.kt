@@ -133,7 +133,7 @@ class MediaSessionCallback(
     // autoplay artist: queue all tracks and play first
     if (mediaType == "artist" && mediaId != null) {
       CoroutineScope(Dispatchers.IO).launch {
-        val tracks = MediaItemTree.getRemoteChildren(mediaId)
+        val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
         QueueManager.buildQueue(tracks)
         withContext(Dispatchers.Main) {
           QueueManager.setQueue(mediaSession)
@@ -166,7 +166,7 @@ class MediaSessionCallback(
     if (mediaType == "album" && mediaId != null) {
       // autoplay album: fetch tracks, queue, and play first
       CoroutineScope(Dispatchers.IO).launch {
-        val tracks = MediaItemTree.getRemoteChildren(mediaId)
+        val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
         QueueManager.buildQueue(tracks)
         withContext(Dispatchers.Main) {
           QueueManager.setQueue(mediaSession)
@@ -199,7 +199,7 @@ class MediaSessionCallback(
     // autoplay playlist: queue all tracks and play first
     if (mediaType == "playlist" && mediaId != null) {
       CoroutineScope(Dispatchers.IO).launch {
-        val tracks = MediaItemTree.getRemoteChildren(mediaId)
+        val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
         QueueManager.buildQueue(tracks)
         withContext(Dispatchers.Main) {
           QueueManager.setQueue(mediaSession)

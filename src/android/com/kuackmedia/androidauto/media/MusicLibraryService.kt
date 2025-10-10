@@ -1,8 +1,13 @@
 package com.kuackmedia.androidauto.media
 
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
@@ -36,6 +41,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     const val CURRENT_TRACK_KEY = "current_track"
     const val QUEUE_ITEMS_KEY = "QUEUE_ITEMS_KEY"
     const val PLAYLIST_DATA = "playlist_data"
+    const val OFFLINE_ROOT = "[offline_root]"
+    const val LIBRARY_ROOT = "AUTO_NAVIGATION_LIBRARY_MENU"
   }
 
   private var currentTrackName: String? = null
@@ -44,6 +51,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
   private lateinit var mediaSession: MediaSessionCompat
   private lateinit var playerAdapter: IPlayerAdapter
+  private lateinit var networkCallback: ConnectivityManager.NetworkCallback
+  private var networkAvailable: Boolean = false
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     MediaButtonReceiver.handleIntent(mediaSession, intent)
@@ -101,6 +110,43 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     MediaControlBridge.mediaPlayer = playerAdapter
 
     mediaSession.controller.transportControls.prepare()
+
+    networkAvailable = isNetworkAvailable()
+    val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+    networkCallback = object : ConnectivityManager.NetworkCallback() {
+      override fun onAvailable(network: Network) {
+        val newNetworkAvailability = isNetworkAvailable()
+        if (newNetworkAvailability != networkAvailable) {
+          networkAvailable = newNetworkAvailability
+          Log.d(TAG, "Network state changed: AVAILABLE. Reloading all nodes.")
+          notifyChildrenChanged(ROOT_ID)
+          MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
+            mediaItem?.mediaId?.let {
+              if (mediaItem.isBrowsable) {
+                notifyChildrenChanged(it)
+              }
+            }
+          }
+        }
+      }
+
+      override fun onLost(network: Network) {
+        val newNetworkAvailability = isNetworkAvailable()
+        if (newNetworkAvailability != networkAvailable) {
+          networkAvailable = newNetworkAvailability
+          Log.d(TAG, "Network state changed: LOST. Reloading all nodes.")
+          notifyChildrenChanged(ROOT_ID)
+          MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
+            mediaItem?.mediaId?.let {
+              if (mediaItem.isBrowsable) {
+                notifyChildrenChanged(it)
+              }
+            }
+          }
+        }
+      }
+    }
+    connectivityManager.registerDefaultNetworkCallback(networkCallback)
   }
 
   override fun onGetRoot(
@@ -131,23 +177,59 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     parentId: String,
     result: Result<List<MediaBrowserCompat.MediaItem?>?>
   ) {
-    result.detach()
-    Log.d(TAG, "[OnLoadChildren] parentId: $parentId")
-    val localChildren = MediaItemTree.getChildren(parentId)
 
-    if(localChildren.isNotEmpty()) {
+    if (parentId == OFFLINE_ROOT) {
+      result.sendResult(MediaItemTree.getChildren(LIBRARY_ROOT))
+      return
+    }
+    Log.i(TAG, "onLoadChildren $parentId")
+    val localChildren = MediaItemTree.getChildren(parentId)
+    val onlineOnlySections = listOf("RECENT_LISTENED_MENU", "AUTO_NAVIGATION_EXPLORER_MENU")
+
+    if (onlineOnlySections.contains(parentId) && !isNetworkAvailable()) {
+      // This is an online-only section and we are offline. Show link to library.
+      val offlineItem = MediaBrowserCompat.MediaItem(
+        MediaDescriptionCompat.Builder()
+          .setMediaId(OFFLINE_ROOT)
+          .setTitle(TextsManager.getText("no_internet_connection"))
+          .setSubtitle(TextsManager.getText("go_to_library"))
+          .build(),
+        MediaBrowserCompat.MediaItem.FLAG_BROWSABLE
+      )
+      result.sendResult(listOf(offlineItem))
+      return
+    }
+
+    if (localChildren.isNotEmpty()) {
       result.sendResult(localChildren)
-    } else {
+      return
+    }
+
+    // No local children
+    if (isNetworkAvailable()) {
+      // fetch remote
+      result.detach()
       serviceScope.launch {
         try {
-          val remoteChildren = MediaItemTree.getRemoteChildren(parentId)
-          QueueManager.buildQueue( remoteChildren)
+          val remoteChildren = MediaItemTree.getRemoteChildren(parentId, applicationContext)
+          QueueManager.buildQueue(remoteChildren)
           result.sendResult(remoteChildren)
         } catch (e: Exception) {
           Log.e("MusicService", "Error loading children", e)
           result.sendResult(mutableListOf())
         }
       }
+    } else {
+      // show offline link
+      val offlineItem = MediaBrowserCompat.MediaItem(
+        MediaDescriptionCompat.Builder()
+          .setMediaId(OFFLINE_ROOT)
+          .setTitle(TextsManager.getText("no_internet_connection"))
+          .setSubtitle(TextsManager.getText("go_to_library"))
+          .build(),
+        MediaBrowserCompat.MediaItem.FLAG_BROWSABLE
+      )
+      result.sendResult(listOf(offlineItem))
     }
   }
 
@@ -165,6 +247,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     // Remove audio controls notification
     stopForeground(STOP_FOREGROUND_REMOVE)
     NotificationManagerCompat.from(this).cancel(1)
+    (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(networkCallback)
     super.onDestroy()
   }
 
@@ -176,7 +259,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     result.detach() // Notify the system you'll send the result asynchronously
     serviceScope.launch {
       try {
-        val items = MediaItemTree.search(query)
+        val items = MediaItemTree.search(query, applicationContext)
         result.sendResult(items.toMutableList<MediaBrowserCompat.MediaItem?>())
       } catch (e: Exception) {
         Log.e("MusicLibraryService", "Search failed", e)
@@ -203,5 +286,14 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     Log.i(TAG, "API_URL: $baseUrl")
     Log.i(TAG, "DeviceID: $deviceId")
     Log.i(TAG, "CURRENT_TRACK_KEY: ${this.currentTrackName}")
+  }
+
+  private fun isNetworkAvailable(): Boolean {
+    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
   }
 }

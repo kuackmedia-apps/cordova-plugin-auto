@@ -15,6 +15,7 @@ import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
+import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.kuackmedia.androidauto.utils.TextsManager
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -23,7 +24,7 @@ import java.io.File
 
 object MediaItemFactory {
   private const val TAG: String = "MediaItemFactory"
-  fun parseMediaItems(mediaItem: MediaItem, parentData: String): MediaBrowserCompat.MediaItem? {
+  fun parseMediaItems(mediaItem: MediaItem, parentData: String, context: Context): MediaBrowserCompat.MediaItem? {
     var result: MediaBrowserCompat.MediaItem? = null
     val mediaId = "item_" + mediaItem.itemType + "_" + mediaItem.id
     var extras = Bundle()
@@ -51,7 +52,7 @@ object MediaItemFactory {
           subtitle = TextsManager.getText("playlist"),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
-          imageUri = Uri.parse(getImageUrl(playlist.images)),
+          imageUri = Uri.parse(getImageUrl(playlist.images, "playlist", playlist.id.toString(), context)),
           extras = extras
         )
       }
@@ -64,7 +65,7 @@ object MediaItemFactory {
           subtitle = TextsManager.getText("album") + " - " +getArtistsNames(album.artists),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
-          imageUri = Uri.parse(getImageUrl(album.images)),
+          imageUri = Uri.parse(getImageUrl(album.images, "album", album.id.toString(), context)),
           extras = extras
         )
       }
@@ -78,7 +79,7 @@ object MediaItemFactory {
           subtitle = TextsManager.getText("artist"),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
-          imageUri = Uri.parse(getImageUrl(artist.images)),
+          imageUri = Uri.parse(getImageUrl(artist.images, "artist", artist.id.toString(), context)),
           extras = extras
         )
       }
@@ -91,14 +92,14 @@ object MediaItemFactory {
           subtitle = TextsManager.getText("tag"),
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
-          imageUri = Uri.parse(getImageUrl(tag.images)),
+          imageUri = Uri.parse(getImageUrl(tag.images, "tag", tag.id.toString(), context)),
           extras = extras
         )
       }
 
       "track" -> {
         val track = mediaItem as Track
-        val imageUri = if(track.album != null) getImageUrl(track.album.images) else null
+        val imageUri = if(track.album != null) getImageUrl(track.album.images, "track",  track.idAlbumTrack.toString(), context ) else null
         extras.putString("title", track.name)
         extras.putString("artist", getArtistsNames(track.artists))
         extras.putString("album", track.album?.title)
@@ -189,7 +190,14 @@ object MediaItemFactory {
     return MediaBrowserCompat.MediaItem(description.build(), MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
   }
 
-  private fun getImageUrl(images: List<CoverImage>?): String? {
+  private fun getImageUrl(images: List<CoverImage>?, itemType: String?, itemId: String?, context: Context): String? {
+
+    Log.i(TAG, "getImageUrl  $itemType  - $itemId")
+
+    // First try to get local path
+    val localPath = getLocalPathFromItemTypeAndItemId(itemType, itemId, context)
+    Log.i(TAG, "getImageUrl  localPath $localPath")
+
     if (images != null && images.isNotEmpty()) {
       val image = images.last()
       val imageType = image.type
@@ -207,6 +215,24 @@ object MediaItemFactory {
     return "https://example.com/default_image.png" // Default image URL
   }
 
+  private fun getLocalPathFromItemTypeAndItemId(itemType: String?, itemId: String?, context: Context): String? {
+    //com.algar.nomomusica/files/img/cover/5569396_640.jpg
+    val basePath = File(context.filesDir, "img/")
+
+    if (itemType == null || itemId == null) {
+      return "default/cover.jpg"
+    }
+    if (itemType == "track") {
+      val filePath = "cover/$itemId"+"_640.jpg"
+      var fullpathString = File(basePath, filePath).absolutePath
+      Log.i(TAG, "getImageUrl  fullpathString $fullpathString")
+      val trackFile = File(basePath, filePath)
+      if (trackFile.exists()) {
+        return Uri.fromFile(trackFile).toString()
+      }
+    }
+    return "" ;
+  }
   private fun getArtistsNames(artists: List<Artist>): String {
     if (artists.isEmpty()) return "Unknown Artist"
 
