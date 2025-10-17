@@ -12,6 +12,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             if self.window == nil {
                 let window = UIWindow(windowScene: windowScene)
 
+                // Check if AppDelegate already has a window (Cordova's default behavior)
+                if let appDelegate = UIApplication.shared.delegate,
+                let existingWindow = appDelegate.window as? UIWindow,
+                existingWindow.rootViewController != nil {
+                    print("[SceneDelegate] Using existing window from AppDelegate")
+                    self.window = existingWindow
+                    existingWindow.windowScene = windowScene
+                    return
+                }
+
                 // Prefer Cordova's CDVViewController if available
                 if let cdvVCType = NSClassFromString("CDVViewController") as? UIViewController.Type {
                     window.rootViewController = cdvVCType.init()
