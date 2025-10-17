@@ -190,21 +190,23 @@ class CDVMusicPlayer: NSObject {
 
         // Optional artwork (async, non-blocking)
         if let artStr = track["artwork"] as? String, let artURL = URL(string: artStr) {
-            print("[CDVMusicPlayer][ART] artwork URL found: \(artStr)")
+          //  print("[CDVMusicPlayer][ART] artwork URL found: \(artStr)")
             let nsurl = artURL as NSURL
             if let cached = artworkCache.object(forKey: nsurl) {
-                print("[CDVMusicPlayer][ART] cache hit for artwork: \(artStr) size=\(Int(cached.size.width))x\(Int(cached.size.height)))")
+            //    print("[CDVMusicPlayer][ART] cache hit for artwork: \(artStr) size=\(Int(cached.size.width))x\(Int
+            //    (cached.size.height)))")
                 let artwork = MPMediaItemArtwork(boundsSize: cached.size) { _ in cached }
                 info[MPMediaItemPropertyArtwork] = artwork
             } else {
-                print("[CDVMusicPlayer][ART] cache miss, downloading artwork: \(artStr)")
+            //    print("[CDVMusicPlayer][ART] cache miss, downloading artwork: \(artStr)")
                 URLSession.shared.dataTask(with: artURL) { [weak self] data, resp, err in
                     if let err = err { print("[CDVMusicPlayer][ART][ERROR] download failed: \(err.localizedDescription)"); return }
                     guard let self = self, let data = data, let image = UIImage(data: data) else {
                         print("[CDVMusicPlayer][ART][ERROR] invalid image data for: \(artStr)")
                         return
                     }
-                    print("[CDVMusicPlayer][ART] download success bytes=\(data.count) size=\(Int(image.size.width))x\(Int(image.size.height))) for \(artStr)")
+              //      print("[CDVMusicPlayer][ART] download success bytes=\(data.count) size=\(Int(image.size.width))
+              //  x\(Int(image.size.height))) for \(artStr)")
                     self.artworkCache.setObject(image, forKey: nsurl)
                     DispatchQueue.main.async {
                         var current: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -215,7 +217,7 @@ class CDVMusicPlayer: NSObject {
                 }.resume()
             }
         } else {
-            print("[CDVMusicPlayer][ART] no artwork URL in current track dict keys=\(Array(track.keys))")
+         //   print("[CDVMusicPlayer][ART] no artwork URL in current track dict keys=\(Array(track.keys))")
         }
 
         let applyInfo: () -> Void = {
