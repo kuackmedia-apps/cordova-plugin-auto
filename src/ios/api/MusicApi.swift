@@ -26,7 +26,7 @@ class MusicApiImpl: MusicApi {
         config.protocolClasses = [TokenInterceptor.self] + (config.protocolClasses ?? [])
         self.session = URLSession(configuration: config)
         print("[MusicApi] Initialized with baseURL=\(baseURL.absoluteString)")
-    } 
+    }
 
     func getAlbumTracks(albumId: String, completion: @escaping (Result<AlbumTracks, Error>) -> Void) {
         let pathURL = baseURL.appendingPathComponent("albums").appendingPathComponent(albumId)
@@ -43,7 +43,7 @@ class MusicApiImpl: MusicApi {
         let pathURL = baseURL.appendingPathComponent("playlists").appendingPathComponent(playListId)
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
-            URLQueryItem(name: "limit", value: "5"),
+            URLQueryItem(name: "limit", value: "40"),
             URLQueryItem(name: "offset", value: "0")
         ]
         guard let url = components?.url else {
@@ -56,7 +56,7 @@ class MusicApiImpl: MusicApi {
     func getArtistTracks(artistId: String, completion: @escaping (Result<ArtistTracks, Error>) -> Void) {
         let pathURL = baseURL.appendingPathComponent("artists").appendingPathComponent(artistId).appendingPathComponent("tracks")
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "limit", value: "5")]
+        components?.queryItems = [URLQueryItem(name: "limit", value: "40")]
         guard let url = components?.url else {
             completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid artists URL"])) )
             return
