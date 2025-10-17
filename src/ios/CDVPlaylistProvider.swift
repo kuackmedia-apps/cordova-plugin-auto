@@ -93,6 +93,7 @@ class CDVPlaylistProvider: NSObject {
             debugListAppJSONDirs()
         }
         // Prefer app folder first (supports extensionless files in Library/NoCloud)
+        /*
         if let tracks = loadJSONFromAppFolder(filename: "QUEUE_ITEMS_KEY", in: nil) as? [[String: Any]] {
             print("[CDVPlaylistProvider] loadTracks: loaded from app folder QUEUE_ITEMS_KEY count=\(tracks.count)")
             return tracks
@@ -106,6 +107,8 @@ class CDVPlaylistProvider: NSObject {
             return tracks
         }
         print("[CDVPlaylistProvider] loadTracks: bundle QUEUE_ITEMS_KEY not found, using hardcoded provider")
+
+         */
         return tracksForPlaylist(playlistId)
     }
 
