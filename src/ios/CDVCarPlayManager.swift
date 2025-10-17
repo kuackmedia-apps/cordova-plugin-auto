@@ -185,8 +185,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     return
                 }
 
+                print("[CarPlay] makeListItems Try local queue file first")
                 // 1) Try local queue file first
                 var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
+
+                print("[CarPlay] makeListItems local tracks loaded for id=\(id) count=\(tracks.count)")
+               // tracks = []
                 // 2) If empty, attempt remote by mediaType
                 if tracks.isEmpty, !mediaType.lowercased().isEmpty, !id.isEmpty {
                     self.fetchTracksRemote(mediaType: mediaType.lowercased(), itemId: id, parentTitle: name) { remote in
@@ -225,7 +229,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     forceDevice: false,
                     useCloudFront: true,
                     forcePreview: false,
-                    extraLife: false
+                    extraLife: true
                 )
                 api.getTrackUrl(trackRequest: req) { res in
                     defer { group.leave() }
@@ -290,7 +294,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                             forceDevice: false,
                             useCloudFront: true,
                             forcePreview: false,
-                            extraLife: false
+                            extraLife: true
                         )
                         api.getTrackUrl(trackRequest: req) { r in
                             switch r {
