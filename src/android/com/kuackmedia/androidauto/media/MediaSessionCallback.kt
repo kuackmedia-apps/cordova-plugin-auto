@@ -76,23 +76,41 @@ class MediaSessionCallback(
     mediaPlayer.setOnErrorListener { what, extra ->
       handleError(what, extra)
     }
+
+    // This executes when audio focus changes
+    mediaPlayer.setOnAudioFocusChangeListener { focusChange ->
+      handleAudioFocusChange(focusChange)
+    }
   }
 
   override fun onPrepare() {
-    Log.d(TAG, "onPrepare triggered")
+    Log.d(TAG, "[ON_PREPARE] onPrepare triggered")
 
     val prefs = this.context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
     this.currentQueue = QueueManager.getCurrentQueue(this.context)
+
     if(currentQueue !== null) {
-      Log.d(TAG, "Current queue: $currentQueue")
+      Log.d(TAG, "[ON_PREPARE] Current queue size: ${currentQueue?.size}")
+      val savedTrackId = prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", "")
+      Log.i(TAG, "[ON_PREPARE] Saved track ID from prefs: $savedTrackId")
+
       this.currentTrack =
         CurrentMedia.getCurrentTrackFromQueue(
-          prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", ""),
+          savedTrackId,
           this.currentQueue
         )
-      Log.i(TAG, "Current track: ${this.currentTrack}")
+      Log.i(TAG, "[ON_PREPARE] Current track from queue: ${this.currentTrack?.mediaId}")
 
-      mediaPlayer.currentTrackFromApp = true
+      // Only set currentTrackFromApp flag if we actually have a saved track from the app
+      // This prevents offline track autoplay from being incorrectly marked as "from app"
+      if (this.currentTrack != null && savedTrackId.isNotEmpty() && savedTrackId != "null") {
+        Log.i(TAG, "[ON_PREPARE] Valid saved track found, setting currentTrackFromApp = true")
+        mediaPlayer.currentTrackFromApp = true
+      } else {
+        Log.i(TAG, "[ON_PREPARE] No valid saved track, currentTrackFromApp remains false")
+        mediaPlayer.currentTrackFromApp = false
+      }
+
       this.onPlayFromMediaId(this.currentTrack?.mediaId, this.currentTrack?.description?.extras)
     }
   }
@@ -165,32 +183,60 @@ class MediaSessionCallback(
 
     if (mediaType == "album" && mediaId != null) {
       // autoplay album: fetch tracks, queue, and play first
+      Log.i(TAG, "[ALBUM_AUTOPLAY_START] Starting album autoplay for mediaId: $mediaId")
       CoroutineScope(Dispatchers.IO).launch {
-        val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
-        QueueManager.buildQueue(tracks)
-        withContext(Dispatchers.Main) {
-          QueueManager.setQueue(mediaSession)
-          tracks.firstOrNull()?.let { first ->
-            val fe = first.description.extras!!
-            val trackId = fe.getString("idAlbumTrack")
-            val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), trackId)
-            mediaPlayer.setCurrentTrack(uri)
-            mediaPlayer.playCurrentTrack(context)
-            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-            val duration = getDurationStringLength(fe.getString("length",), uri.toString())
-            mediaSession.setMetadata(
-              MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
-                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                .build()
-            )
-            showNotification(PlaybackStateCompat.STATE_PLAYING)
-            storeLocalData(fe, trackId)
+        try {
+          Log.d(TAG, "[ALBUM_AUTOPLAY_FETCH] Fetching tracks for album: $mediaId")
+          val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
+          Log.i(TAG, "[ALBUM_AUTOPLAY_TRACKS_FETCHED] Fetched ${tracks.size} tracks for album")
+
+          QueueManager.buildQueue(tracks)
+          withContext(Dispatchers.Main) {
+            QueueManager.setQueue(mediaSession)
+            tracks.firstOrNull()?.let { first ->
+              Log.d(TAG, "[ALBUM_AUTOPLAY_FIRST_TRACK] Processing first track: ${first.description.mediaId}")
+
+              val fe = first.description.extras!!
+              val trackIdFromId = fe.getString("id")
+              val idAlbumTrack = fe.getString("idAlbumTrack")
+
+              Log.i(TAG, "[ALBUM_AUTOPLAY_TRACK_INFO] Track ID: $trackIdFromId, idAlbumTrack: $idAlbumTrack")
+
+              // Check if idAlbumTrack is null or "null" string
+              if (idAlbumTrack == null || idAlbumTrack == "null") {
+                Log.w(TAG, "[ALBUM_AUTOPLAY_NULL_ALBUMTRACK] idAlbumTrack is null or 'null' string, this may cause issues")
+              }
+
+              Log.d(TAG, "[ALBUM_AUTOPLAY_GET_URI] Calling LocalStorageUtils.getTrackUri with trackId=$trackIdFromId, idAlbumTrack=$idAlbumTrack")
+              val uri = LocalStorageUtils.getTrackUri(context, trackIdFromId, idAlbumTrack)
+              Log.i(TAG, "[ALBUM_AUTOPLAY_URI_RESOLVED] Track URI resolved: $uri")
+
+              mediaPlayer.setCurrentTrack(uri)
+              mediaPlayer.playCurrentTrack(context)
+              updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+              val duration = getDurationStringLength(fe.getString("length",), uri.toString())
+              Log.d(TAG, "[ALBUM_AUTOPLAY_DURATION] Track duration: $duration ms")
+
+              mediaSession.setMetadata(
+                MediaMetadataCompat.Builder()
+                  .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
+                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
+                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
+                  .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
+                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
+                  .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+                  .build()
+              )
+              showNotification(PlaybackStateCompat.STATE_PLAYING)
+              storeLocalData(fe, idAlbumTrack)
+              Log.i(TAG, "[ALBUM_AUTOPLAY_SUCCESS] Album autoplay started successfully")
+            } ?: run {
+              Log.w(TAG, "[ALBUM_AUTOPLAY_NO_TRACKS] No tracks found in album")
+            }
           }
+        } catch (e: Exception) {
+          Log.e(TAG, "[ALBUM_AUTOPLAY_ERROR] Exception during album autoplay: ${e.message}", e)
+          Log.e(TAG, "[ALBUM_AUTOPLAY_STACK_TRACE] ${e.stackTraceToString()}")
         }
       }
       return
@@ -198,32 +244,60 @@ class MediaSessionCallback(
 
     // autoplay playlist: queue all tracks and play first
     if (mediaType == "playlist" && mediaId != null) {
+      Log.i(TAG, "[PLAYLIST_AUTOPLAY_START] Starting playlist autoplay for mediaId: $mediaId")
       CoroutineScope(Dispatchers.IO).launch {
-        val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
-        QueueManager.buildQueue(tracks)
-        withContext(Dispatchers.Main) {
-          QueueManager.setQueue(mediaSession)
-          tracks.firstOrNull()?.let { first ->
-            val fe = first.description.extras!!
-            val trackId = fe.getString("idAlbumTrack")
-            val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), trackId)
-            mediaPlayer.setCurrentTrack(uri)
-            mediaPlayer.playCurrentTrack(context)
-            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-            var duration: Long = getDurationStringLength(fe.getString("length",), uri.toString())
-            mediaSession.setMetadata(
-              MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
-                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                .build()
-            )
-            showNotification(PlaybackStateCompat.STATE_PLAYING)
-            storeLocalData(fe, trackId)
+        try {
+          Log.d(TAG, "[PLAYLIST_AUTOPLAY_FETCH] Fetching tracks for playlist: $mediaId")
+          val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
+          Log.i(TAG, "[PLAYLIST_AUTOPLAY_TRACKS_FETCHED] Fetched ${tracks.size} tracks for playlist")
+
+          QueueManager.buildQueue(tracks)
+          withContext(Dispatchers.Main) {
+            QueueManager.setQueue(mediaSession)
+            tracks.firstOrNull()?.let { first ->
+              Log.d(TAG, "[PLAYLIST_AUTOPLAY_FIRST_TRACK] Processing first track: ${first.description.mediaId}")
+
+              val fe = first.description.extras!!
+              val trackIdFromId = fe.getString("id")
+              val idAlbumTrack = fe.getString("idAlbumTrack")
+
+              Log.i(TAG, "[PLAYLIST_AUTOPLAY_TRACK_INFO] Track ID: $trackIdFromId, idAlbumTrack: $idAlbumTrack")
+
+              // Check if idAlbumTrack is null or "null" string
+              if (idAlbumTrack == null || idAlbumTrack == "null") {
+                Log.w(TAG, "[PLAYLIST_AUTOPLAY_NULL_ALBUMTRACK] idAlbumTrack is null or 'null' string, this may cause issues")
+              }
+
+              Log.d(TAG, "[PLAYLIST_AUTOPLAY_GET_URI] Calling LocalStorageUtils.getTrackUri with trackId=$trackIdFromId, idAlbumTrack=$idAlbumTrack")
+              val uri = LocalStorageUtils.getTrackUri(context, trackIdFromId, idAlbumTrack)
+              Log.i(TAG, "[PLAYLIST_AUTOPLAY_URI_RESOLVED] Track URI resolved: $uri")
+
+              mediaPlayer.setCurrentTrack(uri)
+              mediaPlayer.playCurrentTrack(context)
+              updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+              val duration: Long = getDurationStringLength(fe.getString("length",), uri.toString())
+              Log.d(TAG, "[PLAYLIST_AUTOPLAY_DURATION] Track duration: $duration ms")
+
+              mediaSession.setMetadata(
+                MediaMetadataCompat.Builder()
+                  .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
+                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
+                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
+                  .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
+                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
+                  .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+                  .build()
+              )
+              showNotification(PlaybackStateCompat.STATE_PLAYING)
+              storeLocalData(fe, idAlbumTrack)
+              Log.i(TAG, "[PLAYLIST_AUTOPLAY_SUCCESS] Playlist autoplay started successfully")
+            } ?: run {
+              Log.w(TAG, "[PLAYLIST_AUTOPLAY_NO_TRACKS] No tracks found in playlist")
+            }
           }
+        } catch (e: Exception) {
+          Log.e(TAG, "[PLAYLIST_AUTOPLAY_ERROR] Exception during playlist autoplay: ${e.message}", e)
+          Log.e(TAG, "[PLAYLIST_AUTOPLAY_STACK_TRACE] ${e.stackTraceToString()}")
         }
       }
       return
@@ -271,7 +345,9 @@ class MediaSessionCallback(
   }
 
   override fun onPlay() {
+    Log.i(TAG, "[ON_PLAY] onPlay() called, isPreparing: ${mediaPlayer.isPreparing()}, isPlaying: ${mediaPlayer.isPlaying()}")
     if(!mediaPlayer.isPreparing()) {
+      Log.i(TAG, "[ON_PLAY_EXECUTE] Executing play command")
       mediaPlayer.play()
       updateState(PlaybackStateCompat.STATE_PLAYING)
       handler.post(updatePlaybackPositionRunnable)
@@ -279,6 +355,9 @@ class MediaSessionCallback(
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "play"))
+      Log.i(TAG, "[ON_PLAY_COMPLETE] Play command completed, isPlaying: ${mediaPlayer.isPlaying()}")
+    } else {
+      Log.w(TAG, "[ON_PLAY_SKIP] Skipping play because isPreparing is true")
     }
   }
 
@@ -295,8 +374,21 @@ class MediaSessionCallback(
   }
 
   override fun onPause() {
-    Log.d(TAG, "Pausing at position: ${mediaPlayer.currentPosition}")
+    Log.i(TAG, "[ON_PAUSE] onPause() called at position: ${mediaPlayer.currentPosition}, isPreparing: ${mediaPlayer.isPreparing()}, isPlaying: ${mediaPlayer.isPlaying()}")
+
+    // Log stack trace to see where pause is being called from
+    val stackTrace = Thread.currentThread().stackTrace
+    val caller = if (stackTrace.size > 3) stackTrace[3] else null
+    Log.i(TAG, "[ON_PAUSE_CALLER] Called from: ${caller?.className}.${caller?.methodName}:${caller?.lineNumber}")
+
+    // Check if we should ignore pause commands during audio focus stabilization period
+    if (mediaPlayer.shouldIgnorePauseCommands()) {
+      Log.w(TAG, "[ON_PAUSE_IGNORED] Ignoring pause command during audio focus stabilization period")
+      return
+    }
+
     if(!mediaPlayer.isPreparing()) {
+      Log.i(TAG, "[ON_PAUSE_EXECUTE] Executing pause command")
       mediaPlayer.pause()
       updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
       showNotification(PlaybackStateCompat.STATE_PAUSED)
@@ -304,6 +396,9 @@ class MediaSessionCallback(
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "pause"))
+      Log.i(TAG, "[ON_PAUSE_COMPLETE] Pause command completed")
+    } else {
+      Log.w(TAG, "[ON_PAUSE_SKIP] Skipping pause because isPreparing is true")
     }
   }
 
@@ -385,7 +480,7 @@ class MediaSessionCallback(
     state: Int,
     position: Long = mediaPlayer.currentPosition
   ) {
-    //Log.i(TAG, "[MediaSessionCallback] Update state $state")
+    Log.i(TAG, "[MediaSessionCallback] Update state $state")
     val actions = (
       PlaybackStateCompat.ACTION_PLAY or
         PlaybackStateCompat.ACTION_PAUSE or
@@ -404,15 +499,34 @@ class MediaSessionCallback(
   }
 
   private fun handlePrepare() {
-    Log.i(TAG, "[MediaSessionCallbacks] handling prepare.")
+    Log.i(TAG, "[HANDLE_PREPARE_START] handling prepare callback")
+    Log.i(TAG, "[HANDLE_PREPARE_FROM_APP] currentTrackFromApp flag: ${mediaPlayer.currentTrackFromApp}")
+    Log.i(TAG, "[HANDLE_PREPARE_IS_PLAYING] mediaPlayer.isPlaying: ${mediaPlayer.isPlaying()}")
+    Log.i(TAG, "[HANDLE_PREPARE_POSITION] currentPosition: ${mediaPlayer.currentPosition}")
+
     if(mediaPlayer.currentTrackFromApp) {
+      Log.i(TAG, "[HANDLE_PREPARE_FROM_APP_TRUE] Track from app, setting to STOPPED state")
       mediaPlayer.currentTrackFromApp = false
       updateState(PlaybackStateCompat.STATE_STOPPED, mediaPlayer.currentPosition)
     } else {
-      mediaPlayer.start()
-      updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
-      handler.post(updatePlaybackPositionRunnable)
-      mediaSession.isActive = true
+      // Request audio focus again right before starting playback
+      // This helps prevent race conditions with audio focus loss
+      Log.i(TAG, "[HANDLE_PREPARE_REQUEST_FOCUS] Requesting audio focus before starting playback")
+      val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
+      Log.i(TAG, "[HANDLE_PREPARE_FOCUS_RESULT] Audio focus granted: $hasFocus")
+
+      if (hasFocus) {
+        Log.i(TAG, "[HANDLE_PREPARE_START_PLAYBACK] Starting playback via mediaPlayer.start()")
+        mediaPlayer.start()
+        Log.i(TAG, "[HANDLE_PREPARE_AFTER_START] mediaPlayer.isPlaying after start: ${mediaPlayer.isPlaying()}")
+        updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+        handler.post(updatePlaybackPositionRunnable)
+        mediaSession.isActive = true
+        Log.i(TAG, "[HANDLE_PREPARE_COMPLETE] Playback started successfully")
+      } else {
+        Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS] Could not gain audio focus, playback not started")
+        updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+      }
     }
   }
 
@@ -499,6 +613,36 @@ class MediaSessionCallback(
     // you might try to skip to the next one automatically.
     // For this, you would need to manage your playlist index.
     // skipToNextTrackIfAvailable() // Your custom function
+  }
+
+  private fun handleAudioFocusChange(focusChange: Int) {
+    Log.i(TAG, "[HANDLE_AUDIO_FOCUS] Audio focus change received: $focusChange")
+
+    when (focusChange) {
+      android.media.AudioManager.AUDIOFOCUS_GAIN -> {
+        Log.i(TAG, "[HANDLE_AUDIO_FOCUS_GAIN] Audio focus regained - updating state to PLAYING")
+        // When we regain audio focus, immediately update the state to PLAYING
+        // This prevents Android Auto from auto-pausing after we regain focus
+        if (mediaPlayer.isPlaying()) {
+          updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+          // Ensure the periodic position updates are running
+          handler.removeCallbacks(updatePlaybackPositionRunnable)
+          handler.post(updatePlaybackPositionRunnable)
+          mediaSession.isActive = true
+          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_GAIN] State updated to PLAYING successfully")
+        }
+      }
+      android.media.AudioManager.AUDIOFOCUS_LOSS -> {
+        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS] Audio focus lost - but will be regained automatically")
+        // Don't do anything here - the MediaPlayerAdapter will try to regain focus
+      }
+      android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS_TRANSIENT] Transient audio focus loss")
+      }
+      android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_DUCK] Audio focus loss, can duck")
+      }
+    }
   }
 
   private fun handlePlaybackCompletion() {
@@ -606,18 +750,60 @@ class MediaSessionCallback(
       setOngoing(state == PlaybackStateCompat.STATE_PLAYING)
     }
 
-    val imageUrl = description?.iconUri?.toString()
+    val imageUri = description?.iconUri
+    val imageUrl = imageUri?.toString()
     if (imageUrl != null) {
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          val url = URL(imageUrl)
-          val bitmap = BitmapFactory.decodeStream(url.openConnection().getInputStream())
-          withContext(Dispatchers.Main) {
-            builder.setLargeIcon(bitmap)
-            safelyShowNotification(NOTIFICATION_ID, builder.build())
+          Log.i(TAG, "[NOTIFICATION_IMAGE_START] Loading notification image: $imageUrl")
+
+          // Check if this is a local FileProvider URI
+          val isFileProvider = imageUrl.startsWith("content://") &&
+                               (imageUrl.contains(".fileprovider") ||
+                                imageUrl.contains(".cdv.core.file.provider"))
+
+          val bitmap = if (isFileProvider) {
+            Log.i(TAG, "[NOTIFICATION_IMAGE_LOCAL] Detected local FileProvider image: $imageUrl")
+
+            // Grant permission to system UI for notification
+            try {
+              context.grantUriPermission(
+                "com.android.systemui",
+                imageUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+              )
+              Log.i(TAG, "[NOTIFICATION_IMAGE_PERMISSION] Granted READ permission to com.android.systemui")
+            } catch (e: Exception) {
+              Log.w(TAG, "[NOTIFICATION_IMAGE_PERMISSION_WARN] Could not grant permission to systemui: ${e.message}")
+            }
+
+            // Load bitmap from ContentResolver
+            Log.d(TAG, "[NOTIFICATION_IMAGE_LOAD_LOCAL] Loading bitmap from ContentResolver")
+            context.contentResolver.openInputStream(imageUri)?.use { inputStream ->
+              BitmapFactory.decodeStream(inputStream)
+            } ?: run {
+              Log.w(TAG, "[NOTIFICATION_IMAGE_LOAD_FAILED] Could not open InputStream for local image")
+              null
+            }
+          } else {
+            // Remote image - load from URL
+            Log.i(TAG, "[NOTIFICATION_IMAGE_REMOTE] Loading remote image from URL")
+            val url = URL(imageUrl)
+            BitmapFactory.decodeStream(url.openConnection().getInputStream())
+          }
+
+          if (bitmap != null) {
+            Log.i(TAG, "[NOTIFICATION_IMAGE_SUCCESS] Bitmap loaded successfully, size: ${bitmap.width}x${bitmap.height}")
+            withContext(Dispatchers.Main) {
+              builder.setLargeIcon(bitmap)
+              safelyShowNotification(NOTIFICATION_ID, builder.build())
+            }
+          } else {
+            Log.w(TAG, "[NOTIFICATION_IMAGE_NULL] Bitmap is null, showing notification without image")
           }
         } catch (e: Exception) {
-          Log.e(TAG, "Error loading notification image", e)
+          Log.e(TAG, "[NOTIFICATION_IMAGE_ERROR] Error loading notification image: ${e.message}", e)
+          Log.e(TAG, "[NOTIFICATION_IMAGE_STACK_TRACE] ${e.stackTraceToString()}")
         }
       }
     }

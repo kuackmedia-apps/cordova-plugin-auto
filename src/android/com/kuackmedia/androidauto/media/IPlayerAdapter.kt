@@ -22,6 +22,9 @@ interface IPlayerAdapter {
   fun setOnCompletionListener(handlePlaybackCompletion: () -> Unit)
   fun setOnPreparedListener(handlePlaybackCompletion: () -> Unit)
   fun setOnErrorListener(handleError: ( what: Int, extra: Int) -> Unit)
+  fun setOnAudioFocusChangeListener(callback: (Int) -> Unit)
+  fun requestAudioFocusForPlayback(): Boolean
+  fun shouldIgnorePauseCommands(): Boolean
   val currentPosition: Long
   var currentTrackFromApp: Boolean
 }

@@ -68,28 +68,53 @@ object LocalStorageUtils {
   }
 
   suspend fun getTrackUri(context: Context, trackId: String?, idAlbumTrack: String?): Uri? {
+    Log.i(TAG, "[GET_TRACK_URI_START] Called with trackId=$trackId, idAlbumTrack=$idAlbumTrack")
+
+    // Validate trackId
+    if (trackId.isNullOrEmpty() || trackId == "null") {
+      Log.e(TAG, "[GET_TRACK_URI_ERROR] Invalid trackId: $trackId")
+      return null
+    }
+
     val trackName = "$trackId.mp3"
-    val trackFile = File(context.filesDir, "playerTracks/$trackName")
-    //file:///data/user/0/com.algar.nomomusica/files/playerTracks/12180191.mp3
-    Log.i(TAG, "getTrackUri $trackName")
+    val trackFile = File(context.filesDir, "offline/$trackName")
+    Log.d(TAG, "[GET_TRACK_URI_CHECK_LOCAL] Checking local file: ${trackFile.absolutePath}")
+
     if (trackFile.exists()) {
-      Log.i(TAG, "Using local track: " + trackFile.absolutePath)
+      Log.i(TAG, "[GET_TRACK_URI_LOCAL_FOUND] Using local track: ${trackFile.absolutePath}")
       return Uri.fromFile(trackFile)
     } else {
-      Log.i(TAG, "Using remote track: $trackId")
-      val api = ServiceFactory.create(context)
-      val payload = TrackRequest(
-        idAlbumTrack = idAlbumTrack!!,
-        idTrack = trackId!!,
-        forceDevice = false,
-        useCloudFront =  true,
-        forcePreview = false,
-        extraLife = false,
-      )
-      Log.i(TAG, "[LocalStorageUtils] Track payload: $payload")
-      val url = api.getTrackUrl(payload).signedUrl
-      Log.i(TAG, "[LocalStorageUtils] Track URL: $url")
-      return url.toUri()
+      Log.i(TAG, "[GET_TRACK_URI_REMOTE] Local file not found, attempting remote fetch")
+
+      // Check if idAlbumTrack is valid
+      if (idAlbumTrack.isNullOrEmpty() || idAlbumTrack == "null") {
+        Log.e(TAG, "[GET_TRACK_URI_ERROR] Cannot fetch remote track: idAlbumTrack is invalid ($idAlbumTrack)")
+        Log.e(TAG, "[GET_TRACK_URI_ERROR] This usually happens with offline tracks that don't have idAlbumTrack")
+        return null
+      }
+
+      Log.d(TAG, "[GET_TRACK_URI_API_CALL] Creating API request with trackId=$trackId, idAlbumTrack=$idAlbumTrack")
+
+      try {
+        val api = ServiceFactory.create(context)
+        val payload = TrackRequest(
+          idAlbumTrack = idAlbumTrack,
+          idTrack = trackId,
+          forceDevice = false,
+          useCloudFront = true,
+          forcePreview = false,
+          extraLife = false,
+        )
+        Log.i(TAG, "[GET_TRACK_URI_PAYLOAD] Track request payload: $payload")
+
+        val url = api.getTrackUrl(payload).signedUrl
+        Log.i(TAG, "[GET_TRACK_URI_SUCCESS] Track URL retrieved: $url")
+        return url.toUri()
+      } catch (e: Exception) {
+        Log.e(TAG, "[GET_TRACK_URI_EXCEPTION] Failed to get track URL: ${e.message}", e)
+        Log.e(TAG, "[GET_TRACK_URI_STACK_TRACE] ${e.stackTraceToString()}")
+        return null
+      }
     }
   }
 

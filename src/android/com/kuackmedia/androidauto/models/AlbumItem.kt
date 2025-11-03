@@ -17,4 +17,5 @@ data class AlbumItem(
   val images: List<CoverImage>,
   val artists: List<Artist>,
   val imageColorInfo: ImageColorInfo? = null,
+  val isOffline: Boolean? = false,
 ) : MediaItem()
