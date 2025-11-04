@@ -140,15 +140,13 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 val newNetworkAvailability = isNetworkAvailable(applicationContext)
-                if (newNetworkAvailability != networkAvailable) {
-                    networkAvailable = newNetworkAvailability
-                    Log.d(TAG, "Network state changed: AVAILABLE. Reloading all nodes.")
-                    notifyChildrenChanged(ROOT_ID)
-                    MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
-                        mediaItem?.mediaId?.let {
-                            if (mediaItem.isBrowsable) {
-                                notifyChildrenChanged(it)
-                            }
+                networkAvailable = true
+                Log.d(TAG, "Network state changed: AVAILABLE. Reloading all nodes.")
+                notifyChildrenChanged(ROOT_ID)
+                MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
+                    mediaItem?.mediaId?.let {
+                        if (mediaItem.isBrowsable) {
+                            notifyChildrenChanged(it)
                         }
                     }
                 }
@@ -156,15 +154,14 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
             override fun onLost(network: Network) {
                 val newNetworkAvailability = isNetworkAvailable(applicationContext)
-                if (newNetworkAvailability != networkAvailable) {
-                    networkAvailable = newNetworkAvailability
-                    Log.d(TAG, "Network state changed: LOST. Reloading all nodes.")
-                   // notifyChildrenChanged(ROOT_ID)
-                    MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
-                        mediaItem?.mediaId?.let {
-                            if (mediaItem.isBrowsable) {
-                                notifyChildrenChanged(it)
-                            }
+                Log.d(TAG, "Network state changed: LOST. Reloading all nodes.")
+                networkAvailable = false
+                Log.d(TAG, "Network state changed: LOST 1. Reloading all nodes.")
+                notifyChildrenChanged(ROOT_ID)
+                MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
+                    mediaItem?.mediaId?.let {
+                        if (mediaItem.isBrowsable) {
+                            notifyChildrenChanged(it)
                         }
                     }
                 }

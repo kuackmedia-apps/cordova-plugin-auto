@@ -164,9 +164,9 @@ class MediaPlayerAdapter() : IPlayerAdapter {
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
               if (shouldIgnoreAudioFocusLoss) {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS] Lost audio focus permanently, but IGNORING due to shouldIgnoreAudioFocusLoss flag")
+                Log.w(TAG, "[AUDIO_FOCUS_LOSS] Lost audio focus permanently, but IGNORING due to shouldIgnoreAudioFocusLoss flag (early startup - likely offline track)")
               } else {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS] Lost audio focus permanently")
+                Log.w(TAG, "[AUDIO_FOCUS_LOSS] Lost audio focus permanently - another app took control")
                 // Notify the callback (MediaSessionCallback) about the focus change
                 audioFocusChangeCallback?.invoke(focusChange)
               }

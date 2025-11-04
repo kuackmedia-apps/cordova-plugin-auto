@@ -84,7 +84,7 @@ object QueueManager {
 
   fun getPreviousQueueItem(mediaSession: MediaSessionCompat): MediaSessionCompat.QueueItem? {
     val queue = mediaSession.controller.queue
-    return if (queue != null && currentQueueIndex - 1 > 0) {
+    return if (queue != null && currentQueueIndex - 1 >= 0) {
       currentQueueIndex -= 1
       queue[currentQueueIndex]
     } else {

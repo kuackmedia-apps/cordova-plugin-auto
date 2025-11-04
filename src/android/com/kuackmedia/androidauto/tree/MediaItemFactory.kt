@@ -164,9 +164,16 @@ object MediaItemFactory {
     itemStyle: String?,
     context: Context,
   ): MediaBrowserCompat.MediaItem {
+
+    val iconFile = File(context.filesDir, iconStringPath!!)
+    val exists = iconFile.exists()
+    Log.i(TAG, "createBrowsable Icon $iconStringPath local: $exists")
+    val bmp = BitmapFactory.decodeFile(iconFile.absolutePath)
+
     val descriptionBuilder = MediaDescriptionCompat.Builder()
       .setMediaId(mediaId)
       .setTitle(title)
+      .setIconBitmap(bmp);
 
     if (!iconStringPath.isNullOrBlank()) {
       try {
@@ -257,9 +264,10 @@ object MediaItemFactory {
     }
 
     val checks = when (itemType) {
-      "track", "album" -> listOf("cover/${itemId}_640.jpg", "cover/${itemId}.jpg", "cover/${itemId}_300.jpg")
+      "track", "album" -> listOf("cover/${itemId}_640.jpg", "cover/${itemId}.jpg", "cover/${itemId}_180.jpg")
       "playlist" -> listOf("playlist/${itemId}_180.png", "playlist/${itemId}.png")
       "artist" -> listOf() // conventionally not local
+      "tag" -> listOf("tag/${itemId}_180.png")
       else -> listOf("${itemType}/${itemId}.jpg")
     }
 
@@ -305,7 +313,6 @@ object MediaItemFactory {
     val candidates = listOf(
       "com.google.android.projection.gearhead", // Android Auto older package
       "com.google.android.gms",                 // Play Services (may proxy)
-      "com.android.car"                         // vendor/system car packages (example)
     )
     val pm = context.packageManager
     for (pkg in candidates) {

@@ -282,91 +282,103 @@ object MediaItemTree {
    // Log.d(TAG, "Received search query: $query")
     // search over tree nodes titles
     val normalizedQuery = normalizeSearchText(query)
-    if (normalizedQuery.isNotEmpty()) {
-      titleMap.forEach { (title, node) ->
-       // Log.d(TAG, "Searching in title: $title")
-        if (normalizeSearchText(title).contains(normalizedQuery)) {
-          matches.add(node.item)
+    if (!MusicLibraryService.isNetworkEnabled(context)) {
+      if (normalizedQuery.isNotEmpty()) {
+        offlineTitleMap.forEach { (title, node) ->
+          // Log.d(TAG, "Searching in title: $title")
+          if (normalizeSearchText(title).contains(normalizedQuery)) {
+            matches.add(node.item)
+          }
         }
       }
-    }
-    val result = this.musicApi.search(query)
-    // Mejor Resultado
-    result.best?.let { bestItem ->
-      val header = MediaItemFactory.buildMediaItem(
-        title = "Mejor Resultado",
-        subtitle = "",
-        mediaId = "header_best",
-        flags = 0
-      )
-      matches.add(header)
-      parseSearchResult(matches, bestItem, context)
-    }
+    } else {
 
-    // Artistas
-    result.artists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
-      val header = MediaItemFactory.buildMediaItem(
-        title = TextsManager.getText("artists"),
-        subtitle = "",
-        mediaId = "header_artists",
-        flags = 0
-      )
-      matches.add(header)
-      list.forEach { parseSearchResult(matches, it, context) }
-    }
+      if (normalizedQuery.isNotEmpty()) {
+        titleMap.forEach { (title, node) ->
+          // Log.d(TAG, "Searching in title: $title")
+          if (normalizeSearchText(title).contains(normalizedQuery)) {
+            matches.add(node.item)
+          }
+        }
+      }
+      val result = this.musicApi.search(query)
+      // Mejor Resultado
+      result.best?.let { bestItem ->
+        val header = MediaItemFactory.buildMediaItem(
+          title = "Mejor Resultado",
+          subtitle = "",
+          mediaId = "header_best",
+          flags = 0
+        )
+        matches.add(header)
+        parseSearchResult(matches, bestItem, context)
+      }
 
-    // Albums
-    result.albums?.list?.takeIf { it.isNotEmpty() }?.let { list ->
-      val header = MediaItemFactory.buildMediaItem(
-        title = TextsManager.getText("albums"),
-        subtitle = "",
-        mediaId = "header_albums",
-        flags = 0
-      )
-      matches.add(header)
-      list.forEach { parseSearchResult(matches, it, context) }
-    }
+      // Artistas
+      result.artists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+        val header = MediaItemFactory.buildMediaItem(
+          title = TextsManager.getText("artists"),
+          subtitle = "",
+          mediaId = "header_artists",
+          flags = 0
+        )
+        matches.add(header)
+        list.forEach { parseSearchResult(matches, it, context) }
+      }
 
-    // Playlists
-    result.playlists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
-      val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
-      val header = MediaItemFactory.buildMediaItem(
-        title = TextsManager.getText("playlists"),
-        subtitle = "",
-        mediaId = "header_playlists",
-        flags = 0,
-        extras = extras
-      )
-      matches.add(header)
-      list.forEach { parseSearchResult(matches, it, context) }
-    }
+      // Albums
+      result.albums?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+        val header = MediaItemFactory.buildMediaItem(
+          title = TextsManager.getText("albums"),
+          subtitle = "",
+          mediaId = "header_albums",
+          flags = 0
+        )
+        matches.add(header)
+        list.forEach { parseSearchResult(matches, it, context) }
+      }
 
-    // Tags
-    result.tags?.list?.takeIf { it.isNotEmpty() }?.let { list ->
-      val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
-      val header = MediaItemFactory.buildMediaItem(
-        title = TextsManager.getText("tags"),
-        subtitle = "",
-        mediaId = "header_tags",
-        flags = 0,
-        extras = extras
-      )
-      matches.add(header)
-      list.forEach { parseSearchResult(matches, it, context) }
-    }
+      // Playlists
+      result.playlists?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+        val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
+        val header = MediaItemFactory.buildMediaItem(
+          title = TextsManager.getText("playlists"),
+          subtitle = "",
+          mediaId = "header_playlists",
+          flags = 0,
+          extras = extras
+        )
+        matches.add(header)
+        list.forEach { parseSearchResult(matches, it, context) }
+      }
 
-    // Tracks
-    result.tracks?.list?.takeIf { it.isNotEmpty() }?.let { list ->
-      val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
-      val header = MediaItemFactory.buildMediaItem(
-        title = TextsManager.getText("tracks"),
-        subtitle = "",
-        mediaId = "header_tracks",
-        flags = 0,
-        extras = extras
-      )
-      matches.add(header)
-      list.forEach { parseSearchResult(matches, it, context) }
+      // Tags
+      result.tags?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+        val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
+        val header = MediaItemFactory.buildMediaItem(
+          title = TextsManager.getText("tags"),
+          subtitle = "",
+          mediaId = "header_tags",
+          flags = 0,
+          extras = extras
+        )
+        matches.add(header)
+        list.forEach { parseSearchResult(matches, it, context) }
+      }
+
+      // Tracks
+      result.tracks?.list?.takeIf { it.isNotEmpty() }?.let { list ->
+        val extras = android.os.Bundle().apply { putBoolean("isHeader", true) }
+        val header = MediaItemFactory.buildMediaItem(
+          title = TextsManager.getText("tracks"),
+          subtitle = "",
+          mediaId = "header_tracks",
+          flags = 0,
+          extras = extras
+        )
+        matches.add(header)
+        list.forEach { parseSearchResult(matches, it, context) }
+      }
     }
 
     return matches

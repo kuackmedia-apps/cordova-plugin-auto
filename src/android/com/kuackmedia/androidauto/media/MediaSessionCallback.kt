@@ -480,7 +480,7 @@ class MediaSessionCallback(
     state: Int,
     position: Long = mediaPlayer.currentPosition
   ) {
-    Log.i(TAG, "[MediaSessionCallback] Update state $state")
+    //Log.i(TAG, "[MediaSessionCallback] Update state $state")
     val actions = (
       PlaybackStateCompat.ACTION_PLAY or
         PlaybackStateCompat.ACTION_PAUSE or
@@ -633,14 +633,37 @@ class MediaSessionCallback(
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS -> {
-        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS] Audio focus lost - but will be regained automatically")
-        // Don't do anything here - the MediaPlayerAdapter will try to regain focus
+        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS] Audio focus lost permanently - pausing playback")
+        // Another app has taken audio focus permanently (e.g., user started playing in Spotify)
+        // We must pause immediately
+        if (mediaPlayer.isPlaying()) {
+          mediaPlayer.pause()
+          updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+          handler.removeCallbacks(updatePlaybackPositionRunnable)
+          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_LOSS] Playback paused due to permanent audio focus loss")
+        }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS_TRANSIENT] Transient audio focus loss")
+        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS_TRANSIENT] Transient audio focus loss - pausing playback")
+        // Temporary interruption (e.g., notification, phone call)
+        // Pause but expect to resume when focus is regained
+        if (mediaPlayer.isPlaying()) {
+          mediaPlayer.pause()
+          updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+          handler.removeCallbacks(updatePlaybackPositionRunnable)
+          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_LOSS_TRANSIENT] Playback paused due to transient audio focus loss")
+        }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_DUCK] Audio focus loss, can duck")
+        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_DUCK] Audio focus loss, can duck - pausing playback")
+        // Can lower volume (duck) but in Android Auto context, it's better to pause
+        // to avoid multiple audio sources playing simultaneously
+        if (mediaPlayer.isPlaying()) {
+          mediaPlayer.pause()
+          updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+          handler.removeCallbacks(updatePlaybackPositionRunnable)
+          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_DUCK] Playback paused to avoid simultaneous audio")
+        }
       }
     }
   }
