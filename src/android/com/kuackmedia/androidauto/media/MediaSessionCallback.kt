@@ -60,6 +60,7 @@ class MediaSessionCallback(
   private val handler: Handler = Handler(Looper.getMainLooper())
   private var currentQueue: List<MediaSessionCompat.QueueItem>? = null
   private var currentTrack: MediaBrowserCompat.MediaItem? = null
+  private var isCalledFromOnPrepare: Boolean = false
 
   init {
     // This executes when a track ends playing
@@ -101,15 +102,10 @@ class MediaSessionCallback(
         )
       Log.i(TAG, "[ON_PREPARE] Current track from queue: ${this.currentTrack?.mediaId}")
 
-      // Only set currentTrackFromApp flag if we actually have a saved track from the app
-      // This prevents offline track autoplay from being incorrectly marked as "from app"
-      if (this.currentTrack != null && savedTrackId.isNotEmpty() && savedTrackId != "null") {
-        Log.i(TAG, "[ON_PREPARE] Valid saved track found, setting currentTrackFromApp = true")
-        mediaPlayer.currentTrackFromApp = true
-      } else {
-        Log.i(TAG, "[ON_PREPARE] No valid saved track, currentTrackFromApp remains false")
-        mediaPlayer.currentTrackFromApp = false
-      }
+      // When onPrepare is called (e.g., when Android Auto connects), we set a flag to prevent auto-play
+      // This is not an explicit user action, so the track should be loaded but not played automatically
+      Log.i(TAG, "[ON_PREPARE] Setting isCalledFromOnPrepare flag to prevent auto-play")
+      isCalledFromOnPrepare = true
 
       this.onPlayFromMediaId(this.currentTrack?.mediaId, this.currentTrack?.description?.extras)
     }
@@ -117,6 +113,29 @@ class MediaSessionCallback(
 
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
     val mediaSessionContext = extras?.getString("MEDIA_SESSION_SERVICE_CONTEXT")
+
+    // Check if this call is from onPrepare()
+    if (isCalledFromOnPrepare) {
+      isCalledFromOnPrepare = false  // Reset flag immediately
+
+      // Check if shouldAutoPlayOnPrepare was already set (e.g., by playCurrentTrack from app)
+      if (mediaPlayer.shouldAutoPlayOnPrepare) {
+        Log.i(TAG, "[onPlayFromMediaId] Called from onPrepare with auto-play flag (app request), will auto-play")
+        // Keep shouldAutoPlayOnPrepare = true, it was set by playCurrentTrack()
+      } else {
+        Log.i(TAG, "[onPlayFromMediaId] Called from onPrepare without auto-play flag (Android Auto connection), NO auto-play")
+        // This is just Android Auto connecting, not an explicit play request
+        mediaPlayer.currentTrackFromApp = true  // Mark to prevent auto-play in handlePrepare
+      }
+    } else {
+      // If this is called directly from Android Auto (not from skip methods which already set the flag),
+      // then enable auto-play
+      // Skip methods (onSkipToNext, onSkipToPrevious, onSkipToQueueItem) already set shouldAutoPlayOnPrepare
+      if (!mediaPlayer.shouldAutoPlayOnPrepare && !mediaPlayer.currentTrackFromApp) {
+        Log.i(TAG, "[onPlayFromMediaId] Direct call from Android Auto, enabling auto-play")
+        mediaPlayer.shouldAutoPlayOnPrepare = true
+      }
+    }
 
     fun getDurationStringLength(length: String?, filePath: String?): Long {
       var duration: Long = 0
@@ -348,14 +367,37 @@ class MediaSessionCallback(
     Log.i(TAG, "[ON_PLAY] onPlay() called, isPreparing: ${mediaPlayer.isPreparing()}, isPlaying: ${mediaPlayer.isPlaying()}")
     if(!mediaPlayer.isPreparing()) {
       Log.i(TAG, "[ON_PLAY_EXECUTE] Executing play command")
-      mediaPlayer.play()
-      updateState(PlaybackStateCompat.STATE_PLAYING)
-      handler.post(updatePlaybackPositionRunnable)
-      mediaSession.isActive = true
-      CordovaEventBridge.sendEvent(
-        CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
-        JSONObject().put("action", "play"))
-      Log.i(TAG, "[ON_PLAY_COMPLETE] Play command completed, isPlaying: ${mediaPlayer.isPlaying()}")
+
+      // If the player is already playing, just update state and return
+      if (mediaPlayer.isPlaying()) {
+        Log.i(TAG, "[ON_PLAY_ALREADY_PLAYING] Player is already playing, just updating state")
+        updateState(PlaybackStateCompat.STATE_PLAYING)
+        handler.post(updatePlaybackPositionRunnable)
+        mediaSession.isActive = true
+        CordovaEventBridge.sendEvent(
+          CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+          JSONObject().put("action", "play"))
+        return
+      }
+
+      // Request audio focus before starting playback
+      Log.i(TAG, "[ON_PLAY_REQUEST_FOCUS] Requesting audio focus")
+      val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
+      Log.i(TAG, "[ON_PLAY_FOCUS_RESULT] Audio focus granted: $hasFocus")
+
+      if (hasFocus) {
+        mediaPlayer.play()
+        updateState(PlaybackStateCompat.STATE_PLAYING)
+        handler.post(updatePlaybackPositionRunnable)
+        mediaSession.isActive = true
+        CordovaEventBridge.sendEvent(
+          CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+          JSONObject().put("action", "play"))
+        Log.i(TAG, "[ON_PLAY_COMPLETE] Play command completed, isPlaying: ${mediaPlayer.isPlaying()}")
+      } else {
+        Log.w(TAG, "[ON_PLAY_NO_FOCUS] Could not gain audio focus, playback not started")
+        updateState(PlaybackStateCompat.STATE_PAUSED)
+      }
     } else {
       Log.w(TAG, "[ON_PLAY_SKIP] Skipping play because isPreparing is true")
     }
@@ -404,11 +446,22 @@ class MediaSessionCallback(
 
   override fun onSkipToNext() {
     if(!mediaPlayer.isPreparing()) {
-      val nextItem = QueueManager.getNextQueueItem(mediaSession)?.description
-      onPlayFromMediaId(
-        mediaId = nextItem?.mediaId,
-        extras = nextItem?.extras
-      )
+      Log.i(TAG, "[ON_SKIP_TO_NEXT] Skip to next triggered from Android Auto")
+      // Reset flags and enable auto-play for the next track
+      mediaPlayer.currentTrackFromApp = false
+      mediaPlayer.shouldAutoPlayOnPrepare = true
+      Log.i(TAG, "[ON_SKIP_TO_NEXT] Set shouldAutoPlayOnPrepare = true for auto-play")
+
+      val nextItem = QueueManager.getNextQueueItem(mediaSession)
+      if (nextItem != null) {
+        Log.i(TAG, "[ON_SKIP_TO_NEXT] Got next item: ${nextItem.description.mediaId}")
+        onPlayFromMediaId(
+          mediaId = nextItem.description.mediaId,
+          extras = nextItem.description.extras
+        )
+      } else {
+        Log.w(TAG, "[ON_SKIP_TO_NEXT] No next item available (queue might be empty)")
+      }
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "skipToNext"))
@@ -417,11 +470,22 @@ class MediaSessionCallback(
 
   override fun onSkipToPrevious() {
     if(!mediaPlayer.isPreparing()) {
-      val previousItem = QueueManager.getPreviousQueueItem(mediaSession)?.description
-      onPlayFromMediaId(
-        mediaId = previousItem?.mediaId,
-        extras = previousItem?.extras
-      )
+      Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Skip to previous triggered from Android Auto")
+      // Reset flags and enable auto-play for the previous track
+      mediaPlayer.currentTrackFromApp = false
+      mediaPlayer.shouldAutoPlayOnPrepare = true
+      Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Set shouldAutoPlayOnPrepare = true for auto-play")
+
+      val previousItem = QueueManager.getPreviousQueueItem(mediaSession)
+      if (previousItem != null) {
+        Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Got previous item: ${previousItem.description.mediaId}")
+        onPlayFromMediaId(
+          mediaId = previousItem.description.mediaId,
+          extras = previousItem.description.extras
+        )
+      } else {
+        Log.w(TAG, "[ON_SKIP_TO_PREVIOUS] No previous item available (queue might be empty)")
+      }
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "skipToPrevious"))
@@ -449,6 +513,12 @@ class MediaSessionCallback(
 
   override fun onSkipToQueueItem(id: Long) {
     if(!mediaPlayer.isPreparing()) {
+      Log.i(TAG, "[ON_SKIP_TO_QUEUE_ITEM] Skip to queue item triggered from Android Auto")
+      // Reset flags and enable auto-play for the selected track
+      mediaPlayer.currentTrackFromApp = false
+      mediaPlayer.shouldAutoPlayOnPrepare = true
+      Log.i(TAG, "[ON_SKIP_TO_QUEUE_ITEM] Set shouldAutoPlayOnPrepare = true for auto-play")
+
       val nextItem = QueueManager.getItem(mediaSession, id)
       if(nextItem != null) {
         onPlayFromMediaId(
@@ -501,14 +571,39 @@ class MediaSessionCallback(
   private fun handlePrepare() {
     Log.i(TAG, "[HANDLE_PREPARE_START] handling prepare callback")
     Log.i(TAG, "[HANDLE_PREPARE_FROM_APP] currentTrackFromApp flag: ${mediaPlayer.currentTrackFromApp}")
+    Log.i(TAG, "[HANDLE_PREPARE_AUTO_PLAY] shouldAutoPlayOnPrepare flag: ${mediaPlayer.shouldAutoPlayOnPrepare}")
     Log.i(TAG, "[HANDLE_PREPARE_IS_PLAYING] mediaPlayer.isPlaying: ${mediaPlayer.isPlaying()}")
     Log.i(TAG, "[HANDLE_PREPARE_POSITION] currentPosition: ${mediaPlayer.currentPosition}")
 
-    if(mediaPlayer.currentTrackFromApp) {
-      Log.i(TAG, "[HANDLE_PREPARE_FROM_APP_TRUE] Track from app, setting to STOPPED state")
+    // Check if we should auto-play (explicitly requested from app)
+    if(mediaPlayer.shouldAutoPlayOnPrepare) {
+      Log.i(TAG, "[HANDLE_PREPARE_AUTO_PLAY_TRUE] Auto-play requested, starting playback")
+      mediaPlayer.shouldAutoPlayOnPrepare = false
+
+      // Request audio focus before starting playback
+      Log.i(TAG, "[HANDLE_PREPARE_REQUEST_FOCUS_AUTO] Requesting audio focus for auto-play")
+      val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
+      Log.i(TAG, "[HANDLE_PREPARE_FOCUS_RESULT_AUTO] Audio focus granted: $hasFocus")
+
+      if (hasFocus) {
+        Log.i(TAG, "[HANDLE_PREPARE_START_PLAYBACK_AUTO] Starting playback via mediaPlayer.start()")
+        mediaPlayer.start()
+        Log.i(TAG, "[HANDLE_PREPARE_AFTER_START_AUTO] mediaPlayer.isPlaying after start: ${mediaPlayer.isPlaying()}")
+        updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+        handler.post(updatePlaybackPositionRunnable)
+        mediaSession.isActive = true
+        Log.i(TAG, "[HANDLE_PREPARE_COMPLETE_AUTO] Auto-play started successfully")
+      } else {
+        Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS_AUTO] Could not gain audio focus for auto-play, setting to PAUSED")
+        updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+      }
+    } else if(mediaPlayer.currentTrackFromApp) {
+      // Track from app but no auto-play - just prepare and leave in STOPPED state
+      Log.i(TAG, "[HANDLE_PREPARE_FROM_APP_NO_AUTO] Track from app, setting to STOPPED state (no auto-play)")
       mediaPlayer.currentTrackFromApp = false
       updateState(PlaybackStateCompat.STATE_STOPPED, mediaPlayer.currentPosition)
     } else {
+      // Normal playback from Android Auto (e.g., user clicked a song)
       // Request audio focus again right before starting playback
       // This helps prevent race conditions with audio focus loss
       Log.i(TAG, "[HANDLE_PREPARE_REQUEST_FOCUS] Requesting audio focus before starting playback")

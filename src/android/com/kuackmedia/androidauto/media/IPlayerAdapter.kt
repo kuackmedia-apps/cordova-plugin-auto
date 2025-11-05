@@ -27,5 +27,6 @@ interface IPlayerAdapter {
   fun shouldIgnorePauseCommands(): Boolean
   val currentPosition: Long
   var currentTrackFromApp: Boolean
+  var shouldAutoPlayOnPrepare: Boolean
 }
 
