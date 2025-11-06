@@ -47,6 +47,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         const val OFFLINE_ROOT = "[offline_root]"
         const val LIBRARY_ROOT = "AUTO_NAVIGATION_LIBRARY_MENU"
 
+        // Hold a reference to the active service instance
+        private var instance: MusicLibraryService? = null
+
         fun isNetworkEnabled(context: Context): Boolean {
             return isNetworkAvailable(context)
         }
@@ -59,6 +62,14 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
             return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        }
+
+        /**
+         * Refresh the Android Auto navigation tree.
+         * This reloads navigation data from files and notifies Android Auto to update the UI.
+         */
+        fun refreshNavigation() {
+            instance?.refreshNavigationInternal()
         }
     }
 
@@ -78,6 +89,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Register this instance
+        instance = this
 
         CordovaEventBridge.sendEvent(
             CordovaEvents.ON_CONNECTION_CHANGE,
@@ -247,8 +261,42 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         }
     }
 
+    /**
+     * Internal method to refresh navigation.
+     * Reloads MediaItemTree and notifies Android Auto of changes.
+     */
+    private fun refreshNavigationInternal() {
+        Log.i(TAG, "[REFRESH_NAVIGATION] Starting navigation refresh")
+
+        try {
+            // Refresh the MediaItemTree
+            MediaItemTree.refresh(applicationContext)
+
+            // Notify Android Auto that the root has changed
+            notifyChildrenChanged(ROOT_ID)
+
+            // Notify all browsable children that they have changed
+            MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
+                mediaItem?.mediaId?.let {
+                    if (mediaItem.isBrowsable) {
+                        Log.d(TAG, "[REFRESH_NAVIGATION] Notifying child changed: $it")
+                        notifyChildrenChanged(it)
+                    }
+                }
+            }
+
+            Log.i(TAG, "[REFRESH_NAVIGATION] Navigation refresh completed successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "[REFRESH_NAVIGATION] Error refreshing navigation: ${e.message}", e)
+        }
+    }
+
     override fun onDestroy() {
         Log.i(TAG, "onDestroy called")
+
+        // Unregister this instance
+        instance = null
+
         playerAdapter.stop()
         playerAdapter.reset()
         mediaSession.release()

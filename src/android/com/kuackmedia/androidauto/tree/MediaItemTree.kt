@@ -61,6 +61,32 @@ object MediaItemTree {
     buildNavigationMenu(navigationData, context)
   }
 
+  /**
+   * Refresh/reload the entire navigation tree.
+   * This clears all existing nodes and rebuilds the tree from files.
+   * Use this when navigation data has been updated and needs to be refreshed.
+   */
+  fun refresh(context: Context) {
+    Log.i(TAG, "[REFRESH] Starting navigation refresh...")
+
+    // Clear all existing data
+    treeNodes.clear()
+    offlineNodes.clear()
+    offlineTitleMap.clear()
+    titleMap.clear()
+
+    // Reset initialization flag
+    isInitialized = false
+
+    // Reinitialize with current musicApi
+    if (::musicApi.isInitialized) {
+      initialize(context, musicApi)
+      Log.i(TAG, "[REFRESH] Navigation refresh completed successfully")
+    } else {
+      Log.e(TAG, "[REFRESH] Cannot refresh - musicApi not initialized")
+    }
+  }
+
   private fun loadNavigationData(context: Context): List<NavigationData> {
     var navigationData: List<NavigationData>?
     val jsonFile = File(context.filesDir, "AUTO_NAVIGATION")

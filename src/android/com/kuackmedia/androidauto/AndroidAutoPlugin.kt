@@ -3,6 +3,7 @@ package com.kuackmedia.androidauto
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import com.kuackmedia.androidauto.media.MediaControlBridge
+import com.kuackmedia.androidauto.media.MusicLibraryService
 import org.apache.cordova.CallbackContext
 import org.apache.cordova.CordovaPlugin
 import org.apache.cordova.PluginResult
@@ -70,6 +71,18 @@ class AndroidAutoPlugin : CordovaPlugin() {
         Log.d("AndroidAutoPlugin", "[playCurrentTrack]")
         MediaControlBridge.playCurrentTrack()
         callbackContext.success("Playing current track")
+        return true
+      }
+
+      "updateNavigation" -> {
+        Log.d("AndroidAutoPlugin", "[updateNavigation] Refreshing Android Auto navigation")
+        try {
+          MusicLibraryService.refreshNavigation()
+          callbackContext.success("Navigation updated successfully")
+        } catch (e: Exception) {
+          Log.e("AndroidAutoPlugin", "[updateNavigation] Error: ${e.message}", e)
+          callbackContext.error("Error updating navigation: ${e.message}")
+        }
         return true
       }
 
