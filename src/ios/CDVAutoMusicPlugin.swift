@@ -59,22 +59,6 @@ class CDVAutoMusicPlugin: CDVPlugin {
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 
-    @objc(notifyQueueStorageUpdated:)
-    func notifyQueueStorageUpdated(command: CDVInvokedUrlCommand) {
-        print("[AutoMusicPlugin] notifyQueueStorageUpdated called — reloading queue from disk")
-        carPlayManager?.musicPlayer?.reloadQueue()
-        let result = CDVPluginResult(status: CDVCommandStatus_OK)
-        commandDelegate.send(result, callbackId: command.callbackId)
-    }
-
-    @objc(notifyCurrentTrackUpdated:)
-    func notifyCurrentTrackUpdated(command: CDVInvokedUrlCommand) {
-        print("[AutoMusicPlugin] notifyCurrentTrackUpdated called — updating current track from disk")
-        carPlayManager?.musicPlayer?.updateCurrentTrack()
-        let result = CDVPluginResult(status: CDVCommandStatus_OK)
-        commandDelegate.send(result, callbackId: command.callbackId)
-    }
-
     // Unified JS event registration used by www/myplugin.js (registerEvents)
     // Supported events: onConnectionChange, onMediaUpdate, onPlaybackStateChange
     @objc(registerEvents:)
