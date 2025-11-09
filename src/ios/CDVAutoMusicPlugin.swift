@@ -24,6 +24,8 @@ class CDVAutoMusicPlugin: CDVPlugin {
         NotificationCenter.default.addObserver(self, selector: #selector(mediaTrackChanged(_:)), name: Notification.Name("CDVMediaTrackChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(playbackStateChanged(_:)), name: Notification.Name("CDVPlaybackStateChanged"), object: nil)
         print("[AutoMusicPlugin] pluginInitialize: manager created, observers registered")
+        // Load any existing queue stored by the app so play can immediately reflect on CarPlay
+        carPlayManager?.musicPlayer?.reloadQueue()
     }
 
     override func onAppTerminate() {
@@ -57,6 +59,22 @@ class CDVAutoMusicPlugin: CDVPlugin {
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 
+    @objc(notifyQueueStorageUpdated:)
+    func notifyQueueStorageUpdated(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] notifyQueueStorageUpdated called — reloading queue from disk")
+        carPlayManager?.musicPlayer?.reloadQueue()
+        let result = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
+    @objc(notifyCurrentTrackUpdated:)
+    func notifyCurrentTrackUpdated(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] notifyCurrentTrackUpdated called — updating current track from disk")
+        carPlayManager?.musicPlayer?.updateCurrentTrack()
+        let result = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
     // Unified JS event registration used by www/myplugin.js (registerEvents)
     // Supported events: onConnectionChange, onMediaUpdate, onPlaybackStateChange
     @objc(registerEvents:)
@@ -86,6 +104,23 @@ class CDVAutoMusicPlugin: CDVPlugin {
     @objc(play:)
     func play(command: CDVInvokedUrlCommand) {
         print("[AutoMusicPlugin] play called")
+        // Diagnostics: log queue and currentTrack snapshot to check if CarPlay is not reflecting actions
+        if let q = carPlayManager?.musicPlayer?.queue {
+            print("[AutoMusicPlugin][diag] queue.count=\(q.count)")
+        } else {
+            print("[AutoMusicPlugin][diag] the queue is nil!")
+        }
+        if let track = carPlayManager?.musicPlayer?.currentTrack {
+            let title = (track["title"] as? String) ?? ""
+            let artist = (track["artist"] as? String) ?? ""
+            let album = (track["album"] as? String) ?? ""
+            let hasSource = ((track["source"] as? String)?.isEmpty == false)
+            let idTrack = (track["id"] as? String) ?? String(describing: track["idTrack"] ?? "")
+            let idAlbumTrack = (track["idAlbumTrack"] as? String) ?? String(describing: track["idAlbumTrack"] ?? "")
+            print("[AutoMusicPlugin][diag] currentTrack title=\(title) artist=\(artist) album=\(album) hasSource=\(hasSource) idTrack=\(idTrack) idAlbumTrack=\(idAlbumTrack)")
+        } else {
+            print("[AutoMusicPlugin][diag] currentTrack is nil")
+        }
         carPlayManager?.musicPlayer?.play()
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)

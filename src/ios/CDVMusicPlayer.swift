@@ -45,12 +45,16 @@ class CDVMusicPlayer: NSObject {
 
     // MARK: - Playback
     @objc func play() {
+        let hadItem = (player.currentItem != nil)
+        if !hadItem { print("[CDVMusicPlayer][diag] play(): currentItem is nil -> calling loadCurrentTrack()") }
         if player.currentItem == nil { loadCurrentTrack() }
+        print("[CDVMusicPlayer][diag] play(): invoking AVPlayer.play(); queue.count=\(queue.count) index=\(currentIndex)")
         player.play()
         isPlaying = true
         startPeriodicUpdates()
         updateNowPlayingInfoIfNeeded()
         MPNowPlayingInfoCenter.default().playbackState = .playing
+        print("[CDVMusicPlayer][diag] play(): posted playbackState=.playing and CDVShowNowPlayingTemplate")
         NotificationCenter.default.post(name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
     }
 
@@ -69,17 +73,45 @@ class CDVMusicPlayer: NSObject {
 
     // MARK: - Queue
     @objc func updateQueue(_ queue: [[String: Any]]) { self.queue = queue; currentIndex = 0; if !queue.isEmpty { loadCurrentTrack(); updateNowPlayingInfo() } }
-    @objc func reloadQueue() {}
-    @objc func updateCurrentTrack() { if !queue.isEmpty { loadCurrentTrack(); updateNowPlayingInfo() } }
+    @objc func reloadQueue() {
+        let (items, currentId) = CDVQueueStorage.loadQueueFromDisk()
+        self.queue = items
+        // Restore index by matching idAlbumTrack to CURRENT_TRACK_KEY when possible
+        if let cid = currentId, !cid.isEmpty {
+            if let idx = items.firstIndex(where: { (it) -> Bool in
+                let v = (it["idAlbumTrack"] as? String) ?? String(describing: it["idAlbumTrack"] ?? "")
+                return !v.isEmpty && v == cid
+            }) {
+                self.currentIndex = idx
+            } else {
+                self.currentIndex = 0
+            }
+        } else {
+            self.currentIndex = 0
+        }
+        print("[CDVMusicPlayer][diag] reloadQueue(): loaded=\(items.count) currentIndex=\(self.currentIndex) currentId=\(currentId ?? "<nil>")")
+        if !items.isEmpty {
+            // Prepare current item and metadata without forcing playback
+            loadCurrentTrack()
+            updateNowPlayingInfo()
+        }
+    }
+    @objc func updateCurrentTrack() { if !queue.isEmpty { print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue.count=\(queue.count) idx=\(currentIndex)"); loadCurrentTrack(); updateNowPlayingInfo() } else { print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue is empty") } }
 
     // MARK: - Internals
     @objc func loadCurrentTrack() {
-        guard currentIndex < queue.count else { return }
+        guard currentIndex < queue.count else { print("[CDVMusicPlayer][diag] loadCurrentTrack(): currentIndex out of range — queue.count=\(queue.count) idx=\(currentIndex)"); return }
         let track = queue[currentIndex]
+        let title = (track["title"] as? String) ?? ""
+        let artist = (track["artist"] as? String) ?? ""
+        let album = (track["album"] as? String) ?? ""
+        let srcStr = (track["source"] as? String) ?? ""
+        print("[CDVMusicPlayer][diag] loadCurrentTrack(): idx=\(currentIndex) hasSource=\(!srcStr.isEmpty) title=\(title) artist=\(artist) album=\(album)")
         if let urlStr = track["source"] as? String, let url = URL(string: urlStr), !urlStr.isEmpty {
             let item = AVPlayerItem(url: url)
             attachItemObservers(item)
             player.replaceCurrentItem(with: item)
+            print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with URL=\(url.absoluteString.prefix(80))…")
             // restart periodic updates for new item
             if isPlaying { startPeriodicUpdates() }
             return
@@ -111,6 +143,7 @@ class CDVMusicPlayer: NSObject {
                             let item = AVPlayerItem(url: url)
                             self.attachItemObservers(item)
                             self.player.replaceCurrentItem(with: item)
+                            print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with signed URL (main-thread)")
                             if self.isPlaying { self.player.play(); self.startPeriodicUpdates() }
                             self.updateNowPlayingInfoIfNeeded()
                         }
@@ -246,7 +279,7 @@ class CDVMusicPlayer: NSObject {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = enriched
             MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
             let keys = Array(enriched.keys).map { String(describing: $0) }
-            print("[CDVMusicPlayer] Applied NowPlayingInfo keys=\(keys)")
+            print("[CDVMusicPlayer] Applied NowPlayingInfo keys=\(keys) title=\(title) artist=\(artist) rate=\(self.isPlaying ? 1.0 : 0.0) elapsed=\(elapsed.isFinite ? elapsed : 0)")
         }
         if Thread.isMainThread { applyInfo() } else { DispatchQueue.main.async { applyInfo() } }
 

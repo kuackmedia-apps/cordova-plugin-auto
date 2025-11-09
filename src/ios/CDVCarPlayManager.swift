@@ -342,6 +342,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         self.interfaceController = interfaceController
         // Present a lightweight placeholder to avoid gray screen while we build templates
         presentLoadingPlaceholder(interfaceController)
+        // Reload any queue stored by the host app before building templates so Now Playing can bind
+        self.musicPlayer.reloadQueue()
         // Build and replace with real templates
         setupTemplates(interfaceController)
         NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": true])
