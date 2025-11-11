@@ -115,6 +115,33 @@ object QueueManager {
     return mediaSession.controller.queue[id.toInt()]
   }
 
+  /**
+   * Synchronize currentQueueIndex with the currently playing track.
+   * This should be called when a track starts playing to ensure next/previous work correctly.
+   */
+  fun syncCurrentIndex(mediaSession: MediaSessionCompat, currentMediaId: String?) {
+    if (currentMediaId == null) {
+      Log.w(TAG, "[SYNC_INDEX] currentMediaId is null, cannot sync")
+      return
+    }
+
+    val queue = mediaSession.controller.queue
+    if (queue == null || queue.isEmpty()) {
+      Log.w(TAG, "[SYNC_INDEX] Queue is null or empty, cannot sync")
+      return
+    }
+
+    // Find the index of the current track in the queue
+    val index = queue.indexOfFirst { it.description.mediaId == currentMediaId }
+
+    if (index >= 0) {
+      currentQueueIndex = index
+      Log.i(TAG, "[SYNC_INDEX] Synchronized index to $currentQueueIndex for mediaId: $currentMediaId")
+    } else {
+      Log.w(TAG, "[SYNC_INDEX] Could not find mediaId '$currentMediaId' in queue, keeping current index: $currentQueueIndex")
+    }
+  }
+
   private fun isAlreadyInQueue(
     mediaSession: MediaSessionCompat,
     track: MediaBrowserCompat.MediaItem): Boolean {

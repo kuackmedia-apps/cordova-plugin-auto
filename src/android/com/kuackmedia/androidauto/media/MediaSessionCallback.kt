@@ -575,6 +575,10 @@ class MediaSessionCallback(
     Log.i(TAG, "[HANDLE_PREPARE_IS_PLAYING] mediaPlayer.isPlaying: ${mediaPlayer.isPlaying()}")
     Log.i(TAG, "[HANDLE_PREPARE_POSITION] currentPosition: ${mediaPlayer.currentPosition}")
 
+    // Sync the queue index with the current track
+    val currentMediaId = mediaSession.controller.metadata?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
+    QueueManager.syncCurrentIndex(mediaSession, currentMediaId)
+
     // Check if we should auto-play (explicitly requested from app)
     if(mediaPlayer.shouldAutoPlayOnPrepare) {
       Log.i(TAG, "[HANDLE_PREPARE_AUTO_PLAY_TRUE] Auto-play requested, starting playback")
