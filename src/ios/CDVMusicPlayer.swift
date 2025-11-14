@@ -72,10 +72,53 @@ class CDVMusicPlayer: NSObject {
     @objc func currentPlaybackState() -> String { isPlaying ? "playing" : (player.currentItem != nil ? "paused" : "stopped") }
 
     // MARK: - Queue
-    @objc func updateQueue(_ queue: [[String: Any]]) { self.queue = queue; currentIndex = 0; if !queue.isEmpty { loadCurrentTrack(); updateNowPlayingInfo() } }
-    @objc func reloadQueue() {
-        let (items, currentId) = CDVQueueStorage.loadQueueFromDisk()
+    @objc func updateQueue(_ queue: [[String: Any]]) {
+        self.queue = queue
+        currentIndex = 0
+
+        guard !queue.isEmpty else {
+            print("[CDVMusicPlayer][diag] updateQueue(): received empty queue")
+            return
+        }
+
+        let preview = queue.prefix(3).map { (track) -> String in
+            let title = (track["title"] as? String) ?? "<untitled>"
+            let idAlbum = (track["idAlbumTrack"] as? String) ?? (track["id"] as? String) ?? ""
+            return idAlbum.isEmpty ? title : "\(title) [\(idAlbum)]"
+        }.joined(separator: " | ")
+        print("[CDVMusicPlayer][diag] updateQueue(): received \(queue.count) items firstItems=\(preview)")
+
+        loadCurrentTrack()
+        updateNowPlayingInfo()
+    }
+    @objc func reloadQueue() { reloadQueueInternal(force: false) }
+
+    @objc func reloadQueueForced() { reloadQueueInternal(force: true) }
+
+    private func reloadQueueInternal(force: Bool) {
+        if !force {
+            let hasActiveItem = player.currentItem != nil || !queue.isEmpty
+            if hasActiveItem {
+                let title = (currentTrack?["title"] as? String) ?? "<unknown>"
+                print("[CDVMusicPlayer][diag] reloadQueue(): skipping (queue already loaded) currentIndex=\(currentIndex) title=\(title)")
+                updateNowPlayingInfoIfNeeded()
+                return
+            }
+        }
+
+        let status = CDVQueueStorage.queueFileStatus()
+        print("[CDVMusicPlayer][diag] reloadQueueInternal(force=\(force)) fileExists=\(status.exists) mtime=\(String(describing: status.attributes?[.modificationDate])) path=\(status.path)")
+
+        let (items, currentId, modifiedDate) = CDVQueueStorage.loadQueueFromDisk(usingAttributes: status.attributes)
+
+        if items.isEmpty && !queue.isEmpty {
+            print("[CDVMusicPlayer][diag] reloadQueue(): disk queue empty but in-memory queue has \(queue.count) items — preserving current state")
+            updateNowPlayingInfoIfNeeded()
+            return
+        }
+
         self.queue = items
+
         // Restore index by matching idAlbumTrack to CURRENT_TRACK_KEY when possible
         if let cid = currentId, !cid.isEmpty {
             if let idx = items.firstIndex(where: { (it) -> Bool in
@@ -83,17 +126,27 @@ class CDVMusicPlayer: NSObject {
                 return !v.isEmpty && v == cid
             }) {
                 self.currentIndex = idx
+            } else if let current = currentTrack, let existingId = (current["idAlbumTrack"] as? String) ?? (current["id"] as? String), let idx = items.firstIndex(where: { (it) -> Bool in
+                let candidate = (it["idAlbumTrack"] as? String) ?? (it["id"] as? String) ?? ""
+                return !candidate.isEmpty && candidate == existingId
+            }) {
+                self.currentIndex = idx
             } else {
-                self.currentIndex = 0
+                self.currentIndex = min(currentIndex, max(0, items.count - 1))
             }
         } else {
-            self.currentIndex = 0
+            self.currentIndex = min(currentIndex, max(0, items.count - 1))
         }
-        print("[CDVMusicPlayer][diag] reloadQueue(): loaded=\(items.count) currentIndex=\(self.currentIndex) currentId=\(currentId ?? "<nil>")")
+
+        let formattedDate = modifiedDate.map { ISO8601DateFormatter().string(from: $0) } ?? "<nil>"
+        print("[CDVMusicPlayer][diag] reloadQueue(force=\(force)): loaded=\(items.count) currentIndex=\(self.currentIndex) currentId=\(currentId ?? "<nil>") fileMTime=\(formattedDate)")
+
         if !items.isEmpty {
             // Prepare current item and metadata without forcing playback
             loadCurrentTrack()
             updateNowPlayingInfo()
+        } else {
+            updateNowPlayingInfoIfNeeded()
         }
     }
     @objc func updateCurrentTrack() { if !queue.isEmpty { print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue.count=\(queue.count) idx=\(currentIndex)"); loadCurrentTrack(); updateNowPlayingInfo() } else { print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue is empty") } }
@@ -105,16 +158,29 @@ class CDVMusicPlayer: NSObject {
         let title = (track["title"] as? String) ?? ""
         let artist = (track["artist"] as? String) ?? ""
         let album = (track["album"] as? String) ?? ""
-        let srcStr = (track["source"] as? String) ?? ""
-        print("[CDVMusicPlayer][diag] loadCurrentTrack(): idx=\(currentIndex) hasSource=\(!srcStr.isEmpty) title=\(title) artist=\(artist) album=\(album)")
-        if let urlStr = track["source"] as? String, let url = URL(string: urlStr), !urlStr.isEmpty {
+        let explicitSource = (track["source"] as? String) ?? ""
+        let fallbackSource = (track["filePath"] as? String) ?? (track["path"] as? String) ?? ""
+        let effectiveSource = !explicitSource.isEmpty ? explicitSource : fallbackSource
+        let trimmedSource = effectiveSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("[CDVMusicPlayer][diag] loadCurrentTrack(): idx=\(currentIndex) hasSource=\(!trimmedSource.isEmpty) title=\(title) artist=\(artist) album=\(album)")
+
+        if !trimmedSource.isEmpty {
+            let candidateURL: URL? = {
+                if let remote = URL(string: trimmedSource), remote.scheme != nil {
+                    return remote
+                }
+                return URL(fileURLWithPath: trimmedSource, isDirectory: false)
+            }()
+
+            if let url = candidateURL {
             let item = AVPlayerItem(url: url)
             attachItemObservers(item)
             player.replaceCurrentItem(with: item)
             print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with URL=\(url.absoluteString.prefix(80))…")
             // restart periodic updates for new item
             if isPlaying { startPeriodicUpdates() }
-            return
+                return
+            }
         }
 
         // Fallback: resolve signed URL like Android when we only have IDs
