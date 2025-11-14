@@ -7,7 +7,7 @@ import UIKit
 class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarTemplateDelegate {
     private weak var plugin: CDVAutoMusicPlugin?
 
-    @objc var musicPlayer: CDVMusicPlayer!
+    private(set) var musicPlayer: CDVMusicPlayer!
     @objc var interfaceController: CPInterfaceController?
     @objc private(set) var connected: Bool = false
     private var isNowPlayingShown: Bool = false
@@ -21,6 +21,85 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         self.plugin = plugin
         super.init()
         self.musicPlayer = CDVMusicPlayer(manager: self)
+    }
+
+    private struct QueueParentContext {
+        let id: String
+        let type: String
+        let name: String
+    }
+
+    private func normalizeQueueItems(_ rawItems: [[String: Any]]) -> [[String: Any]] {
+        return rawItems.enumerated().map { index, item in
+            var data = (item["data"] as? [String: Any]) ?? item
+            if var extras = data["trackExtras"] as? [String: Any] {
+                if extras["indice"] == nil { extras["indice"] = index }
+                data["trackExtras"] = extras
+            } else {
+                data["trackExtras"] = ["indice": index]
+            }
+            return data
+        }
+    }
+
+    private func buildParentContext(mediaType: String, itemId: String, parentTitle: String) -> QueueParentContext {
+        let type: String
+        switch mediaType {
+        case "playlist": type = "PLAYLIST"
+        case "album": type = "ALBUM"
+        case "artist": type = "ARTIST"
+        case "tag": type = "PLAYLIST"
+        default: type = mediaType.uppercased()
+        }
+        return QueueParentContext(id: itemId, type: type, name: parentTitle)
+    }
+
+    private func bestArtworkURL(for track: Track, fallbackAlbumTitle: String?) -> String? {
+        if let images = track.album?.images, !images.isEmpty {
+            if let best = images.max(by: { ($0.size ?? 0) < ($1.size ?? 0) }) { return best.url }
+            return images.first?.url
+        }
+        if let album = track.album, let coverList = album.images, !coverList.isEmpty {
+            return coverList.first?.url
+        }
+        return nil
+    }
+
+    private func queueEntry(from track: Track, signedUrl: String, parent: QueueParentContext, index: Int) -> [String: Any] {
+        let albumTitle = track.album?.title ?? parent.name
+        var entry: [String: Any] = [
+            "title": track.name,
+            "artist": track.artists.first?.name ?? "",
+            "album": albumTitle,
+            "source": signedUrl,
+            "id": track.id,
+            "idTrack": track.id,
+            "length": track.length,
+            "context": [
+                "id": parent.id,
+                "type": parent.type,
+                "name": parent.name
+            ],
+            "trackExtras": [
+                "id": track.id,
+                "indice": index
+            ]
+        ]
+
+        if let idAlbumTrack = track.idAlbumTrack {
+            let idString = String(idAlbumTrack)
+            entry["idAlbumTrack"] = idString
+            if var extras = entry["trackExtras"] as? [String: Any] {
+                extras["idAlbumTrack"] = idString
+                entry["trackExtras"] = extras
+            }
+        }
+
+        if let number = track.number { entry["trackNumber"] = String(number) }
+        if let volume = track.volume { entry["discNumber"] = String(volume) }
+        if let artUrl = bestArtworkURL(for: track, fallbackAlbumTitle: albumTitle) { entry["artwork"] = artUrl }
+
+        return entry
     }
 
     // MARK: - Icons
@@ -190,21 +269,26 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
 
                 print("[CarPlay] makeListItems local tracks loaded for id=\(id) count=\(tracks.count)")
-               // tracks = []
+                let normalizedLocal = normalizeQueueItems(tracks)
+
                 // 2) If empty, attempt remote by mediaType
-                if tracks.isEmpty, !mediaType.lowercased().isEmpty, !id.isEmpty {
-                    self.fetchTracksRemote(mediaType: mediaType.lowercased(), itemId: id, parentTitle: name) { remote in
+                if normalizedLocal.isEmpty, !mediaType.lowercased().isEmpty, !id.isEmpty {
+                    let mediaLower = mediaType.lowercased()
+                    let parentContext = self.buildParentContext(mediaType: mediaLower, itemId: id, parentTitle: name)
+                    self.fetchTracksRemote(mediaType: mediaLower, itemId: id, parentContext: parentContext) { remote in
                         if !remote.isEmpty {
                             // Reset shown flag before kicking off playback so Now Playing can be presented again
                             self.isNowPlayingShown = false
-                            self.musicPlayer.updateQueue(remote)
+                            let selectedId = remote.first?["idAlbumTrack"] as? String ?? remote.first?["id"] as? String
+                            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: false)
                             self.musicPlayer.play()
                         }
                     }
                 } else if !tracks.isEmpty {
                     // Reset shown flag before kicking off playback so Now Playing can be presented again
                     self.isNowPlayingShown = false
-                    self.musicPlayer.updateQueue(tracks)
+                    let selectedId = normalizedLocal.first?["idAlbumTrack"] as? String ?? normalizedLocal.first?["id"] as? String
+                    self.musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: false)
                     self.musicPlayer.play()
                 }
                 completion()
@@ -214,14 +298,14 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         return cpItems
     }
 
-    private func fetchTracksRemote(mediaType: String, itemId: String, parentTitle: String, completion: @escaping ([[String: Any]]) -> Void) {
+    private func fetchTracksRemote(mediaType: String, itemId: String, parentContext: QueueParentContext, completion: @escaping ([[String: Any]]) -> Void) {
         let api: MusicApi = MusicApiImpl()
 
         // Helper to resolve signed URLs for a list of Track models
-        func resolveSignedUrls(from tracks: [Track], completion: @escaping ([[String: Any]]) -> Void) {
+        func resolveSignedUrls(from tracks: [Track], parent: QueueParentContext, completion: @escaping ([[String: Any]]) -> Void) {
             let group = DispatchGroup()
-            var results: [[String: Any]] = []
-            for t in tracks {
+            var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
+            for (index, t) in tracks.enumerated() {
                 group.enter()
                 let req = TrackRequest(
                     idAlbumTrack: String(t.idAlbumTrack ?? 0),
@@ -234,24 +318,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 api.getTrackUrl(trackRequest: req) { res in
                     defer { group.leave() }
                     guard let signed = try? res.get() else { return }
-                    // Prefer largest album image URL when possible
-                    let artUrl: String? = {
-                        guard let images = t.album?.images, !images.isEmpty else { return nil }
-                        // If size is provided, choose the max; else fallback to the first URL
-                        if let best = images.max(by: { (a, b) in (a.size ?? 0) < (b.size ?? 0) }) { return best.url }
-                        return images.first?.url
-                    }()
-                    let dict: [String: Any] = [
-                        "title": t.name,
-                        "artist": t.artists.first?.name ?? "",
-                        "album": t.album?.title ?? parentTitle,
-                        "source": signed.signedUrl,
-                        "artwork": artUrl as Any
-                    ]
-                    results.append(dict)
+                    let entry = self.queueEntry(from: t, signedUrl: signed.signedUrl, parent: parent, index: index)
+                    results[index] = entry
                 }
             }
-            group.notify(queue: .main) { completion(results) }
+            group.notify(queue: .main) { completion(results.compactMap { $0 }) }
         }
 
         switch mediaType {
@@ -260,19 +331,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 guard let container = try? result.get() else { DispatchQueue.main.async { completion([]) }; return }
                 let tracks = container.tracks.items.map { $0.track }
                 print("[CarPlay][remote] playlist id=\(itemId) rawTracks=\(tracks.count)")
-                resolveSignedUrls(from: tracks, completion: completion)
+                resolveSignedUrls(from: tracks, parent: parentContext, completion: completion)
             }
         case "album":
             api.getAlbumTracks(albumId: itemId) { result in
                 guard let album = try? result.get() else { DispatchQueue.main.async { completion([]) }; return }
                 print("[CarPlay][remote] album id=\(itemId) rawTracks=\(album.tracks.items.count)")
-                resolveSignedUrls(from: album.tracks.items, completion: completion)
+                resolveSignedUrls(from: album.tracks.items, parent: parentContext, completion: completion)
             }
         case "artist":
             api.getArtistTracks(artistId: itemId) { result in
                 guard let artistTracks = try? result.get() else { DispatchQueue.main.async { completion([]) }; return }
                 print("[CarPlay][remote] artist id=\(itemId) rawTracks=\(artistTracks.list.count)")
-                resolveSignedUrls(from: artistTracks.list, completion: completion)
+                resolveSignedUrls(from: artistTracks.list, parent: parentContext, completion: completion)
             }
         case "tag":
             // Mirror Android: station/tag returns a sequence of tracks via getTagTracks(lastIdAlbumTrack)
@@ -299,21 +370,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         api.getTrackUrl(trackRequest: req) { r in
                             switch r {
                             case .success(let signed):
-                                let artUrl: String? = {
-                                    if let images = t.album?.images, !images.isEmpty {
-                                        if let best = images.max(by: { (a, b) in (a.size ?? 0) < (b.size ?? 0) }) { return best.url }
-                                        return images.first?.url
-                                    }
-                                    return nil
-                                }()
-                                let dict: [String: Any] = [
-                                    "title": t.name,
-                                    "artist": t.artists.first?.name ?? "",
-                                    "album": t.album?.title ?? parentTitle,
-                                    "source": signed.signedUrl,
-                                    "artwork": artUrl as Any
-                                ]
-                                results.append(dict)
+                                let entry = self.queueEntry(from: t, signedUrl: signed.signedUrl, parent: parentContext, index: results.count)
+                                results.append(entry)
                                 pullNext()
                             case .failure(let e):
                                 print("[CarPlay][remote][tag] getTrackUrl failed: \(e)")
@@ -343,7 +401,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Present a lightweight placeholder to avoid gray screen while we build templates
         presentLoadingPlaceholder(interfaceController)
         // Reload any queue stored by the host app before building templates so Now Playing can bind
-        self.musicPlayer.reloadQueue()
+        self.musicPlayer.reloadQueueForced()
         // Build and replace with real templates
         setupTemplates(interfaceController)
         NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": true])
@@ -489,9 +547,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         print("[CarPlay] list item selected: pid=\(pid) title=\(title)")
                         let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: pid)
                         print("[CarPlay] tracks loaded for pid=\(pid) count=\(tracks.count)")
+                        let normalized = self.normalizeQueueItems(tracks)
                         // Reset shown flag before starting playback
                         self.isNowPlayingShown = false
-                        self.musicPlayer.updateQueue(tracks)
+                        let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
+                        self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId)
                         self.musicPlayer.play()
                         completion()
                     }
@@ -528,10 +588,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                             if !pid.isEmpty {
                                 let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: pid)
                                 print("[CarPlay] [LIB] tracks loaded for id=\(pid) count=\(tracks.count)")
-                                if !tracks.isEmpty {
+                                let normalized = self.normalizeQueueItems(tracks)
+                                if !normalized.isEmpty {
                                     // Reset shown flag before starting playback
                                     self.isNowPlayingShown = false
-                                    self.musicPlayer.updateQueue(tracks)
+                                    let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
+                                    self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId)
                                     self.musicPlayer.play()
                                 }
                             }
