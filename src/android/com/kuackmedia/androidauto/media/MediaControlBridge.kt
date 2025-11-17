@@ -20,6 +20,8 @@ object MediaControlBridge {
     }
 
     fun playCurrentTrack() {
+        // Set flag to enable auto-play after preparation
+        mediaPlayer?.shouldAutoPlayOnPrepare = true
         mediaSession?.controller?.transportControls?.prepare()
     }
 }

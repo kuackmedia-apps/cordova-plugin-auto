@@ -7,6 +7,10 @@
       <engine name="cordova-ios" version=">=6.0.0" />
   </engines>
 
+  <!-- Hooks that run late in the build process, after other plugins have generated their files -->
+  <hook type="before_compile" src="hooks/modify_file_provider.js"/>
+  <hook type="before_build" src="hooks/modify_file_provider.js"/>
+
   <js-module src="www/myplugin.js" name="auto">
       <clobbers target="cordova.plugins.auto" />
   </js-module>
@@ -116,6 +120,8 @@
     <source-file src="src/android/com/kuackmedia/androidauto/models/QueueItem.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/SearchResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/TagTracksResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/OfflineTrack.kt"
+                 target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
 
   </platform>
 
@@ -190,7 +196,7 @@
     <source-file src="src/ios/CDVQueueStorage.swift" />
     <source-file src="src/ios/CDVPlaylistProvider.swift" />
     <source-file src="src/ios/SceneDelegate.swift" />
-    
+
 
     <!-- Swift API files -->
     <source-file src="src/ios/api/MusicApi.swift" />

@@ -188,7 +188,25 @@ var exec = require('cordova/exec');
         [],
       );
     },
-    
+    updateNavigation: function (cb, errorCb) {
+         cordova.exec(
+           function success(result) {
+              if (typeof cb === 'function') {
+                cb(result);
+              }
+           },
+           function error(err) {
+             console.error('Error updateNavigation :', err);
+              if (typeof errorCb === 'function') {
+                errorCb(err);
+              }
+           },
+           SERVICE,
+           'updateNavigation',
+           [],
+         );
+    },
+
     // ---- Auth Config bridge (iOS) ----
     setAuthConfig: function(accessToken, refreshToken, appCode, baseUrl, expirationAt, cb, errorCb) {
       console.log('[auto] setAuthConfig called', {
