@@ -126,8 +126,6 @@ var exec = require('cordova/exec');
     },
 
     isConnected: function (cb, errorCb) {
-      console.log('[auto] isConnected called');
-      // Added diagnostic log to verify when the wrapper triggers the native call
       console.log('[auto] about to call isConnected');
       cordova.exec(
         function success(result) {
