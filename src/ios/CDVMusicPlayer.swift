@@ -16,6 +16,7 @@ class CDVMusicPlayer: NSObject {
     private var timeObserverToken: Any?
     private let artworkCache = NSCache<NSURL, UIImage>()
     private var forceClearOnNextApply: Bool = false
+    private var lastQueueModifiedDate: Date?
 
     @objc var currentTrack: [String: Any]? {
         guard currentIndex < queue.count else { return nil }
@@ -45,20 +46,37 @@ class CDVMusicPlayer: NSObject {
 
     // MARK: - Playback
     @objc func play() {
+        let hadItem = (player.currentItem != nil)
+        if !hadItem { print("[CDVMusicPlayer][diag] play(): currentItem is nil -> calling loadCurrentTrack()") }
         if player.currentItem == nil { loadCurrentTrack() }
+        print("[CDVMusicPlayer][diag] play(): invoking AVPlayer.play(); queue.count=\(queue.count) index=\(currentIndex)")
         player.play()
         isPlaying = true
         startPeriodicUpdates()
         updateNowPlayingInfoIfNeeded()
         MPNowPlayingInfoCenter.default().playbackState = .playing
+        print("[CDVMusicPlayer][diag] play(): posted playbackState=.playing and CDVShowNowPlayingTemplate")
         NotificationCenter.default.post(name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
+        persistQueueState()
     }
 
     @objc func pause() { player.pause(); isPlaying = false; updateNowPlayingInfoIfNeeded(); MPNowPlayingInfoCenter.default().playbackState = .paused }
     @objc func togglePlayPause() { isPlaying ? pause() : play() }
 
-    @objc func skipToNext() { guard !queue.isEmpty else { return }; currentIndex = (currentIndex + 1) % queue.count; loadCurrentTrack(); play() }
-    @objc func skipToPrevious() { guard !queue.isEmpty else { return }; currentIndex = (currentIndex - 1 + queue.count) % queue.count; loadCurrentTrack(); play() }
+    @objc func skipToNext() {
+        guard !queue.isEmpty else { return }
+        currentIndex = (currentIndex + 1) % queue.count
+        loadCurrentTrack()
+        play()
+        persistQueueState()
+    }
+    @objc func skipToPrevious() {
+        guard !queue.isEmpty else { return }
+        currentIndex = (currentIndex - 1 + queue.count) % queue.count
+        loadCurrentTrack()
+        play()
+        persistQueueState()
+    }
 
     @objc func seekToPosition(_ position: Double) { player.seek(to: CMTimeMakeWithSeconds(position / 1000.0, preferredTimescale: Int32(NSEC_PER_SEC))) }
     @objc func currentPlaybackPosition() -> Double {
@@ -68,21 +86,201 @@ class CDVMusicPlayer: NSObject {
     @objc func currentPlaybackState() -> String { isPlaying ? "playing" : (player.currentItem != nil ? "paused" : "stopped") }
 
     // MARK: - Queue
-    @objc func updateQueue(_ queue: [[String: Any]]) { self.queue = queue; currentIndex = 0; if !queue.isEmpty { loadCurrentTrack(); updateNowPlayingInfo() } }
-    @objc func reloadQueue() {}
-    @objc func updateCurrentTrack() { if !queue.isEmpty { loadCurrentTrack(); updateNowPlayingInfo() } }
+    @objc func updateQueue(_ queue: [[String: Any]]) {
+        updateQueue(queue, selectedTrackId: nil, persist: true)
+    }
+
+    func updateQueue(_ queue: [[String: Any]], selectedTrackId: String?, persist: Bool = true) {
+        print("[CDVMusicPlayer][diag] updateQueue(persist=\(persist)) selectedId=\(selectedTrackId ?? "<nil>") incomingCount=\(queue.count)")
+        self.queue = queue
+
+        guard !queue.isEmpty else {
+            print("[CDVMusicPlayer][diag] updateQueue(): received empty queue")
+            if persist { persistQueueState() }
+            return
+        }
+
+        let persistedId = CDVQueueStorage.currentTrackId()
+        let candidateId = stringValue(selectedTrackId) ?? stringValue(persistedId)
+
+        if let candidateId,
+           let idx = queue.firstIndex(where: { item in
+               let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
+               let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
+               return extrasId == candidateId || directId == candidateId
+           }) {
+            currentIndex = idx
+        } else {
+            currentIndex = min(max(0, currentIndex), max(0, queue.count - 1))
+        }
+
+        let preview = queue.prefix(3).map { (track) -> String in
+            let title = (track["title"] as? String) ?? "<untitled>"
+            let idAlbum = (track["idAlbumTrack"] as? String) ?? (track["id"] as? String) ?? ""
+            return idAlbum.isEmpty ? title : "\(title) [\(idAlbum)]"
+        }.joined(separator: " | ")
+        print("[CDVMusicPlayer][diag] updateQueue(): received \(queue.count) items firstItems=\(preview) selectedIdx=\(currentIndex)")
+
+        loadCurrentTrack()
+        updateNowPlayingInfo()
+        if persist {
+            persistQueueState()
+        } else {
+            if let currentId = currentTrackIdForPersistence() {
+                print("[CDVMusicPlayer][diag] updateQueue(): persist=FALSE keeping host storage untouched (currentId=\(currentId))")
+            } else {
+                print("[CDVMusicPlayer][diag] updateQueue(): persist=FALSE keeping host storage untouched (no current id)")
+            }
+        }
+    }
+    @objc func reloadQueue() { reloadQueueInternal(force: false) }
+
+    @objc func reloadQueueForced() { reloadQueueInternal(force: true) }
+
+    private func reloadQueueInternal(force: Bool) {
+        let status = CDVQueueStorage.queueFileStatus()
+        let fileModifiedDate = status.attributes?[.modificationDate] as? Date
+        let hasActiveItem = player.currentItem != nil || !queue.isEmpty
+        let existingCurrentId = currentTrackIdForPersistence()
+
+        if !force {
+            if hasActiveItem {
+                if let fileModifiedDate {
+                    if let last = lastQueueModifiedDate, fileModifiedDate <= last {
+                        let title = (currentTrack?["title"] as? String) ?? "<unknown>"
+                        print("[CDVMusicPlayer][diag] reloadQueue(): skipping (queue already loaded) currentIndex=\(currentIndex) title=\(title) fileMTime=\(fileModifiedDate)")
+                        updateNowPlayingInfoIfNeeded()
+                        return
+                    }
+                    print("[CDVMusicPlayer][diag] reloadQueue(): detected newer queue file (mtime=\(fileModifiedDate)) -> refreshing")
+                } else {
+                    let title = (currentTrack?["title"] as? String) ?? "<unknown>"
+                    print("[CDVMusicPlayer][diag] reloadQueue(): skipping (queue already loaded, no file mtime) currentIndex=\(currentIndex) title=\(title)")
+                    updateNowPlayingInfoIfNeeded()
+                    return
+                }
+            }
+        }
+
+        print("[CDVMusicPlayer][diag] reloadQueueInternal(force=\(force)) fileExists=\(status.exists) mtime=\(String(describing: fileModifiedDate)) path=\(status.path)")
+
+        let (items, currentId, modifiedDate) = CDVQueueStorage.loadQueueFromDisk(usingAttributes: status.attributes)
+
+        if items.isEmpty && !queue.isEmpty {
+            print("[CDVMusicPlayer][diag] reloadQueue(): disk queue empty but in-memory queue has \(queue.count) items — preserving current state")
+            updateNowPlayingInfoIfNeeded()
+            return
+        }
+
+        if !force && hasActiveItem && !items.isEmpty {
+            let candidateId = stringValue(currentId) ?? existingCurrentId
+            if let candidateId, !candidateId.isEmpty {
+                let containsCandidate = items.firstIndex(where: { item in
+                    let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
+                    let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
+                    return extrasId == candidateId || directId == candidateId
+                }) != nil
+                if !containsCandidate {
+                    let title = (currentTrack?["title"] as? String) ?? "<unknown>"
+                    print("[CDVMusicPlayer][diag] reloadQueue(): skipping new file (no matching track id=\(candidateId)) currentTitle=\(title)")
+                    updateNowPlayingInfoIfNeeded()
+                    return
+                }
+            }
+        }
+
+        // Determine which index from the new file matches our current selection before mutating state.
+        let resolvedIndex: Int = {
+            let candidateId = stringValue(currentId) ?? existingCurrentId
+            if let candidateId, !candidateId.isEmpty,
+               let idx = items.firstIndex(where: { item in
+                   let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
+                   let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
+                   return extrasId == candidateId || directId == candidateId
+               }) {
+                return idx
+            }
+            if let persisted = CDVQueueStorage.currentTrackId(),
+               let idx = items.firstIndex(where: { item in
+                   let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
+                   let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
+                   return extrasId == persisted || directId == persisted
+               }) {
+                return idx
+            }
+            if let current = currentTrack,
+               let existingId = stringValue(current["idAlbumTrack"]) ?? stringValue(current["id"]),
+               let idx = items.firstIndex(where: { item in
+                   let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
+                   let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
+                   return extrasId == existingId || directId == existingId
+               }) {
+                return idx
+            }
+            return min(currentIndex, max(0, items.count - 1))
+        }()
+
+        self.queue = items
+        self.currentIndex = resolvedIndex
+
+        let formattedDate = modifiedDate.map { ISO8601DateFormatter().string(from: $0) } ?? "<nil>"
+        print("[CDVMusicPlayer][diag] reloadQueue(force=\(force)): loaded=\(items.count) currentIndex=\(self.currentIndex) currentId=\(currentId ?? "<nil>") fileMTime=\(formattedDate)")
+
+        if let modifiedDate {
+            lastQueueModifiedDate = modifiedDate
+        } else if let fileModifiedDate {
+            lastQueueModifiedDate = fileModifiedDate
+        }
+
+        if !items.isEmpty {
+            // Prepare current item and metadata without forcing playback
+            loadCurrentTrack()
+            updateNowPlayingInfo()
+        } else {
+            updateNowPlayingInfoIfNeeded()
+        }
+    }
+    @objc func updateCurrentTrack() {
+        if !queue.isEmpty {
+            print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue.count=\(queue.count) idx=\(currentIndex)")
+            loadCurrentTrack()
+            updateNowPlayingInfo()
+            persistQueueState()
+        } else {
+            print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue is empty")
+        }
+    }
 
     // MARK: - Internals
     @objc func loadCurrentTrack() {
-        guard currentIndex < queue.count else { return }
+        guard currentIndex < queue.count else { print("[CDVMusicPlayer][diag] loadCurrentTrack(): currentIndex out of range — queue.count=\(queue.count) idx=\(currentIndex)"); return }
         let track = queue[currentIndex]
-        if let urlStr = track["source"] as? String, let url = URL(string: urlStr), !urlStr.isEmpty {
-            let item = AVPlayerItem(url: url)
-            attachItemObservers(item)
-            player.replaceCurrentItem(with: item)
-            // restart periodic updates for new item
-            if isPlaying { startPeriodicUpdates() }
-            return
+        let title = (track["title"] as? String) ?? ""
+        let artist = (track["artist"] as? String) ?? ""
+        let album = (track["album"] as? String) ?? ""
+        let explicitSource = (track["source"] as? String) ?? ""
+        let fallbackSource = (track["filePath"] as? String) ?? (track["path"] as? String) ?? ""
+        let effectiveSource = !explicitSource.isEmpty ? explicitSource : fallbackSource
+        let trimmedSource = effectiveSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("[CDVMusicPlayer][diag] loadCurrentTrack(): idx=\(currentIndex) hasSource=\(!trimmedSource.isEmpty) title=\(title) artist=\(artist) album=\(album)")
+
+        if !trimmedSource.isEmpty {
+            let candidateURL: URL? = {
+                if let remote = URL(string: trimmedSource), remote.scheme != nil {
+                    return remote
+                }
+                return URL(fileURLWithPath: trimmedSource, isDirectory: false)
+            }()
+
+            if let url = candidateURL {
+                let item = AVPlayerItem(url: url)
+                attachItemObservers(item)
+                player.replaceCurrentItem(with: item)
+                print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with URL=\(url.absoluteString.prefix(80))…")
+                // restart periodic updates for new item
+                if isPlaying { startPeriodicUpdates() }
+                return
+            }
         }
 
         // Fallback: resolve signed URL like Android when we only have IDs
@@ -111,6 +309,7 @@ class CDVMusicPlayer: NSObject {
                             let item = AVPlayerItem(url: url)
                             self.attachItemObservers(item)
                             self.player.replaceCurrentItem(with: item)
+                            print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with signed URL (main-thread)")
                             if self.isPlaying { self.player.play(); self.startPeriodicUpdates() }
                             self.updateNowPlayingInfoIfNeeded()
                         }
@@ -246,7 +445,7 @@ class CDVMusicPlayer: NSObject {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = enriched
             MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
             let keys = Array(enriched.keys).map { String(describing: $0) }
-            print("[CDVMusicPlayer] Applied NowPlayingInfo keys=\(keys)")
+            print("[CDVMusicPlayer] Applied NowPlayingInfo keys=\(keys) title=\(title) artist=\(artist) rate=\(self.isPlaying ? 1.0 : 0.0) elapsed=\(elapsed.isFinite ? elapsed : 0)")
         }
         if Thread.isMainThread { applyInfo() } else { DispatchQueue.main.async { applyInfo() } }
 
@@ -259,7 +458,81 @@ class CDVMusicPlayer: NSObject {
     // MARK: - Hardcoded content
     @objc func playTrack(_ track: [String: Any]) { self.queue = [track]; currentIndex = 0; loadCurrentTrack(); play() }
 
-    @objc func cleanup() { player.pause(); player.replaceCurrentItem(with: nil) }
+    @objc func cleanup() {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        persistQueueState()
+    }
+
+    private func queueItemsForPersistence() -> [[String: Any]] {
+        return queue.enumerated().map { entry -> [String: Any] in
+            let (index, item) = entry
+            var payload = item
+            if var extras = item["trackExtras"] as? [String: Any] {
+                extras["indice"] = index
+                payload["trackExtras"] = extras
+            } else {
+                payload["trackExtras"] = ["indice": index]
+            }
+            return ["data": payload]
+        }
+    }
+
+    private func currentTrackIdForPersistence() -> String? {
+        guard currentIndex < queue.count else { return nil }
+        let item = queue[currentIndex]
+        if let extras = item["trackExtras"] as? [String: Any], let id = stringValue(extras["idAlbumTrack"]) { return id }
+        if let id = stringValue(item["idAlbumTrack"]) { return id }
+        if let id = stringValue(item["id"]) { return id }
+        return nil
+    }
+
+    private func persistQueueState() {
+        let items = queueItemsForPersistence()
+        do {
+            let data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+            let path = CDVQueueStorage.queueFilePath()
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
+            try data.write(to: url, options: .atomic)
+            print("[CDVMusicPlayer][persist] queue saved count=\(items.count) path=\(path)")
+            if let first = queue.first {
+                let title = (first["title"] as? String) ?? "<untitled>"
+                let idAlbum = (first["idAlbumTrack"] as? String) ?? (first["id"] as? String) ?? ""
+                print("[CDVMusicPlayer][persist] first item title=\(title) idAlbumTrack=\(idAlbum)")
+            }
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: path), let modDate = attrs[.modificationDate] as? Date {
+                lastQueueModifiedDate = modDate
+            } else {
+                lastQueueModifiedDate = Date()
+            }
+        } catch {
+            print("[CDVMusicPlayer][persist][ERROR] failed to save queue: \(error.localizedDescription)")
+        }
+
+        if let currentId = currentTrackIdForPersistence() {
+            UserDefaults.standard.setValue(currentId, forKey: "CURRENT_TRACK_KEY")
+            UserDefaults.standard.synchronize()
+            print("[CDVMusicPlayer][persist] current track stored id=\(currentId)")
+        } else {
+            print("[CDVMusicPlayer][persist][WARN] current track id unavailable while persisting queue")
+        }
+    }
+
+    private func stringValue(_ value: Any?) -> String? {
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        if let convertible = value as? CustomStringConvertible {
+            let description = convertible.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            return description.isEmpty ? nil : description
+        }
+        return nil
+    }
 
     // MARK: - Minimal Now Playing apply (for CarPlay binding)
     // Applies a minimal set of keys to help CarPlay bind without tripping over artwork/duration races

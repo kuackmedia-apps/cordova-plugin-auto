@@ -9,6 +9,7 @@ var exec = require('cordova/exec');
     onMediaUpdateCallback: null,
 
     onConnectionChange: function (callback) {
+      console.log('[auto] onConnectionChange called');
       AutoPlugin.onConnectionChangeCallback = callback;
 
       exec(
@@ -27,24 +28,26 @@ var exec = require('cordova/exec');
     },
 
     onMediaUpdate: function (callback) {
-        AutoPlugin.onMediaUpdateCallback = callback;
+      console.log('[auto] onMediaUpdate called');
+      AutoPlugin.onMediaUpdateCallback = callback;
 
-        exec(
-          function (data) {
-            if (typeof AutoPlugin.onMediaUpdateCallback === 'function') {
-              AutoPlugin.onMediaUpdateCallback(data);
-            }
-          },
-          function (err) {
-            console.error('AutoPlugin onMediaUpdate error:', err);
-          },
-          SERVICE,
-          'registerEvents',
-          ['onMediaUpdate']
-        );
+      exec(
+        function (data) {
+          if (typeof AutoPlugin.onMediaUpdateCallback === 'function') {
+            AutoPlugin.onMediaUpdateCallback(data);
+          }
+        },
+        function (err) {
+          console.error('AutoPlugin onMediaUpdate error:', err);
+        },
+        SERVICE,
+        'registerEvents',
+        ['onMediaUpdate']
+      );
     },
 
     onPlaybackStateChange: function (callback) {
+      console.log('[auto] onPlaybackStateChange called');
       AutoPlugin.onPlaybackStateChange = callback;
 
       exec(
@@ -63,6 +66,7 @@ var exec = require('cordova/exec');
     },
 
     play: function(cb, errorCb) {
+      console.log('[auto] play called');
       cordova.exec(
         function success(result) {
           if (typeof cb === 'function') {
@@ -82,26 +86,28 @@ var exec = require('cordova/exec');
     },
 
     pause: function(cb, errorCb) {
-        cordova.exec(
-          function success(result) {
-            console.log('Track paused successfully:', result);
-            if (typeof cb === 'function') {
-              cb(result);
-            }
-          },
-          function error(err) {
-            console.error('Error paused track:', err);
-            if (typeof errorCb === 'function') {
-              errorCb(err);
-            }
-          },
-          SERVICE,
-          'pause',
-          [],
-        );
+      console.log('[auto] pause called');
+      cordova.exec(
+        function success(result) {
+          console.log('Track paused successfully:', result);
+          if (typeof cb === 'function') {
+            cb(result);
+          }
+        },
+        function error(err) {
+          console.error('Error paused track:', err);
+          if (typeof errorCb === 'function') {
+            errorCb(err);
+          }
+        },
+        SERVICE,
+        'pause',
+        [],
+      );
     },
 
     getCurrentPlaybackState: function(cb, errorCb) {
+      console.log('[auto] getCurrentPlaybackState called');
       cordova.exec(
         function success(result) {
           console.log('Track getCurrentPlaybackState successfully:', result);
@@ -120,9 +126,11 @@ var exec = require('cordova/exec');
     },
 
     isConnected: function (cb, errorCb) {
+      console.log('[auto] about to call isConnected');
       cordova.exec(
         function success(result) {
-          console.log('Track isConnected successfully:', result);
+          // Align log format with requested snippet
+          console.log('[auto] isConnected ->', result);
           if (typeof cb === 'function') {
             cb(result);
           }
@@ -140,41 +148,43 @@ var exec = require('cordova/exec');
     },
 
     getPosition: function (cb, errorCb) {
-         cordova.exec(
-           function success(result) {
-              if (typeof cb === 'function') {
-                cb(result);
-              }
-           },
-           function error(err) {
-             console.error('Error getPosition track:', err);
-              if (typeof errorCb === 'function') {
-                errorCb(err);
-              }
-           },
-           SERVICE,
-           'getPosition',
-           [],
-         );
+      console.log('[auto] getPosition called');
+      cordova.exec(
+        function success(result) {
+          if (typeof cb === 'function') {
+            cb(result);
+          }
+        },
+        function error(err) {
+          console.error('Error getPosition track:', err);
+          if (typeof errorCb === 'function') {
+            errorCb(err);
+          }
+        },
+        SERVICE,
+        'getPosition',
+        [],
+      );
     },
 
     playCurrentTrack: function (cb, errorCb) {
-         cordova.exec(
-           function success(result) {
-              if (typeof cb === 'function') {
-                cb(result);
-              }
-           },
-           function error(err) {
-             console.error('Error playCurrentTrack :', err);
-              if (typeof errorCb === 'function') {
-                errorCb(err);
-              }
-           },
-           SERVICE,
-           'playCurrentTrack',
-           [],
-         );
+      console.log('[auto] playCurrentTrack called');
+      cordova.exec(
+        function success(result) {
+          if (typeof cb === 'function') {
+            cb(result);
+          }
+        },
+        function error(err) {
+          console.error('Error playCurrentTrack :', err);
+          if (typeof errorCb === 'function') {
+            errorCb(err);
+          }
+        },
+        SERVICE,
+        'playCurrentTrack',
+        [],
+      );
     },
     updateNavigation: function (cb, errorCb) {
          cordova.exec(
@@ -197,14 +207,16 @@ var exec = require('cordova/exec');
 
     // ---- Auth Config bridge (iOS) ----
     setAuthConfig: function(accessToken, refreshToken, appCode, baseUrl, expirationAt, cb, errorCb) {
+      console.log('[auto] setAuthConfig called', {
+        hasAccessToken: !!accessToken,
+        hasRefreshToken: !!refreshToken,
+        appCode: appCode,
+        baseUrl: baseUrl,
+        expirationAt: expirationAt
+      });
       exec(
-        function success(result) {
-          if (typeof cb === 'function') cb(result);
-        },
-        function error(err) {
-          console.error('setAuthConfig error:', err);
-          if (typeof errorCb === 'function') errorCb(err);
-        },
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('setAuthConfig error:', err); if (typeof errorCb === 'function') errorCb(err); },
         SERVICE,
         'setAuthConfig',
         [accessToken, refreshToken, appCode, baseUrl, expirationAt]
@@ -212,17 +224,114 @@ var exec = require('cordova/exec');
     },
 
     getAuthConfig: function(cb, errorCb) {
+      console.log('[auto] getAuthConfig called');
       exec(
-        function success(result) {
-          if (typeof cb === 'function') cb(result);
-        },
-        function error(err) {
-          console.error('getAuthConfig error:', err);
-          if (typeof errorCb === 'function') errorCb(err);
-        },
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('getAuthConfig error:', err); if (typeof errorCb === 'function') errorCb(err); },
         SERVICE,
         'getAuthConfig',
         []
+      );
+    },
+  
+    // ---- Queue and Playback Controls ----
+    updateQueue: function(queue, cb, errorCb) {
+      console.log('[auto] updateQueue called', { count: Array.isArray(queue) ? queue.length : 'n/a' });
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('updateQueue error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'updateQueue',
+        [Array.isArray(queue) ? queue : []]
+      );
+    },
+
+    notifyQueueStorageUpdated: function(cb, errorCb) {
+      console.log('[auto] notifyQueueStorageUpdated called');
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('notifyQueueStorageUpdated error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'notifyQueueStorageUpdated',
+        []
+      );
+    },
+
+    notifyCurrentTrackUpdated: function(cb, errorCb) {
+      console.log('[auto] notifyCurrentTrackUpdated called');
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('notifyCurrentTrackUpdated error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'notifyCurrentTrackUpdated',
+        []
+      );
+    },
+
+    skipToNext: function(cb, errorCb) {
+      console.log('[auto] skipToNext called');
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('skipToNext error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'skipToNext',
+        []
+      );
+    },
+
+    skipToPrevious: function(cb, errorCb) {
+      console.log('[auto] skipToPrevious called');
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('skipToPrevious error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'skipToPrevious',
+        []
+      );
+    },
+
+    seekTo: function(positionMs, cb, errorCb) {
+      console.log('[auto] seekTo called', { positionMs });
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('seekTo error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'seekTo',
+        [Number(positionMs) || 0]
+      );
+    },
+
+    // ---- Hardcoded content helpers (diagnostics) ----
+    getHardcodedPlaylists: function(cb, errorCb) {
+      console.log('[auto] getHardcodedPlaylists called');
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('getHardcodedPlaylists error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'getHardcodedPlaylists',
+        []
+      );
+    },
+
+    getHardcodedPlaylistTracks: function(playlistId, cb, errorCb) {
+      console.log('[auto] getHardcodedPlaylistTracks called', { playlistId });
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('getHardcodedPlaylistTracks error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'getHardcodedPlaylistTracks',
+        [playlistId]
+      );
+    },
+
+    playHardcodedTrack: function(url, metadata, cb, errorCb) {
+      console.log('[auto] playHardcodedTrack called', { url, hasMetadata: !!metadata });
+      exec(
+        function success(result) { if (typeof cb === 'function') cb(result); },
+        function error(err) { console.error('playHardcodedTrack error:', err); if (typeof errorCb === 'function') errorCb(err); },
+        SERVICE,
+        'playHardcodedTrack',
+        [url, metadata || {}]
       );
     },
   }
