@@ -302,8 +302,13 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     // MARK: - Notifications
     @objc private func carPlayConnectionChanged(_ note: Notification) {
-        guard let cb = connectionCallbackId,
-              let connected = (note.userInfo?["connected"] as? Bool) else { return }
+        let connected = (note.userInfo?["connected"] as? Bool) ?? false
+        
+        guard let cb = connectionCallbackId else {
+            print("[AutoMusicPlugin] WARNING: No connectionCallbackId registered! Call onConnectionChange() first.")
+            return
+        }
+        
         let payload: [String: Any] = ["connected": connected]
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
         result?.setKeepCallbackAs(true)

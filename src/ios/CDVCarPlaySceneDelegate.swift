@@ -11,7 +11,12 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     deinit {
-        print("[CarPlay][SceneDelegate] deinit")
+        print("[CarPlay][SceneDelegate] deinit - scene being deallocated")
+        // Post disconnect notification when scene is deallocated
+        if let plugin = CDVAutoMusicPlugin.sharedInstance(), let manager = plugin.carPlayManager {
+            print("[CarPlay][SceneDelegate] deinit - notifying manager of disconnect")
+            NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": false])
+        }
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
@@ -42,6 +47,27 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             manager.templateApplicationScene(templateApplicationScene, didDisconnect: interfaceController)
         }
         self.carPlayScene = nil
+    }
+    
+    func sceneWillResignActive(_ scene: UIScene) {
+        print("[CarPlay][SceneDelegate] sceneWillResignActive - CarPlay going inactive")
+    }
+    
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        print("[CarPlay][SceneDelegate] sceneDidEnterBackground - CarPlay entered background")
+        // Post disconnect notification when scene enters background
+        if let plugin = CDVAutoMusicPlugin.sharedInstance(), let manager = plugin.carPlayManager {
+            print("[CarPlay][SceneDelegate] sceneDidEnterBackground - notifying manager of disconnect")
+            NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": false])
+        }
+    }
+    
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        print("[CarPlay][SceneDelegate] sceneWillEnterForeground - CarPlay entering foreground")
+    }
+    
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        print("[CarPlay][SceneDelegate] sceneDidBecomeActive - CarPlay became active")
     }
 }
 
