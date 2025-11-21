@@ -430,6 +430,16 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
 
     @objc func isConnected() -> Bool { connected }
+    
+    // Called when the queue has been reloaded and CarPlay UI needs to refresh
+    @objc func refreshQueueUI() {
+        guard let controller = interfaceController else {
+            print("[CarPlay] refreshQueueUI: No interface controller available")
+            return
+        }
+        print("[CarPlay] refreshQueueUI: Rebuilding templates with new queue")
+        setupTemplates(controller)
+    }
 
     // MARK: - CPTemplateApplicationSceneDelegate
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {

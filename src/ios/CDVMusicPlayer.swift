@@ -81,7 +81,30 @@ class CDVMusicPlayer: NSObject {
                 CDVQueueStorage.setCurrentTrackId(trackId)
             }
         } else {
-            print("[CDVMusicPlayer] Warning: Track ID \(trackId) not found in queue")
+            // Track not found in current queue - mobile app may have changed playlists
+            print("[CDVMusicPlayer] Track ID \(trackId) not found in current queue, reloading queue from disk...")
+            reloadQueueForced()
+            
+            // Try again with the newly loaded queue
+            if let idx = queue.firstIndex(where: { item in
+                guard let data = item["data"] as? [String: Any] else { return false }
+                let idAlbumTrack = stringValue(data["idAlbumTrack"])
+                let id = stringValue(data["id"])
+                return idAlbumTrack == trackId || id == trackId
+            }) {
+                let trackData = queue[idx]["data"] as? [String: Any]
+                let trackName = trackData?["name"] as? String ?? "Unknown"
+                print("[CDVMusicPlayer] Found track after queue reload: \(trackName) (index \(idx))")
+                currentIndex = idx
+                loadCurrentTrack()
+                updateNowPlayingInfo()
+                CDVQueueStorage.setCurrentTrackId(trackId)
+                
+                // Notify manager to update CarPlay UI with new queue
+                manager?.refreshQueueUI()
+            } else {
+                print("[CDVMusicPlayer] Warning: Track ID \(trackId) still not found after queue reload")
+            }
         }
     }
 
@@ -502,20 +525,14 @@ class CDVMusicPlayer: NSObject {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
                     MPNowPlayingInfoCenter.default().nowPlayingInfo = enrichedCopy
                     MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
-                    let keys = Array(enrichedCopy.keys).map { String(describing: $0) }
-                    print("[CDVMusicPlayer] Applied NowPlayingInfo (delayed after clear) keys=\(keys)")
                 }
                 return
             }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = enriched
             MPNowPlayingInfoCenter.default().playbackState = self.isPlaying ? .playing : .paused
-            let keys = Array(enriched.keys).map { String(describing: $0) }
-            print("[CDVMusicPlayer] Applied NowPlayingInfo keys=\(keys) title=\(title) artist=\(artist) rate=\(self.isPlaying ? 1.0 : 0.0) elapsed=\(elapsed.isFinite ? elapsed : 0)")
         }
         if Thread.isMainThread { applyInfo() } else { DispatchQueue.main.async { applyInfo() } }
 
-        // Lightweight diagnostics
-        print("[CDVMusicPlayer] NowPlaying updated — title=\(title) artist=\(artist) elapsed=\(elapsed.isFinite ? elapsed : 0) rate=\(isPlaying ? 1.0 : 0.0)")
     }
 
     @objc func updateNowPlayingInfoIfNeeded() { updateNowPlayingInfo() }
