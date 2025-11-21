@@ -17,10 +17,17 @@ class CDVMusicPlayer: NSObject {
     private let artworkCache = NSCache<NSURL, UIImage>()
     private var forceClearOnNextApply: Bool = false
     private var lastQueueModifiedDate: Date?
+    private var debugTimer: Timer?
+    private var lastKnownTrackId: String?
 
+    // Helper to extract the nested 'data' field from a queue item
+    private func extractTrackData(_ item: [String: Any]) -> [String: Any] {
+        return CDVQueueStorage.extractFlattenedData(item)
+    }
+    
     @objc var currentTrack: [String: Any]? {
         guard currentIndex < queue.count else { return nil }
-        return queue[currentIndex]
+        return extractTrackData(queue[currentIndex])
     }
 
     @objc init(manager: CDVCarPlayManager) {
@@ -28,6 +35,54 @@ class CDVMusicPlayer: NSObject {
         super.init()
         setupAudioSession()
         setupRemoteCommandCenter()
+        startDebugMonitoring()
+    }
+    
+    deinit {
+        debugTimer?.invalidate()
+        debugTimer = nil
+    }
+    
+    private func startDebugMonitoring() {
+        debugTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.logStoredTrackInfo()
+        }
+    }
+    
+    private func logStoredTrackInfo() {
+        let resolvedId = CDVQueueStorage.currentTrackId()
+        
+        // Detect if current_track changed and sync currentIndex
+        if let resolvedId, resolvedId != lastKnownTrackId {
+            print("[CDVMusicPlayer] Track change detected: \(lastKnownTrackId ?? "none") -> \(resolvedId)")
+            lastKnownTrackId = resolvedId
+            syncCurrentIndexToTrackId(resolvedId)
+        }
+    }
+    
+    private func syncCurrentIndexToTrackId(_ trackId: String) {
+        guard !queue.isEmpty else { return }
+        
+        // Search for the track in the queue by idAlbumTrack or id
+        if let idx = queue.firstIndex(where: { item in
+            guard let data = item["data"] as? [String: Any] else { return false }
+            let idAlbumTrack = stringValue(data["idAlbumTrack"])
+            let id = stringValue(data["id"])
+            return idAlbumTrack == trackId || id == trackId
+        }) {
+            if idx != currentIndex {
+                let trackData = queue[idx]["data"] as? [String: Any]
+                let trackName = trackData?["name"] as? String ?? "Unknown"
+                print("[CDVMusicPlayer] Synced to track: \(trackName) (index \(idx))")
+                currentIndex = idx
+                loadCurrentTrack()
+                updateNowPlayingInfo()
+                // Store the current track ID in the same format as mobile app
+                CDVQueueStorage.setCurrentTrackId(trackId)
+            }
+        } else {
+            print("[CDVMusicPlayer] Warning: Track ID \(trackId) not found in queue")
+        }
     }
 
     @objc func setNowPlayingTemplate(_ template: CPNowPlayingTemplate) {
@@ -69,6 +124,10 @@ class CDVMusicPlayer: NSObject {
         loadCurrentTrack()
         play()
         persistQueueState()
+        // Update current_track in UserDefaults to sync with mobile app
+        if let trackId = currentTrackIdForPersistence() {
+            CDVQueueStorage.setCurrentTrackId(trackId)
+        }
     }
     @objc func skipToPrevious() {
         guard !queue.isEmpty else { return }
@@ -76,6 +135,10 @@ class CDVMusicPlayer: NSObject {
         loadCurrentTrack()
         play()
         persistQueueState()
+        // Update current_track in UserDefaults to sync with mobile app
+        if let trackId = currentTrackIdForPersistence() {
+            CDVQueueStorage.setCurrentTrackId(trackId)
+        }
     }
 
     @objc func seekToPosition(_ position: Double) { player.seek(to: CMTimeMakeWithSeconds(position / 1000.0, preferredTimescale: Int32(NSEC_PER_SEC))) }
@@ -105,18 +168,19 @@ class CDVMusicPlayer: NSObject {
 
         if let candidateId,
            let idx = queue.firstIndex(where: { item in
-               let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
-               let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
-               return extrasId == candidateId || directId == candidateId
+               guard let data = item["data"] as? [String: Any] else { return false }
+               let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
+               return directId == candidateId
            }) {
             currentIndex = idx
         } else {
             currentIndex = min(max(0, currentIndex), max(0, queue.count - 1))
         }
 
-        let preview = queue.prefix(3).map { (track) -> String in
-            let title = (track["title"] as? String) ?? "<untitled>"
-            let idAlbum = (track["idAlbumTrack"] as? String) ?? (track["id"] as? String) ?? ""
+        let preview = queue.prefix(3).map { (item) -> String in
+            guard let data = item["data"] as? [String: Any] else { return "<invalid>" }
+            let title = (data["name"] as? String) ?? (data["title"] as? String) ?? "<untitled>"
+            let idAlbum = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"]) ?? ""
             return idAlbum.isEmpty ? title : "\(title) [\(idAlbum)]"
         }.joined(separator: " | ")
         print("[CDVMusicPlayer][diag] updateQueue(): received \(queue.count) items firstItems=\(preview) selectedIdx=\(currentIndex)")
@@ -176,9 +240,9 @@ class CDVMusicPlayer: NSObject {
             let candidateId = stringValue(currentId) ?? existingCurrentId
             if let candidateId, !candidateId.isEmpty {
                 let containsCandidate = items.firstIndex(where: { item in
-                    let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
-                    let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
-                    return extrasId == candidateId || directId == candidateId
+                    guard let data = item["data"] as? [String: Any] else { return false }
+                    let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
+                    return directId == candidateId
                 }) != nil
                 if !containsCandidate {
                     let title = (currentTrack?["title"] as? String) ?? "<unknown>"
@@ -194,26 +258,26 @@ class CDVMusicPlayer: NSObject {
             let candidateId = stringValue(currentId) ?? existingCurrentId
             if let candidateId, !candidateId.isEmpty,
                let idx = items.firstIndex(where: { item in
-                   let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
-                   let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
-                   return extrasId == candidateId || directId == candidateId
+                   guard let data = item["data"] as? [String: Any] else { return false }
+                   let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
+                   return directId == candidateId
                }) {
                 return idx
             }
             if let persisted = CDVQueueStorage.currentTrackId(),
                let idx = items.firstIndex(where: { item in
-                   let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
-                   let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
-                   return extrasId == persisted || directId == persisted
+                   guard let data = item["data"] as? [String: Any] else { return false }
+                   let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
+                   return directId == persisted
                }) {
                 return idx
             }
             if let current = currentTrack,
                let existingId = stringValue(current["idAlbumTrack"]) ?? stringValue(current["id"]),
                let idx = items.firstIndex(where: { item in
-                   let extrasId = stringValue((item["trackExtras"] as? [String: Any])?["idAlbumTrack"])
-                   let directId = stringValue(item["idAlbumTrack"]) ?? stringValue(item["id"])
-                   return extrasId == existingId || directId == existingId
+                   guard let data = item["data"] as? [String: Any] else { return false }
+                   let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
+                   return directId == existingId
                }) {
                 return idx
             }
@@ -254,7 +318,8 @@ class CDVMusicPlayer: NSObject {
     // MARK: - Internals
     @objc func loadCurrentTrack() {
         guard currentIndex < queue.count else { print("[CDVMusicPlayer][diag] loadCurrentTrack(): currentIndex out of range — queue.count=\(queue.count) idx=\(currentIndex)"); return }
-        let track = queue[currentIndex]
+        // Extract flattened data from the nested structure
+        let track = extractTrackData(queue[currentIndex])
         let title = (track["title"] as? String) ?? ""
         let artist = (track["artist"] as? String) ?? ""
         let album = (track["album"] as? String) ?? ""
@@ -467,23 +532,23 @@ class CDVMusicPlayer: NSObject {
     private func queueItemsForPersistence() -> [[String: Any]] {
         return queue.enumerated().map { entry -> [String: Any] in
             let (index, item) = entry
-            var payload = item
-            if var extras = item["trackExtras"] as? [String: Any] {
-                extras["indice"] = index
-                payload["trackExtras"] = extras
-            } else {
-                payload["trackExtras"] = ["indice": index]
+            // Queue items already have the structure: { "data": { ...track... } }
+            // Update the indice field within the data object
+            var mutableItem = item
+            if var data = item["data"] as? [String: Any] {
+                data["indice"] = index
+                mutableItem["data"] = data
             }
-            return ["data": payload]
+            return mutableItem
         }
     }
 
     private func currentTrackIdForPersistence() -> String? {
         guard currentIndex < queue.count else { return nil }
         let item = queue[currentIndex]
-        if let extras = item["trackExtras"] as? [String: Any], let id = stringValue(extras["idAlbumTrack"]) { return id }
-        if let id = stringValue(item["idAlbumTrack"]) { return id }
-        if let id = stringValue(item["id"]) { return id }
+        guard let data = item["data"] as? [String: Any] else { return nil }
+        if let id = stringValue(data["idAlbumTrack"]) { return id }
+        if let id = stringValue(data["id"]) { return id }
         return nil
     }
 
@@ -496,9 +561,9 @@ class CDVMusicPlayer: NSObject {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
             try data.write(to: url, options: .atomic)
             print("[CDVMusicPlayer][persist] queue saved count=\(items.count) path=\(path)")
-            if let first = queue.first {
-                let title = (first["title"] as? String) ?? "<untitled>"
-                let idAlbum = (first["idAlbumTrack"] as? String) ?? (first["id"] as? String) ?? ""
+            if let first = queue.first, let firstData = first["data"] as? [String: Any] {
+                let title = (firstData["name"] as? String) ?? (firstData["title"] as? String) ?? "<untitled>"
+                let idAlbum = stringValue(firstData["idAlbumTrack"]) ?? stringValue(firstData["id"]) ?? ""
                 print("[CDVMusicPlayer][persist] first item title=\(title) idAlbumTrack=\(idAlbum)")
             }
             if let attrs = try? FileManager.default.attributesOfItem(atPath: path), let modDate = attrs[.modificationDate] as? Date {

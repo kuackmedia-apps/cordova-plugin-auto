@@ -29,16 +29,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let name: String
     }
 
+    // Ensure queue items maintain the mobile app structure: { "data": { ...track... } }
+    // and update the indice field within the data object
     private func normalizeQueueItems(_ rawItems: [[String: Any]]) -> [[String: Any]] {
         return rawItems.enumerated().map { index, item in
-            var data = (item["data"] as? [String: Any]) ?? item
-            if var extras = data["trackExtras"] as? [String: Any] {
-                if extras["indice"] == nil { extras["indice"] = index }
-                data["trackExtras"] = extras
-            } else {
-                data["trackExtras"] = ["indice": index]
+            // If item already has the correct structure, just update indice
+            if var data = item["data"] as? [String: Any] {
+                data["indice"] = index
+                return ["data": data]
             }
-            return data
+            // Otherwise, wrap the item in the correct structure
+            var data = item
+            data["indice"] = index
+            return ["data": data]
         }
     }
 
@@ -65,41 +68,72 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         return nil
     }
 
+    // Build a queue entry in the mobile app's structure: { "data": { ...track... } }
     private func queueEntry(from track: Track, signedUrl: String, parent: QueueParentContext, index: Int) -> [String: Any] {
         let albumTitle = track.album?.title ?? parent.name
-        var entry: [String: Any] = [
-            "title": track.name,
-            "artist": track.artists.first?.name ?? "",
-            "album": albumTitle,
-            "source": signedUrl,
+        
+        // Build the track data object
+        var trackData: [String: Any] = [
             "id": track.id,
             "idTrack": track.id,
+            "name": track.name,
             "length": track.length,
+            "source": signedUrl,
+            "indice": index,
             "context": [
-                "id": parent.id,
+                "id": Int(parent.id) ?? 0,
                 "type": parent.type,
                 "name": parent.name
-            ],
-            "trackExtras": [
-                "id": track.id,
-                "indice": index
             ]
         ]
-
+        
         if let idAlbumTrack = track.idAlbumTrack {
-            let idString = String(idAlbumTrack)
-            entry["idAlbumTrack"] = idString
-            if var extras = entry["trackExtras"] as? [String: Any] {
-                extras["idAlbumTrack"] = idString
-                entry["trackExtras"] = extras
+            trackData["idAlbumTrack"] = idAlbumTrack
+        }
+        
+        if let number = track.number { trackData["number"] = number }
+        if let volume = track.volume { trackData["volume"] = volume }
+        
+        // Build album object
+        if let album = track.album {
+            var albumData: [String: Any] = [:]
+            albumData["title"] = album.title
+            if let images = album.images, !images.isEmpty {
+                albumData["images"] = images.map { img -> [String: Any] in
+                    var imgData: [String: Any] = [:]
+                    imgData["type"] = "url"
+                    if let url = img.url { imgData["url"] = url }
+                    if let size = img.size { imgData["size"] = size }
+                    if let type = img.imageType { imgData["imageType"] = type }
+                    return imgData
+                }
+            }
+            trackData["album"] = albumData
+        }
+        
+        // Build artists array
+        if !track.artists.isEmpty {
+            trackData["artists"] = track.artists.map { artist -> [String: Any] in
+                var artistData: [String: Any] = [
+                    "id": artist.id,
+                    "name": artist.name
+                ]
+                if let images = artist.images, !images.isEmpty {
+                    artistData["images"] = images.map { img -> [String: Any] in
+                        var imgData: [String: Any] = [:]
+                        imgData["type"] = "url"
+                        if let url = img.url { imgData["url"] = url }
+                        if let size = img.size { imgData["size"] = size }
+                        if let type = img.imageType { imgData["imageType"] = type }
+                        return imgData
+                    }
+                }
+                return artistData
             }
         }
-
-        if let number = track.number { entry["trackNumber"] = String(number) }
-        if let volume = track.volume { entry["discNumber"] = String(volume) }
-        if let artUrl = bestArtworkURL(for: track, fallbackAlbumTitle: albumTitle) { entry["artwork"] = artUrl }
-
-        return entry
+        
+        // Wrap in the mobile app's structure
+        return ["data": trackData]
     }
 
     // MARK: - Icons
@@ -279,7 +313,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         if !remote.isEmpty {
                             // Reset shown flag before kicking off playback so Now Playing can be presented again
                             self.isNowPlayingShown = false
-                            let selectedId = remote.first?["idAlbumTrack"] as? String ?? remote.first?["id"] as? String
+                            // Extract ID from nested data structure
+                            let firstData = remote.first?["data"] as? [String: Any]
+                            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
                             self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: false)
                             self.musicPlayer.play()
                         }
@@ -287,7 +323,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 } else if !tracks.isEmpty {
                     // Reset shown flag before kicking off playback so Now Playing can be presented again
                     self.isNowPlayingShown = false
-                    let selectedId = normalizedLocal.first?["idAlbumTrack"] as? String ?? normalizedLocal.first?["id"] as? String
+                    // Extract ID from nested data structure
+                    let firstData = normalizedLocal.first?["data"] as? [String: Any]
+                    let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
                     self.musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: false)
                     self.musicPlayer.play()
                 }

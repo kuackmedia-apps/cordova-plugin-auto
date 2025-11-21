@@ -18,13 +18,55 @@ class CDVQueueStorage {
         return (path, exists, attributes)
     }
 
-    // Read CURRENT_TRACK_KEY from UserDefaults (to mirror Android's SharedPreferences NativeStorage)
+    // Read current track ID from UserDefaults
+    // The mobile app stores idAlbumTrack in 'current_track' as a quoted string (e.g., "109882915")
     @objc static func currentTrackId() -> String? {
-        // If the app uses a different suite for NativeStorage, adjust here
+        // Check mobile app's key first
+        if let currentTrackJson = UserDefaults.standard.string(forKey: "current_track") {
+            // Try to parse as JSON first (mobile app uses JSON.stringify)
+            if let data = currentTrackJson.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data) {
+                // Handle both number and string after JSON parsing
+                if let num = parsed as? NSNumber {
+                    return num.stringValue
+                }
+                if let str = parsed as? String {
+                    return str
+                }
+            }
+            // If JSON parsing fails, the value has quotes around it (e.g., "109882915")
+            // Strip the quotes and use the inner value
+            var trimmed = currentTrackJson.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") {
+                trimmed = String(trimmed.dropFirst().dropLast())
+            }
+            if !trimmed.isEmpty && trimmed != "null" {
+                return trimmed
+            }
+        }
+        // Fall back to CarPlay's key for backward compatibility
         return UserDefaults.standard.string(forKey: "CURRENT_TRACK_KEY")
     }
+    
+    // Store current track ID in UserDefaults using the same format as the mobile app
+    @objc static func setCurrentTrackId(_ trackId: String?) {
+        guard let trackId = trackId else {
+            UserDefaults.standard.removeObject(forKey: "current_track")
+            return
+        }
+        // Store as a quoted string to match mobile app format: "109882915"
+        let quotedValue = "\"\(trackId)\""
+        UserDefaults.standard.set(quotedValue, forKey: "current_track")
+    }
 
-    // Map the Android queue item JSON (each element has { data: { ...track... } })
+    // Extract flattened data from a queue item for internal use (CarPlay UI, etc.)
+    // The queue item has the mobile app structure: { data: { id, name, album: {...}, artists: [...], ... } }
+    static func extractFlattenedData(_ item: [String: Any]) -> [String: Any] {
+        guard let data = item["data"] as? [String: Any] else { return [:] }
+        return mapQueueItem(data)
+    }
+
+    // Map the queue item JSON data (nested structure) to a flat structure for internal use
     private static func mapQueueItem(_ data: [String: Any]) -> [String: Any] {
         var mapped: [String: Any] = [:]
 
@@ -115,7 +157,8 @@ class CDVQueueStorage {
         return mapped
     }
 
-    // Load queue from disk, returning mapped items and the current track id for index restoration
+    // Load queue from disk in the original mobile app format, returning items and the current track id
+    // Queue items maintain the mobile app structure: [{ "data": { id, name, album: {...}, artists: [...], ... } }, ...]
     static func loadQueueFromDisk(usingAttributes providedAttributes: [FileAttributeKey: Any]? = nil) -> ([[String: Any]], String?, Date?) {
         let path = queueFilePath()
 
@@ -143,20 +186,18 @@ class CDVQueueStorage {
                 print("[QueueStorage][ERROR] invalid JSON array at \(path)")
                 return ([], currentTrackId(), attributes?[.modificationDate] as? Date)
             }
-            // Each element is { "data": { ...track... } }
-            let mapped: [[String: Any]] = jsonArray.compactMap { elem in
+            // Return items in their original format: [{ "data": { ...track... } }, ...]
+            // Extract preview info for logging
+            let idsPreview = jsonArray.prefix(4).compactMap { elem -> String? in
                 guard let d = elem["data"] as? [String: Any] else { return nil }
-                return mapQueueItem(d)
-            }
-            let idsPreview = mapped.prefix(4).map { item -> String in
-                let title = (item["title"] as? String) ?? "<untitled>"
-                let idAlbum = (item["idAlbumTrack"] as? String) ?? (item["id"] as? String) ?? ""
+                let title = (d["name"] as? String) ?? (d["title"] as? String) ?? "<untitled>"
+                let idAlbum = String(describing: d["idAlbumTrack"] ?? d["id"] ?? "")
                 return idAlbum.isEmpty ? title : "\(title) [\(idAlbum)]"
             }.joined(separator: " | ")
             let currentId = currentTrackId()
-            print("[QueueStorage][diag] loaded items=\(mapped.count) currentId=\(currentId ?? "<nil>") preview=\(idsPreview)")
+            print("[QueueStorage][diag] loaded items=\(jsonArray.count) currentId=\(currentId ?? "<nil>") preview=\(idsPreview)")
             let modified = attributes?[.modificationDate] as? Date
-            return (mapped, currentId, modified)
+            return (jsonArray, currentId, modified)
         } catch {
             print("[QueueStorage][ERROR] failed reading queue file: \(error.localizedDescription)")
             return ([], currentTrackId(), attributes?[.modificationDate] as? Date)
