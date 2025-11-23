@@ -76,9 +76,18 @@ class CDVMusicPlayer: NSObject {
                 print("[CDVMusicPlayer] Synced to track: \(trackName) (index \(idx))")
                 currentIndex = idx
                 loadCurrentTrack()
+                // Seek to 0 when mobile app changes tracks
+                player.seek(to: .zero)
                 updateNowPlayingInfo()
                 // Store the current track ID in the same format as mobile app
                 CDVQueueStorage.setCurrentTrackId(trackId)
+                // Notify JavaScript about the track change from mobile app
+                let currentTrack = queue[currentIndex]
+                NotificationCenter.default.post(
+                    name: Notification.Name("CDVMediaTrackChanged"),
+                    object: nil,
+                    userInfo: ["track": currentTrack]
+                )
             }
         } else {
             // Track not found in current queue - mobile app may have changed playlists
@@ -135,33 +144,80 @@ class CDVMusicPlayer: NSObject {
         MPNowPlayingInfoCenter.default().playbackState = .playing
         print("[CDVMusicPlayer][diag] play(): posted playbackState=.playing and CDVShowNowPlayingTemplate")
         NotificationCenter.default.post(name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
+        // Notify JavaScript about playing state
+        NotificationCenter.default.post(
+            name: Notification.Name("CDVPlaybackStateChanged"),
+            object: nil,
+            userInfo: ["action": "play"]
+        )
         persistQueueState()
     }
 
-    @objc func pause() { player.pause(); isPlaying = false; updateNowPlayingInfoIfNeeded(); MPNowPlayingInfoCenter.default().playbackState = .paused }
+    @objc func pause() {
+        player.pause()
+        isPlaying = false
+        updateNowPlayingInfoIfNeeded()
+        MPNowPlayingInfoCenter.default().playbackState = .paused
+        // Notify JavaScript about pause
+        NotificationCenter.default.post(
+            name: Notification.Name("CDVPlaybackStateChanged"),
+            object: nil,
+            userInfo: ["action": "pause"]
+        )
+    }
     @objc func togglePlayPause() { isPlaying ? pause() : play() }
 
     @objc func skipToNext() {
         guard !queue.isEmpty else { return }
         currentIndex = (currentIndex + 1) % queue.count
         loadCurrentTrack()
+        // Explicitly seek to 0 to ensure position is reset
+        player.seek(to: .zero)
         play()
         persistQueueState()
         // Update current_track in UserDefaults to sync with mobile app
         if let trackId = currentTrackIdForPersistence() {
             CDVQueueStorage.setCurrentTrackId(trackId)
         }
+        // Notify JavaScript about the track change (for onMediaUpdate callback)
+        let currentTrack = queue[currentIndex]
+        NotificationCenter.default.post(
+            name: Notification.Name("CDVMediaTrackChanged"),
+            object: nil,
+            userInfo: ["track": currentTrack]
+        )
+        // Also notify playback state change
+        NotificationCenter.default.post(
+            name: Notification.Name("CDVPlaybackStateChanged"),
+            object: nil,
+            userInfo: ["action": "skipToNext"]
+        )
     }
     @objc func skipToPrevious() {
         guard !queue.isEmpty else { return }
         currentIndex = (currentIndex - 1 + queue.count) % queue.count
         loadCurrentTrack()
+        // Explicitly seek to 0 to ensure position is reset
+        player.seek(to: .zero)
         play()
         persistQueueState()
         // Update current_track in UserDefaults to sync with mobile app
         if let trackId = currentTrackIdForPersistence() {
             CDVQueueStorage.setCurrentTrackId(trackId)
         }
+        // Notify JavaScript about the track change (for onMediaUpdate callback)
+        let currentTrack = queue[currentIndex]
+        NotificationCenter.default.post(
+            name: Notification.Name("CDVMediaTrackChanged"),
+            object: nil,
+            userInfo: ["track": currentTrack]
+        )
+        // Also notify playback state change
+        NotificationCenter.default.post(
+            name: Notification.Name("CDVPlaybackStateChanged"),
+            object: nil,
+            userInfo: ["action": "skipToPrevious"]
+        )
     }
 
     @objc func seekToPosition(_ position: Double) { player.seek(to: CMTimeMakeWithSeconds(position / 1000.0, preferredTimescale: Int32(NSEC_PER_SEC))) }
@@ -169,7 +225,7 @@ class CDVMusicPlayer: NSObject {
         let secs = CMTimeGetSeconds(player.currentTime())
         return secs.isFinite ? secs * 1000.0 : 0.0
     }
-    @objc func currentPlaybackState() -> String { isPlaying ? "playing" : (player.currentItem != nil ? "paused" : "stopped") }
+    @objc func currentPlaybackState() -> String { isPlaying ? "PLAYING" : (player.currentItem != nil ? "PAUSED" : "STOPPED") }
 
     // MARK: - Queue
     @objc func updateQueue(_ queue: [[String: Any]]) {

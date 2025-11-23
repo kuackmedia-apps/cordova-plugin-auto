@@ -325,8 +325,10 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc private func playbackStateChanged(_ note: Notification) {
         guard let cb = playbackStateCallbackId,
-              let state = note.userInfo?["state"] as? String else { return }
-        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: state)
+              let action = note.userInfo?["action"] as? String else { return }
+        // Send as object with "action" key to match Android format
+        let payload: [String: Any] = ["action": action]
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
         result?.setKeepCallbackAs(true)
         commandDelegate.send(result, callbackId: cb)
     }
