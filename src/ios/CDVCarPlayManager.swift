@@ -298,6 +298,30 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     return
                 }
 
+                // Special handling for tags - show playlists as browsable items
+                if mediaType.lowercased() == "tag", !id.isEmpty, let controller = self.interfaceController {
+                    print("[CarPlay] Tag selected, fetching playlists for tag id=\(id)")
+                    let api: MusicApi = MusicApiImpl()
+                    api.getTagPlaylists(tagId: id) { result in
+                        switch result {
+                        case .success(let playlists):
+                            print("[CarPlay] Tag playlists fetched: \(playlists.count)")
+                            let playlistItems = self.makeListItems(from: playlists, parentTitle: name)
+                            let section = CPListSection(items: playlistItems)
+                            let next = CPListTemplate(title: name, sections: [section])
+                            DispatchQueue.main.async {
+                                self.isNowPlayingShown = false
+                                controller.pushTemplate(next, animated: true)
+                                completion()
+                            }
+                        case .failure(let e):
+                            print("[CarPlay] Failed to fetch tag playlists: \(e)")
+                            completion()
+                        }
+                    }
+                    return
+                }
+
                 print("[CarPlay] makeListItems Try local queue file first")
                 // 1) Try local queue file first
                 var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
@@ -384,45 +408,18 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 resolveSignedUrls(from: artistTracks.list, parent: parentContext, completion: completion)
             }
         case "tag":
-            // Mirror Android: station/tag returns a sequence of tracks via getTagTracks(lastIdAlbumTrack)
-            // We'll fetch a small batch (e.g., 10) sequentially and resolve signed URLs.
-            let maxItems = 10
-            var results: [[String: Any]] = []
-            var lastIdAlbumTrack: String = "0"
-            func pullNext() {
-                if results.count >= maxItems { DispatchQueue.main.async { completion(results) }; return }
-                api.getTagTracks(tagId: itemId, lastIdAlbumTrack: lastIdAlbumTrack) { res in
-                    switch res {
-                    case .success(let t):
-                        // Update lastIdAlbumTrack to continue pagination
-                        if let last = t.idAlbumTrack { lastIdAlbumTrack = String(last) }
-                        // Resolve signed URL, then append dict
-                        let req = TrackRequest(
-                            idAlbumTrack: String(t.idAlbumTrack ?? 0),
-                            idTrack: t.id,
-                            forceDevice: false,
-                            useCloudFront: true,
-                            forcePreview: false,
-                            extraLife: true
-                        )
-                        api.getTrackUrl(trackRequest: req) { r in
-                            switch r {
-                            case .success(let signed):
-                                let entry = self.queueEntry(from: t, signedUrl: signed.signedUrl, parent: parentContext, index: results.count)
-                                results.append(entry)
-                                pullNext()
-                            case .failure(let e):
-                                print("[CarPlay][remote][tag] getTrackUrl failed: \(e)")
-                                pullNext()
-                            }
-                        }
-                    case .failure(let e):
-                        print("[CarPlay][remote][tag] getTagTracks failed: \(e)")
-                        DispatchQueue.main.async { completion(results) }
-                    }
+            // Match Android: fetch playlists with this tag and show them as browsable items
+            api.getTagPlaylists(tagId: itemId) { result in
+                switch result {
+                case .success(let playlists):
+                    print("[CarPlay][remote] tag id=\(itemId) playlists=\(playlists.count)")
+                    // Return empty array - tags should show playlists as browsable items, not play tracks
+                    DispatchQueue.main.async { completion([]) }
+                case .failure(let e):
+                    print("[CarPlay][remote][tag] getTagPlaylists failed: \(e)")
+                    DispatchQueue.main.async { completion([]) }
                 }
             }
-            pullNext()
         default:
             print("[CarPlay][remote] unknown mediaType=\(mediaType)")
             DispatchQueue.main.async { completion([]) }

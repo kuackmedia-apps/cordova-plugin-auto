@@ -6,6 +6,7 @@ protocol MusicApi {
     func getArtistTracks(artistId: String, completion: @escaping (Result<ArtistTracks, Error>) -> Void)
     func getTrackUrl(trackRequest: TrackRequest, completion: @escaping (Result<TrackResponse, Error>) -> Void)
     func getTagTracks(tagId: String, lastIdAlbumTrack: String, completion: @escaping (Result<Track, Error>) -> Void)
+    func getTagPlaylists(tagId: String, completion: @escaping (Result<[[String: Any]], Error>) -> Void)
     func search(text: String, limit: Int, completion: @escaping (Result<SearchResponse, Error>) -> Void)
 }
 
@@ -93,6 +94,42 @@ class MusicApiImpl: MusicApi {
         var request = URLRequest(url: finalURL)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         dataTask(request: request, completion: completion)
+    }
+
+    func getTagPlaylists(tagId: String, completion: @escaping (Result<[[String: Any]], Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("tags").appendingPathComponent(tagId).appendingPathComponent("playlists")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: "30"),
+            URLQueryItem(name: "offset", value: "0")
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid tag playlists URL"])))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            guard let data = data else {
+                completion(.failure(NSError(domain: "MusicApi", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data"])))
+                return
+            }
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let list = json["list"] as? [[String: Any]] {
+                    completion(.success(list))
+                } else {
+                    completion(.failure(NSError(domain: "MusicApi", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response format"])))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
     }
 
     func search(text: String, limit: Int = 30, completion: @escaping (Result<SearchResponse, Error>) -> Void) {
