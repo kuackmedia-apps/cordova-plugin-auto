@@ -121,26 +121,48 @@ object MediaItemTree {
       return emptyList()
     }
 
-    val jsonArray = jsonFile.readText(Charsets.UTF_8)
+    try {
+      val jsonArray = jsonFile.readText(Charsets.UTF_8)
 
-    val mediaItemAdapter = MediaItemJsonAdapter(
-      Moshi.Builder()
+      // Validate that file is not empty
+      if (jsonArray.isBlank()) {
+        Log.w(TAG, "File $fileName is empty")
+        return emptyList()
+      }
+
+      // Validate that content looks like JSON
+      val trimmed = jsonArray.trim()
+      if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+        Log.e(TAG, "File $fileName does not contain valid JSON format")
+        jsonFile.delete()
+        return emptyList()
+      }
+
+      val mediaItemAdapter = MediaItemJsonAdapter(
+        Moshi.Builder()
+          .add(KotlinJsonAdapterFactory())
+          .build()
+      )
+      val moshi = Moshi.Builder()
+        .add(MediaItem::class.java, mediaItemAdapter)
         .add(KotlinJsonAdapterFactory())
         .build()
-    )
-    val moshi = Moshi.Builder()
-      .add(MediaItem::class.java, mediaItemAdapter)
-      .add(KotlinJsonAdapterFactory())
-      .build()
 
-    when (fileName) {
+      when (fileName) {
       "RECENT_LISTENED" -> {
         val listType = Types.newParameterizedType(List::class.java, RecentListened::class.java)
         val adapter: JsonAdapter<List<RecentListened>> = moshi.adapter(listType)
         val items: List<RecentListened>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it.data !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it.data, "", context)!! }
+          ?.mapNotNull {
+            try {
+              MediaItemFactory.parseMediaItems(it.data, "", context)
+            } catch (e: Exception) {
+              Log.w(TAG, "Failed to parse recent listened item: ${e.message}")
+              null
+            }
+          }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -169,11 +191,17 @@ object MediaItemTree {
             titleMap[libraryMediaItem.description.title.toString()] = treeNodes[libraryMediaItem.mediaId]!!
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
 
-            it.items.forEach {
-              val categoryMediaItem = MediaItemFactory.parseMediaItems(it, "", context)!!
-              treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
-              titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
-              treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
+            it.items.forEach { item ->
+              try {
+                val categoryMediaItem = MediaItemFactory.parseMediaItems(item, "", context)
+                if (categoryMediaItem != null) {
+                  treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
+                  titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
+                  treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
+                }
+              } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse library category item: ${e.message}")
+              }
             }
           }
         }
@@ -186,7 +214,14 @@ object MediaItemTree {
 
       result = items
         ?.filter { it !is EmptyModel }
-        ?.map { MediaItemFactory.parseMediaItems(it, "", context)!! }
+        ?.mapNotNull {
+          try {
+            MediaItemFactory.parseMediaItems(it, "", context)
+          } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse offline item: ${e.message}")
+            null
+          }
+        }
 
       //set all result items listStyle LIST
       if (result != null && result.isNotEmpty()) {
@@ -205,7 +240,14 @@ object MediaItemTree {
         val items: List<MediaItem>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it !is EmptyModel }
-          ?.map { MediaItemFactory.parseMediaItems(it, "", context)!! }
+          ?.mapNotNull {
+            try {
+              MediaItemFactory.parseMediaItems(it, "", context)
+            } catch (e: Exception) {
+              Log.w(TAG, "Failed to parse explorer item: ${e.message}")
+              null
+            }
+          }
         if (result != null && result.isNotEmpty()) {
           result.forEach {
             treeNodes[it.mediaId!!] = MediaItemNode(it)
@@ -217,6 +259,24 @@ object MediaItemTree {
     }
 
     return result ?: emptyList()
+
+    } catch (e: com.squareup.moshi.JsonDataException) {
+      Log.e(TAG, "JSON data exception in file $fileName: ${e.message}", e)
+      jsonFile.delete() // Delete corrupted file
+      return emptyList()
+    } catch (e: com.squareup.moshi.JsonEncodingException) {
+      Log.e(TAG, "JSON encoding exception in file $fileName: ${e.message}", e)
+      jsonFile.delete() // Delete corrupted file
+      return emptyList()
+    } catch (e: java.io.EOFException) {
+      Log.e(TAG, "Incomplete JSON file $fileName (EOF): ${e.message}", e)
+      jsonFile.delete() // Delete corrupted file
+      return emptyList()
+    } catch (e: Exception) {
+      Log.e(TAG, "Unexpected error parsing file $fileName: ${e.message}", e)
+      // Don't delete file on unexpected errors, might be recoverable
+      return emptyList()
+    }
   }
 
 
