@@ -14,11 +14,11 @@ data class AlbumTracks(
   @Json(name = "subTitle") val subTitle: String?,
   val releaseType: String?,
   val lenght: String,
-  val tracksQty: Int,
-  val releaseDate: String,
-  val active: Boolean,
+  val tracksQty: Int?,
+  val releaseDate: String?,
+  val active: Boolean?,
   val images: List<CoverImage>,
-  val artists: List<Artist>,
+  val artists: List<Artist>?,
   val tracks: TracksContainer,
   val imageColorInfo: Any?
 ) : MediaItem()

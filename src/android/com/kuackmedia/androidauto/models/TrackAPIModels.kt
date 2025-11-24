@@ -19,7 +19,7 @@ data class TrackResponse(
   val idVideo: Double?,
   val isPreview: Boolean,
   val signedUrl: String,
-  val rights: List<Right>,
+  val rights: List<Right>?,
 )
 
 @JsonClass(generateAdapter = true)
