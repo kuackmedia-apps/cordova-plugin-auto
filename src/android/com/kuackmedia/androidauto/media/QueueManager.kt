@@ -30,11 +30,22 @@ object QueueManager {
       .mapIndexed { index, track ->
         MediaSessionCompat.QueueItem(track.description, index.toLong())
       }
+
+    // Reset currentQueueIndex when building new queue
+    currentQueueIndex = 0
+    Log.i(TAG, "[BUILD_QUEUE] Built queue with ${this.queue?.size ?: 0} items, reset currentQueueIndex to 0")
   }
 
   fun setQueue(mediaSession: MediaSessionCompat,) {
     CordovaEventBridge.sendEvent(CordovaEvents.ON_MEDIA_UPDATE, JSONObject())
     mediaSession.setQueue(queue)
+
+    // Validate currentQueueIndex after setting queue
+    val queueSize = queue?.size ?: 0
+    if (currentQueueIndex >= queueSize && queueSize > 0) {
+      Log.w(TAG, "[SET_QUEUE] currentQueueIndex ($currentQueueIndex) >= queue.size ($queueSize), resetting to 0")
+      currentQueueIndex = 0
+    }
   }
 
   fun getCurrentQueue(context: Context): List<MediaSessionCompat.QueueItem>? {
@@ -51,22 +62,64 @@ object QueueManager {
     val jsonFile = File(context.filesDir, "QUEUE_ITEMS_KEY")
 
     if (jsonFile.exists()) {
-      val jsonArray = jsonFile.readText(Charsets.UTF_8)
-      Log.i(TAG, "QUEUE FILE: $jsonArray")
-      val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
-      val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
-      val items: List<QueueItem>? = adapter.fromJson(jsonArray)
-      Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
-      this.queue = items
-        ?.map { it.data }
-        ?.filter { it !is EmptyModel }
-        ?.map { MediaItemFactory.parseMediaItems(it, "", context)!! }
-        ?.mapIndexed { index, track ->
-          MediaSessionCompat.QueueItem(track.description, index.toLong())
+      try {
+        val jsonArray = jsonFile.readText(Charsets.UTF_8)
+
+        // Validate that file is not empty
+        if (jsonArray.isBlank()) {
+          Log.w(TAG, "QUEUE file is empty")
+          return null
         }
 
-      Log.i(TAG, "QUEUE_ITEMS_KEY: ${this.queue}")
-      return  this.queue
+        // Validate that content looks like JSON
+        val trimmed = jsonArray.trim()
+        if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+          Log.e(TAG, "QUEUE file does not contain valid JSON format")
+          jsonFile.delete()
+          return null
+        }
+
+        Log.i(TAG, "QUEUE FILE: $jsonArray")
+        val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
+        val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
+        val items: List<QueueItem>? = adapter.fromJson(jsonArray)
+        Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
+
+        this.queue = items
+          ?.mapNotNull { it.data } // Use mapNotNull to filter out null data
+          ?.filter { it !is EmptyModel }
+          ?.mapNotNull { // Use mapNotNull to handle parsing errors gracefully
+            try {
+              MediaItemFactory.parseMediaItems(it, "", context)
+            } catch (e: Exception) {
+              Log.w(TAG, "Failed to parse queue item: ${e.message}")
+              null
+            }
+          }
+          ?.mapIndexed { index, track ->
+            MediaSessionCompat.QueueItem(track.description, index.toLong())
+          }
+
+        Log.i(TAG, "QUEUE_ITEMS_KEY: ${this.queue}")
+        return this.queue
+
+      } catch (e: com.squareup.moshi.JsonDataException) {
+        Log.e(TAG, "JSON data exception in QUEUE file: ${e.message}", e)
+        jsonFile.delete() // Delete corrupted file
+        return null
+      } catch (e: com.squareup.moshi.JsonEncodingException) {
+        Log.e(TAG, "JSON encoding exception in QUEUE file: ${e.message}", e)
+        jsonFile.delete() // Delete corrupted file
+        return null
+      } catch (e: java.io.EOFException) {
+        Log.e(TAG, "Incomplete JSON file in QUEUE (EOF): ${e.message}", e)
+        jsonFile.delete() // Delete corrupted file
+        return null
+      } catch (e: Exception) {
+        Log.e(TAG, "Unexpected error reading QUEUE file: ${e.message}", e)
+        // Don't delete file on unexpected errors, might be recoverable
+        return null
+      }
     } else {
       return null
     }
@@ -77,6 +130,12 @@ object QueueManager {
     if (queue == null || queue.isEmpty()) {
       Log.w(TAG, "[GET_NEXT] Queue is null or empty")
       return null
+    }
+
+    // Validate that currentQueueIndex is within bounds
+    if (currentQueueIndex >= queue.size) {
+      Log.w(TAG, "[GET_NEXT] currentQueueIndex ($currentQueueIndex) >= queue.size (${queue.size}), resetting to 0")
+      currentQueueIndex = 0
     }
 
     // If we're at the end of the queue, loop back to the beginning
@@ -98,6 +157,12 @@ object QueueManager {
       return null
     }
 
+    // Validate that currentQueueIndex is within bounds
+    if (currentQueueIndex >= queue.size) {
+      Log.w(TAG, "[GET_PREVIOUS] currentQueueIndex ($currentQueueIndex) >= queue.size (${queue.size}), resetting to last item")
+      currentQueueIndex = queue.size - 1
+    }
+
     // If we're at the beginning of the queue, loop back to the end
     if (currentQueueIndex - 1 < 0) {
       Log.i(TAG, "[GET_PREVIOUS] At start of queue (index $currentQueueIndex), looping to end")
@@ -111,8 +176,22 @@ object QueueManager {
   }
 
   fun getItem(mediaSession: MediaSessionCompat, id: Long): MediaSessionCompat.QueueItem? {
-    currentQueueIndex = id.toInt()
-    return mediaSession.controller.queue[id.toInt()]
+    val queue = mediaSession.controller.queue
+    if (queue == null || queue.isEmpty()) {
+      Log.w(TAG, "[GET_ITEM] Queue is null or empty")
+      return null
+    }
+
+    val requestedIndex = id.toInt()
+
+    // Validate that the requested index is within bounds
+    if (requestedIndex < 0 || requestedIndex >= queue.size) {
+      Log.e(TAG, "[GET_ITEM] Requested index $requestedIndex is out of bounds (queue size: ${queue.size})")
+      return null
+    }
+
+    currentQueueIndex = requestedIndex
+    return queue[currentQueueIndex]
   }
 
   /**
