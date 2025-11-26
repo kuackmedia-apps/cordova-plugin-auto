@@ -44,6 +44,7 @@ class CDVQueueStorage {
                 return trimmed
             }
         }
+        
         // Fall back to CarPlay's key for backward compatibility
         return UserDefaults.standard.string(forKey: "CURRENT_TRACK_KEY")
     }
@@ -57,6 +58,7 @@ class CDVQueueStorage {
         // Store as a quoted string to match mobile app format: "109882915"
         let quotedValue = "\"\(trackId)\""
         UserDefaults.standard.set(quotedValue, forKey: "current_track")
+        UserDefaults.standard.synchronize()
     }
 
     // Extract flattened data from a queue item for internal use (CarPlay UI, etc.)

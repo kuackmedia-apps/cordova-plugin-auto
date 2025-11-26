@@ -628,7 +628,15 @@ class CDVMusicPlayer: NSObject {
     private func persistQueueState() {
         let items = queueItemsForPersistence()
         do {
-            let data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+            var data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+            
+            // Fix escaped slashes to match mobile app format
+            // JSONSerialization escapes forward slashes as \/, but mobile app doesn't
+            if let jsonString = String(data: data, encoding: .utf8) {
+                let unescaped = jsonString.replacingOccurrences(of: "\\/", with: "/")
+                data = unescaped.data(using: .utf8) ?? data
+            }
+            
             let path = CDVQueueStorage.queueFilePath()
             let url = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
@@ -651,6 +659,10 @@ class CDVMusicPlayer: NSObject {
         if let currentId = currentTrackIdForPersistence() {
             UserDefaults.standard.setValue(currentId, forKey: "CURRENT_TRACK_KEY")
             UserDefaults.standard.synchronize()
+            
+            // Also call CDVQueueStorage.setCurrentTrackId to store in mobile app's format
+            CDVQueueStorage.setCurrentTrackId(currentId)
+            
             print("[CDVMusicPlayer][persist] current track stored id=\(currentId)")
         } else {
             print("[CDVMusicPlayer][persist][WARN] current track id unavailable while persisting queue")
