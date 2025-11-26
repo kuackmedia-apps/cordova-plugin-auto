@@ -42,7 +42,9 @@ object MediaItemTree {
     private val children = mutableListOf<MediaBrowserCompat.MediaItem>()
 
     fun addChild(childID: String) {
-      this.children.add(treeNodes[childID]!!.item)
+      treeNodes[childID]?.let { node ->
+        this.children.add(node.item)
+      } ?: Log.w(TAG, "Cannot add child: node with ID $childID not found")
     }
 
     fun getChildren(): List<MediaBrowserCompat.MediaItem> {
@@ -164,10 +166,13 @@ object MediaItemTree {
             }
           }
         if (result != null && result.isNotEmpty()) {
-          result.forEach {
-            treeNodes[it.mediaId!!] = MediaItemNode(it)
-            titleMap[it.description.title.toString()] = treeNodes[it.mediaId!!]!!
-            treeNodes["RECENT_LISTENED_MENU"]?.addChild(it.mediaId!!)
+          result.forEach { item ->
+            val mediaId = item.mediaId ?: return@forEach
+            treeNodes[mediaId] = MediaItemNode(item)
+            treeNodes[mediaId]?.let { node ->
+              titleMap[item.description.title.toString()] = node
+            }
+            treeNodes["RECENT_LISTENED_MENU"]?.addChild(mediaId)
           }
         }
       }
@@ -178,26 +183,32 @@ object MediaItemTree {
         val libraryItems: List<AutoNavigationExplorer>? = adapter.fromJson(jsonArray)
 
         if (libraryItems != null && libraryItems.isNotEmpty()) {
-          libraryItems.forEach {
+          libraryItems.forEach { libraryItem ->
             val libraryMediaItem = MediaItemFactory.createBrowsable(
-              mediaId = it.mediaId,
-              title = it.text,
-              iconStringPath = it.icon,
+              mediaId = libraryItem.mediaId,
+              title = libraryItem.text,
+              iconStringPath = libraryItem.icon,
               itemStyle = "LIST",
               context = context
             )
 
-            treeNodes[libraryMediaItem.mediaId!!] = MediaItemNode(libraryMediaItem)
-            titleMap[libraryMediaItem.description.title.toString()] = treeNodes[libraryMediaItem.mediaId]!!
-            treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaItem.mediaId!!)
+            val libraryMediaId = libraryMediaItem.mediaId ?: return@forEach
+            treeNodes[libraryMediaId] = MediaItemNode(libraryMediaItem)
+            treeNodes[libraryMediaId]?.let { node ->
+              titleMap[libraryMediaItem.description.title.toString()] = node
+            }
+            treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaId)
 
-            it.items.forEach { item ->
+            libraryItem.items.forEach { item ->
               try {
                 val categoryMediaItem = MediaItemFactory.parseMediaItems(item, "", context)
                 if (categoryMediaItem != null) {
-                  treeNodes[categoryMediaItem.mediaId!!] = MediaItemNode(categoryMediaItem)
-                  titleMap[categoryMediaItem.description.title.toString()] = treeNodes[categoryMediaItem.mediaId]!!
-                  treeNodes[libraryMediaItem.mediaId]?.addChild(categoryMediaItem.mediaId!!)
+                  val categoryMediaId = categoryMediaItem.mediaId ?: return@forEach
+                  treeNodes[categoryMediaId] = MediaItemNode(categoryMediaItem)
+                  treeNodes[categoryMediaId]?.let { node ->
+                    titleMap[categoryMediaItem.description.title.toString()] = node
+                  }
+                  treeNodes[libraryMediaId]?.addChild(categoryMediaId)
                 }
               } catch (e: Exception) {
                 Log.w(TAG, "Failed to parse library category item: ${e.message}")
@@ -225,11 +236,14 @@ object MediaItemTree {
 
       //set all result items listStyle LIST
       if (result != null && result.isNotEmpty()) {
-        result.forEach {
-          Log.i(TAG, "Adding offline item: ${it.description.title} - ${it.mediaId}")
-          offlineNodes[it.mediaId!!] = MediaItemNode(it)
-          offlineTitleMap[it.description.title.toString()] = treeNodes[it.mediaId!!]!!
-          treeNodes["AUTO_NAVIGATION_LIBRARY_OFFLINE"]?.addChild(it.mediaId!!)
+        result.forEach { item ->
+          val mediaId = item.mediaId ?: return@forEach
+          Log.i(TAG, "Adding offline item: ${item.description.title} - $mediaId")
+          offlineNodes[mediaId] = MediaItemNode(item)
+          offlineNodes[mediaId]?.let { node ->
+            offlineTitleMap[item.description.title.toString()] = node
+          }
+          treeNodes["AUTO_NAVIGATION_LIBRARY_OFFLINE"]?.addChild(mediaId)
         }
       }
     }
@@ -249,10 +263,13 @@ object MediaItemTree {
             }
           }
         if (result != null && result.isNotEmpty()) {
-          result.forEach {
-            treeNodes[it.mediaId!!] = MediaItemNode(it)
-            titleMap[it.description.title.toString()] = treeNodes[it.mediaId!!]!!
-            treeNodes["AUTO_NAVIGATION_EXPLORER_MENU"]?.addChild(it.mediaId!!)
+          result.forEach { item ->
+            val mediaId = item.mediaId ?: return@forEach
+            treeNodes[mediaId] = MediaItemNode(item)
+            treeNodes[mediaId]?.let { node ->
+              titleMap[item.description.title.toString()] = node
+            }
+            treeNodes["AUTO_NAVIGATION_EXPLORER_MENU"]?.addChild(mediaId)
           }
         }
       }
@@ -287,7 +304,7 @@ object MediaItemTree {
       MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
     )
     val iconStringPath = "img/auto-offline.png"
-    val iconFile = File(context.filesDir, iconStringPath!!)
+    val iconFile = File(context.filesDir, iconStringPath)
     val exists = iconFile.exists()
     Log.i(MusicLibraryService.Companion.TAG, "createBrowsable Icon $iconStringPath local: $exists")
     val bmp = BitmapFactory.decodeFile(iconFile.absolutePath)
@@ -326,22 +343,30 @@ object MediaItemTree {
       )
 
     navigationData.forEach {
-      val mediaId = it.fileName + "_MENU"
-      treeNodes[mediaId] =
-        MediaItemNode(
-          MediaItemFactory.createBrowsable(
-            title = it.text,
-            mediaId = mediaId,
-            iconStringPath = it.icon,
-            itemStyle = "GRID",
-            context = context
+      try {
+        val mediaId = it.fileName + "_MENU"
+        treeNodes[mediaId] =
+          MediaItemNode(
+            MediaItemFactory.createBrowsable(
+              title = it.text,
+              mediaId = mediaId,
+              iconStringPath = it.icon,
+              itemStyle = "GRID",
+              context = context
+            )
           )
-        )
-      treeNodes[ROOT_ID]!!.addChild(mediaId)
+        treeNodes[ROOT_ID]?.addChild(mediaId)
 
-      loadNavigationDataChildren(context, it.fileName)
+        loadNavigationDataChildren(context, it.fileName)
+      } catch (e: Exception) {
+        Log.e(TAG, "Error building navigation menu item: ${e.message}")
+      }
     }
-    loadNavigationDataChildren(context, "AUTO_NAVIGATION_LIBRARY_OFFLINE");
+    try {
+      loadNavigationDataChildren(context, "AUTO_NAVIGATION_LIBRARY_OFFLINE")
+    } catch (e: Exception) {
+      Log.e(TAG, "Error loading offline navigation: ${e.message}")
+    }
   }
 
   fun getItem(id: String): MediaBrowserCompat.MediaItem? {
@@ -349,7 +374,8 @@ object MediaItemTree {
   }
 
   fun getParentId(mediaId: String, parentId: String = ROOT_ID): String? {
-    for (child in treeNodes[parentId]!!.getChildren()) {
+    val parentNode = treeNodes[parentId] ?: return null
+    for (child in parentNode.getChildren()) {
       if (child.mediaId == mediaId) {
         return parentId
       } else if (child.isBrowsable == true) {
@@ -472,15 +498,18 @@ object MediaItemTree {
 
   fun parseSearchResult(matches: MutableList<MediaBrowserCompat.MediaItem>, mediaItem: MediaItem, context: Context) {
     val parsedItem = MediaItemFactory.parseMediaItems(mediaItem, "", context)
-    if(parsedItem !== null) {
-      treeNodes[parsedItem.mediaId!!] = MediaItemNode(parsedItem)
-      titleMap[parsedItem.description.title.toString()] = treeNodes[parsedItem.mediaId!!]!!
+    if(parsedItem != null) {
+      val mediaId = parsedItem.mediaId ?: return
+      treeNodes[mediaId] = MediaItemNode(parsedItem)
+      treeNodes[mediaId]?.let { node ->
+        titleMap[parsedItem.description.title.toString()] = node
+      }
       matches.add(parsedItem)
     }
   }
 
-  fun getRootItem(): MediaBrowserCompat.MediaItem {
-    return treeNodes[ROOT_ID]!!.item
+  fun getRootItem(): MediaBrowserCompat.MediaItem? {
+    return treeNodes[ROOT_ID]?.item
   }
 
   fun getChildren(id: String): List<MediaBrowserCompat.MediaItem> {
@@ -677,18 +706,18 @@ object MediaItemTree {
       }
 
       "tag" -> {
-        result =  this.musicApi.getTagTracks(itemId).list.map {
+        result = this.musicApi.getTagTracks(itemId).list.mapNotNull {
           val parentData = "{" +
               " \"id\": \"${itemId}\",\n" +
               "  \"type\": \"PLAYLIST\",\n" +
               "  \"name\": \"${parent.description.title}\"" +
               "}"
           val mediaItem = MediaItemFactory.parseMediaItems(it, parentData, context)
-          val mediaId = "item_" + it.itemType + "_" + it.id
-          treeNodes[mediaId] =
-            MediaItemNode(mediaItem!!)
-          treeNodes[ROOT_ID]!!.addChild(mediaId)
-
+          if (mediaItem != null) {
+            val mediaId = "item_" + it.itemType + "_" + it.id
+            treeNodes[mediaId] = MediaItemNode(mediaItem)
+            treeNodes[ROOT_ID]?.addChild(mediaId)
+          }
           mediaItem
         }
       }
