@@ -20,7 +20,7 @@ object ServiceFactory {
     val baseUrl = "https://api.prod.kuackmedia.com/api/"
 
     val loggingInterceptor = HttpLoggingInterceptor().apply {
-      level = HttpLoggingInterceptor.Level.BODY // Use BASIC, HEADERS or NONE as needed
+      level = HttpLoggingInterceptor.Level.NONE
     }
 
     val interceptor = TokenInterceptor(prefProvider = prefs, baseUrl = baseUrl)
