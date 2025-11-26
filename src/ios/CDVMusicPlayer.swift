@@ -61,7 +61,16 @@ class CDVMusicPlayer: NSObject {
     }
     
     private func syncCurrentIndexToTrackId(_ trackId: String) {
-        guard !queue.isEmpty else { return }
+        print("[CARPLAY-DEBUG][CDVMusicPlayer] syncCurrentIndexToTrackId called", [
+            "trackId": trackId,
+            "currentIndex": currentIndex,
+            "queueCount": queue.count
+        ])
+        
+        guard !queue.isEmpty else {
+            print("[CARPLAY-DEBUG][CDVMusicPlayer] syncCurrentIndexToTrackId: queue is empty, returning")
+            return
+        }
         
         // Search for the track in the queue by idAlbumTrack or id
         if let idx = queue.firstIndex(where: { item in
@@ -70,16 +79,28 @@ class CDVMusicPlayer: NSObject {
             let id = stringValue(data["id"])
             return idAlbumTrack == trackId || id == trackId
         }) {
+            print("[CARPLAY-DEBUG][CDVMusicPlayer] syncCurrentIndexToTrackId: found track at index", idx)
+            
             if idx != currentIndex {
                 let trackData = queue[idx]["data"] as? [String: Any]
                 let trackName = trackData?["name"] as? String ?? "Unknown"
+                let albumTitle = (trackData?["album"] as? [String: Any])?["title"] as? String ?? "Unknown"
+                
+                print("[CARPLAY-DEBUG][CDVMusicPlayer] syncCurrentIndexToTrackId: syncing to new track", [
+                    "oldIndex": currentIndex,
+                    "newIndex": idx,
+                    "trackName": trackName,
+                    "albumTitle": albumTitle
+                ])
                 print("[CDVMusicPlayer] Synced to track: \(trackName) (index \(idx))")
+                
                 currentIndex = idx
                 loadCurrentTrack()
                 // Seek to 0 when mobile app changes tracks
                 player.seek(to: .zero)
                 updateNowPlayingInfo()
                 // Store the current track ID in the same format as mobile app
+                print("[CARPLAY-DEBUG][CDVMusicPlayer] syncCurrentIndexToTrackId: calling CDVQueueStorage.setCurrentTrackId")
                 CDVQueueStorage.setCurrentTrackId(trackId)
                 // Notify JavaScript about the track change from mobile app
                 let currentTrack = queue[currentIndex]
@@ -88,6 +109,8 @@ class CDVMusicPlayer: NSObject {
                     object: nil,
                     userInfo: ["track": currentTrack]
                 )
+            } else {
+                print("[CARPLAY-DEBUG][CDVMusicPlayer] syncCurrentIndexToTrackId: already at correct index", idx)
             }
         } else {
             // Track not found in current queue - mobile app may have changed playlists
@@ -628,7 +651,15 @@ class CDVMusicPlayer: NSObject {
     private func persistQueueState() {
         let items = queueItemsForPersistence()
         do {
-            let data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+            var data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+            
+            // Fix escaped slashes to match mobile app format
+            // JSONSerialization escapes forward slashes as \/, but mobile app doesn't
+            if let jsonString = String(data: data, encoding: .utf8) {
+                let unescaped = jsonString.replacingOccurrences(of: "\\/", with: "/")
+                data = unescaped.data(using: .utf8) ?? data
+            }
+            
             let path = CDVQueueStorage.queueFilePath()
             let url = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
@@ -649,10 +680,40 @@ class CDVMusicPlayer: NSObject {
         }
 
         if let currentId = currentTrackIdForPersistence() {
+            print("[CARPLAY-DEBUG][CDVMusicPlayer] persistQueueState: persisting current track", [
+                "currentIndex": currentIndex,
+                "queueCount": queue.count,
+                "currentId": currentId,
+                "key": "CURRENT_TRACK_KEY"
+            ])
+            
+            // Also log the current track data for debugging
+            if currentIndex < queue.count {
+                let item = queue[currentIndex]
+                if let data = item["data"] as? [String: Any] {
+                    let trackName = data["name"] as? String ?? "unknown"
+                    let albumTitle = (data["album"] as? [String: Any])?["title"] as? String ?? "unknown"
+                    print("[CARPLAY-DEBUG][CDVMusicPlayer] persistQueueState: current track details", [
+                        "name": trackName,
+                        "album": albumTitle,
+                        "idAlbumTrack": stringValue(data["idAlbumTrack"]) ?? "nil",
+                        "id": stringValue(data["id"]) ?? "nil"
+                    ])
+                }
+            }
+            
             UserDefaults.standard.setValue(currentId, forKey: "CURRENT_TRACK_KEY")
             UserDefaults.standard.synchronize()
+            
+            // Also call CDVQueueStorage.setCurrentTrackId to store in mobile app's format
+            CDVQueueStorage.setCurrentTrackId(currentId)
+            
             print("[CDVMusicPlayer][persist] current track stored id=\(currentId)")
         } else {
+            print("[CARPLAY-DEBUG][CDVMusicPlayer] persistQueueState: WARNING - current track id unavailable", [
+                "currentIndex": currentIndex,
+                "queueCount": queue.count
+            ])
             print("[CDVMusicPlayer][persist][WARN] current track id unavailable while persisting queue")
         }
     }

@@ -73,11 +73,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let albumTitle = track.album?.title ?? parent.name
         
         // Build the track data object
+        // Convert id from String to Int if possible (mobile app expects number)
+        let trackId: Any = Int(track.id) ?? track.id
+        
         var trackData: [String: Any] = [
-            "id": track.id,
-            "idTrack": track.id,
+            "id": trackId,
             "name": track.name,
             "length": track.length,
+            "explicit": track.explicit,
+            "active": track.active,
+            "itemType": track.itemType,
+            "hasRelatedTracks": track.hasRelatedTracks,
             "source": signedUrl,
             "indice": index,
             "context": [
@@ -89,6 +95,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         
         if let idAlbumTrack = track.idAlbumTrack {
             trackData["idAlbumTrack"] = idAlbumTrack
+        }
+        if let isrc = track.isrc {
+            trackData["isrc"] = isrc
+        }
+        if let version = track.version {
+            trackData["version"] = version
+        }
+        if let score = track.score {
+            trackData["score"] = score
         }
         
         if let number = track.number { trackData["number"] = number }

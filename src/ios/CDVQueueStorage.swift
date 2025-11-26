@@ -21,16 +21,22 @@ class CDVQueueStorage {
     // Read current track ID from UserDefaults
     // The mobile app stores idAlbumTrack in 'current_track' as a quoted string (e.g., "109882915")
     @objc static func currentTrackId() -> String? {
+        print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: reading current_track from UserDefaults")
+        
         // Check mobile app's key first
         if let currentTrackJson = UserDefaults.standard.string(forKey: "current_track") {
+            print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: found current_track value:", currentTrackJson)
+            
             // Try to parse as JSON first (mobile app uses JSON.stringify)
             if let data = currentTrackJson.data(using: .utf8),
                let parsed = try? JSONSerialization.jsonObject(with: data) {
                 // Handle both number and string after JSON parsing
                 if let num = parsed as? NSNumber {
+                    print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: parsed as number:", num.stringValue)
                     return num.stringValue
                 }
                 if let str = parsed as? String {
+                    print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: parsed as string:", str)
                     return str
                 }
             }
@@ -41,22 +47,42 @@ class CDVQueueStorage {
                 trimmed = String(trimmed.dropFirst().dropLast())
             }
             if !trimmed.isEmpty && trimmed != "null" {
+                print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: returning trimmed value:", trimmed)
                 return trimmed
             }
+        } else {
+            print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: current_track not found, checking fallback CURRENT_TRACK_KEY")
         }
+        
         // Fall back to CarPlay's key for backward compatibility
-        return UserDefaults.standard.string(forKey: "CURRENT_TRACK_KEY")
+        let fallback = UserDefaults.standard.string(forKey: "CURRENT_TRACK_KEY")
+        print("[CARPLAY-DEBUG][QueueStorage] currentTrackId: returning fallback value:", fallback ?? "nil")
+        return fallback
     }
     
     // Store current track ID in UserDefaults using the same format as the mobile app
     @objc static func setCurrentTrackId(_ trackId: String?) {
         guard let trackId = trackId else {
+            print("[CARPLAY-DEBUG][QueueStorage] setCurrentTrackId: removing current_track (trackId was nil)")
             UserDefaults.standard.removeObject(forKey: "current_track")
             return
         }
         // Store as a quoted string to match mobile app format: "109882915"
         let quotedValue = "\"\(trackId)\""
+        print("[CARPLAY-DEBUG][QueueStorage] setCurrentTrackId: writing current_track", [
+            "trackId": trackId,
+            "quotedValue": quotedValue,
+            "key": "current_track"
+        ])
         UserDefaults.standard.set(quotedValue, forKey: "current_track")
+        UserDefaults.standard.synchronize()
+        
+        // Verify it was written
+        if let verified = UserDefaults.standard.string(forKey: "current_track") {
+            print("[CARPLAY-DEBUG][QueueStorage] setCurrentTrackId: verified write successful, stored value:", verified)
+        } else {
+            print("[CARPLAY-DEBUG][QueueStorage] setCurrentTrackId: WARNING - verification failed, value not found in UserDefaults")
+        }
     }
 
     // Extract flattened data from a queue item for internal use (CarPlay UI, etc.)
