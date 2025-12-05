@@ -90,7 +90,6 @@ object MediaItemTree {
   }
 
   private fun loadNavigationData(context: Context): List<NavigationData> {
-    var navigationData: List<NavigationData>?
     val jsonFile = File(context.filesDir, "AUTO_NAVIGATION")
     Log.i(TAG, "Ruta del archivo JSON: AUTO_NAVIGATION - " + jsonFile.absolutePath)
 
@@ -99,16 +98,48 @@ object MediaItemTree {
       return emptyList()
     }
 
-    val jsonArray = jsonFile.readText(Charsets.UTF_8)
-    val moshi = Moshi.Builder()
-      .add(KotlinJsonAdapterFactory())
-      .build()
-    val listType = Types.newParameterizedType(List::class.java, NavigationData::class.java)
-    val adapter: JsonAdapter<List<NavigationData>> = moshi.adapter(listType)
-    navigationData = adapter.fromJson(jsonArray)
-    val safeList: List<NavigationData> = navigationData ?: emptyList()
+    try {
+      val jsonArray = jsonFile.readText(Charsets.UTF_8)
 
-    return safeList
+      // Validate that file is not empty
+      if (jsonArray.isBlank()) {
+        Log.w(TAG, "File AUTO_NAVIGATION is empty")
+        return emptyList()
+      }
+
+      // Validate that content looks like JSON
+      val trimmed = jsonArray.trim()
+      if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+        Log.e(TAG, "File AUTO_NAVIGATION does not contain valid JSON format")
+        jsonFile.delete()
+        return emptyList()
+      }
+
+      val moshi = Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
+      val listType = Types.newParameterizedType(List::class.java, NavigationData::class.java)
+      val adapter: JsonAdapter<List<NavigationData>> = moshi.adapter(listType)
+      val navigationData = adapter.fromJson(jsonArray)
+
+      return navigationData ?: emptyList()
+
+    } catch (e: java.io.EOFException) {
+      Log.e(TAG, "Incomplete JSON file AUTO_NAVIGATION (EOF): ${e.message}", e)
+      jsonFile.delete() // Delete corrupted file
+      return emptyList()
+    } catch (e: com.squareup.moshi.JsonDataException) {
+      Log.e(TAG, "JSON data exception in AUTO_NAVIGATION: ${e.message}", e)
+      jsonFile.delete() // Delete corrupted file
+      return emptyList()
+    } catch (e: com.squareup.moshi.JsonEncodingException) {
+      Log.e(TAG, "JSON encoding exception in AUTO_NAVIGATION: ${e.message}", e)
+      jsonFile.delete() // Delete corrupted file
+      return emptyList()
+    } catch (e: Exception) {
+      Log.e(TAG, "Unexpected error parsing AUTO_NAVIGATION: ${e.message}", e)
+      return emptyList()
+    }
   }
 
   private fun loadNavigationDataChildren(context: Context, fileName: String):
@@ -157,6 +188,7 @@ object MediaItemTree {
         val items: List<RecentListened>? = adapter.fromJson(jsonArray)
         result = items
           ?.filter { it.data !is EmptyModel }
+          ?.filter { it.data.itemType != "track" }  // Exclude track items from navigation
           ?.mapNotNull {
             try {
               MediaItemFactory.parseMediaItems(it.data, "", context)

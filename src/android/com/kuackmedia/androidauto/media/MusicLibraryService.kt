@@ -47,6 +47,15 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         const val OFFLINE_ROOT = "[offline_root]"
         const val LIBRARY_ROOT = "AUTO_NAVIGATION_LIBRARY_MENU"
 
+        // Allowed packages that can connect to this MediaBrowserService
+        // Android Auto and Google Assistant packages
+        private val ALLOWED_PACKAGES = setOf(
+            "com.google.android.projection.gearhead",  // Android Auto
+            "com.google.android.gms",                   // Google Play Services (Assistant)
+            "com.google.android.googlequicksearchbox", // Google App (Assistant)
+            "com.google.android.carassistant"          // Android Auto standalone
+        )
+
         // Hold a reference to the active service instance
         private var instance: MusicLibraryService? = null
 
@@ -81,6 +90,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     private lateinit var playerAdapter: IPlayerAdapter
     private lateinit var networkCallback: ConnectivityManager.NetworkCallback
     private var networkAvailable: Boolean = false
+    private var isAndroidAutoConnected: Boolean = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         MediaButtonReceiver.handleIntent(mediaSession, intent)
@@ -93,10 +103,10 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         // Register this instance
         instance = this
 
-        CordovaEventBridge.sendEvent(
-            CordovaEvents.ON_CONNECTION_CHANGE,
-            JSONObject().put("connected", true)
-        )
+        // NOTE: We no longer send ON_CONNECTION_CHANGE here.
+        // The event is now sent in onGetRoot() only when a valid Android Auto client connects.
+        // This prevents the "car icon" from appearing when Bluetooth or other non-Auto clients
+        // trigger the service.
 
         TextsManager.init(applicationContext)
         Log.i(TAG, "TextsManager initialized")
@@ -147,7 +157,10 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         MediaControlBridge.mediaSession = mediaSession
         MediaControlBridge.mediaPlayer = playerAdapter
 
-        mediaSession.controller.transportControls.prepare()
+        // NOTE: We no longer call prepare() automatically here.
+        // This was causing the player to load a track when Bluetooth connected,
+        // even if it wasn't Android Auto. Now prepare() is only called when
+        // Android Auto actually connects and requests playback.
 
         networkAvailable = isNetworkAvailable(this)
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -189,6 +202,20 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         clientUid: Int,
         rootHints: Bundle?
     ): BrowserRoot? {
+        Log.i(TAG, "[ON_GET_ROOT] Connection request from package: $clientPackageName, uid: $clientUid")
+
+        // Check if the client is an allowed Android Auto package
+        val isAllowedClient = ALLOWED_PACKAGES.contains(clientPackageName)
+
+        if (!isAllowedClient) {
+            // Reject connections from non-Android Auto clients (e.g., com.android.bluetooth)
+            // This prevents the service from activating when Bluetooth connects
+            Log.w(TAG, "[ON_GET_ROOT] Rejecting connection from non-Android Auto client: $clientPackageName")
+            return null
+        }
+
+        Log.i(TAG, "[ON_GET_ROOT] Accepting connection from Android Auto client: $clientPackageName")
+
         val extras = Bundle()
         extras.putInt(
             MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
@@ -200,13 +227,36 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         )
         extras.putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
 
-        MediaControlBridge.setConnected(true)
+        // Only set connected and send event for valid Android Auto connections
+        if (!isAndroidAutoConnected) {
+            isAndroidAutoConnected = true
+            MediaControlBridge.setConnected(true)
+            CordovaEventBridge.sendEvent(
+                CordovaEvents.ON_CONNECTION_CHANGE,
+                JSONObject().put("connected", true)
+            )
+            Log.i(TAG, "[ON_GET_ROOT] Android Auto connected, event sent to app")
+
+            // Prepare the player and load the queue only when Android Auto really connects
+            // This was previously in onCreate() but caused issues with Bluetooth triggering it
+            Log.i(TAG, "[ON_GET_ROOT] Calling prepare() to load queue and current track")
+            mediaSession.controller.transportControls.prepare()
+        }
 
         return BrowserRoot(ROOT_ID, extras)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        MediaControlBridge.setConnected(false)
+        Log.i(TAG, "[ON_UNBIND] Client disconnected")
+        if (isAndroidAutoConnected) {
+            isAndroidAutoConnected = false
+            MediaControlBridge.setConnected(false)
+            CordovaEventBridge.sendEvent(
+                CordovaEvents.ON_CONNECTION_CHANGE,
+                JSONObject().put("connected", false)
+            )
+            Log.i(TAG, "[ON_UNBIND] Android Auto disconnected, event sent to app")
+        }
         return super.onUnbind(intent)
     }
 
@@ -241,15 +291,31 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         if (isNetworkAvailable(this)) {
             // fetch remote
             result.detach()
+
+            // Use atomic flag to prevent calling sendResult() twice
+            val resultSent = java.util.concurrent.atomic.AtomicBoolean(false)
+
             serviceScope.launch {
                 try {
                     val remoteChildren =
                         MediaItemTree.getRemoteChildren(parentId, applicationContext)
                     QueueManager.buildQueue(remoteChildren)
-                    result.sendResult(remoteChildren)
+
+                    // Only send result if not already sent
+                    if (resultSent.compareAndSet(false, true)) {
+                        result.sendResult(remoteChildren)
+                    } else {
+                        Log.w(TAG, "onLoadChildren: Result already sent for $parentId, skipping")
+                    }
                 } catch (e: Exception) {
                     Log.e("MusicService", "Error loading children", e)
-                    result.sendResult(mutableListOf())
+
+                    // Only send result if not already sent
+                    if (resultSent.compareAndSet(false, true)) {
+                        result.sendResult(mutableListOf())
+                    } else {
+                        Log.w(TAG, "onLoadChildren: Result already sent for $parentId (error case), skipping")
+                    }
                 }
             }
         } else {
@@ -302,10 +368,15 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         mediaSession.release()
         playerAdapter.release()
 
-        CordovaEventBridge.sendEvent(
-            CordovaEvents.ON_CONNECTION_CHANGE,
-            JSONObject().put("connected", false)
-        )
+        // Send disconnect event if Android Auto was connected (safety check)
+        if (isAndroidAutoConnected) {
+            isAndroidAutoConnected = false
+            CordovaEventBridge.sendEvent(
+                CordovaEvents.ON_CONNECTION_CHANGE,
+                JSONObject().put("connected", false)
+            )
+            Log.i(TAG, "[ON_DESTROY] Android Auto disconnect event sent")
+        }
 
         // Remove audio controls notification
         stopForeground(STOP_FOREGROUND_REMOVE)

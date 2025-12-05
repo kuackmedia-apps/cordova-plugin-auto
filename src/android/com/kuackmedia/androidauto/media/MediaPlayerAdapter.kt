@@ -111,7 +111,17 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun isPlaying(): Boolean {
-    return this.mediaPlayer.isPlaying
+    // Check if player is released before calling isPlaying()
+    // to avoid IllegalStateException
+    if (isReleased) {
+      return false
+    }
+    return try {
+      this.mediaPlayer.isPlaying
+    } catch (e: IllegalStateException) {
+      Log.w(TAG, "[IS_PLAYING] IllegalStateException caught, player in invalid state: ${e.message}")
+      false
+    }
   }
 
   override fun isPreparing(): Boolean {

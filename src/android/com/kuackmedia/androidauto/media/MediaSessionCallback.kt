@@ -558,8 +558,7 @@ class MediaSessionCallback(
         PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
         PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
         PlaybackStateCompat.ACTION_SEEK_TO or
-        PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM or
-        PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE
+        PlaybackStateCompat.ACTION_SKIP_TO_QUEUE_ITEM
       )
     val pb = PlaybackStateCompat.Builder()
       .setActions(actions)
@@ -768,13 +767,11 @@ class MediaSessionCallback(
   }
 
   private fun handlePlaybackCompletion() {
-    Log.i(TAG, "[MediaSessionCallbacks] Media playback completed.")
-
+    Log.i(TAG, "[PLAYBACK_COMPLETION] Media playback completed. Stopping and resetting player.")
     mediaPlayer.stop()
     mediaPlayer.reset()
     updateState(PlaybackStateCompat.STATE_STOPPED, 0)
     handler.removeCallbacks(updatePlaybackPositionRunnable)
-
     onSkipToNext()
   }
 
