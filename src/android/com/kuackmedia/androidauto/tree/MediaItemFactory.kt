@@ -255,7 +255,14 @@ object MediaItemFactory {
 
   // Replace existing getLocalPathFromItemTypeAndItemId with this (adds verification)
   private fun getLocalPathFromItemTypeAndItemId(itemType: String?, itemId: String?, context: Context): Uri? {
-    val basePath = File(context.filesDir, "img/")
+    // Use canonical path to avoid symlink issues (/data/data vs /data/user/0)
+    val basePathRaw = File(context.filesDir, "img/")
+    val basePath = try {
+      basePathRaw.canonicalFile
+    } catch (e: Exception) {
+      Log.w(TAG, "Could not get canonical path, using absolute: ${e.message}")
+      basePathRaw
+    }
     Log.i(TAG, "getLocalPathFromItemTypeAndItemId called - itemType: $itemType, itemId: $itemId, basePath: ${basePath.absolutePath}")
 
     if (itemType == null || itemId == null) {
@@ -272,34 +279,48 @@ object MediaItemFactory {
     }
 
     for (relative in checks) {
-      val file = File(basePath, relative)
-      Log.i(TAG, "Checking local candidate: ${file.absolutePath} (exists=${file.exists()})")
-      if (file.exists()) {
-        try {
-          val authority = "${context.packageName}.cdv.core.file.provider"
-          val uri = FileProvider.getUriForFile(context, authority, file)
-          Log.i(TAG, "Found file -> content Uri: $uri")
+      val fileRaw = File(basePath, relative)
+      // Use canonical file to resolve symlinks consistently with FileProvider
+      val fileCanonical = try {
+        fileRaw.canonicalFile
+      } catch (e: Exception) {
+        fileRaw
+      }
+      Log.i(TAG, "Checking local candidate: ${fileCanonical.absolutePath} (exists=${fileCanonical.exists()})")
+      if (fileCanonical.exists()) {
+        val authority = "${context.packageName}.cdv.core.file.provider"
 
-          // Quick runtime verification: can we open it via ContentResolver?
+        // Try with canonical file first, then fallback to raw file if it fails
+        // This handles edge cases with symlinks on different Android versions
+        val filesToTry = listOf(fileCanonical, fileRaw).distinct()
+
+        for (file in filesToTry) {
           try {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-              val firstByte = stream.read()
-              if (firstByte >= 0) {
-                Log.i(TAG, "ContentResolver can open Uri: $uri (firstByte=$firstByte)")
-              } else {
-                Log.w(TAG, "ContentResolver opened Uri but no data: $uri")
+            val uri = FileProvider.getUriForFile(context, authority, file)
+            Log.i(TAG, "Found file -> content Uri: $uri (using path: ${file.absolutePath})")
+
+            // Quick runtime verification: can we open it via ContentResolver?
+            try {
+              context.contentResolver.openInputStream(uri)?.use { stream ->
+                val firstByte = stream.read()
+                if (firstByte >= 0) {
+                  Log.i(TAG, "ContentResolver can open Uri: $uri (firstByte=$firstByte)")
+                } else {
+                  Log.w(TAG, "ContentResolver opened Uri but no data: $uri")
+                }
               }
+            } catch (ioEx: Exception) {
+              Log.w(TAG, "ContentResolver failed to open Uri $uri: ${ioEx.message}", ioEx)
             }
-          } catch (ioEx: Exception) {
-            Log.w(TAG, "ContentResolver failed to open Uri $uri: ${ioEx.message}", ioEx)
+
+            // Try to grant READ permission to likely car/auto packages (for debugging)
+            grantReadPermissionToCarApps(context, uri)
+
+            return uri
+          } catch (ex: Exception) {
+            Log.w(TAG, "FileProvider.getUriForFile failed for ${file.absolutePath}: ${ex.message}", ex)
+            // Continue to try the next file path variant
           }
-
-          // Try to grant READ permission to likely car/auto packages (for debugging)
-          grantReadPermissionToCarApps(context, uri)
-
-          return uri
-        } catch (ex: Exception) {
-          Log.w(TAG, "FileProvider.getUriForFile failed for ${file.absolutePath}: ${ex.message}", ex)
         }
       }
     }

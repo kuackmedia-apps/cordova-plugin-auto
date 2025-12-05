@@ -51,27 +51,48 @@ module.exports = function(context) {
         // Read the XML file
         let xmlContent = fs.readFileSync(targetPath, 'utf8');
 
-        // Check if the entry already exists
-        if (xmlContent.includes('name="img"') && xmlContent.includes('path="img/"')) {
-            console.log('File provider path for "img" already exists. Skipping modification.');
-            return;
+        // Define all entries we need to add
+        const entries = [
+            { name: 'files_root', path: '.', comment: 'Base files directory for all subdirectories' },
+            { name: 'img', path: 'img/' },
+            { name: 'img_cover', path: 'img/cover/' },
+            { name: 'img_playlist', path: 'img/playlist/' },
+            { name: 'img_tag', path: 'img/tag/' }
+        ];
+
+        let modified = false;
+
+        for (const entry of entries) {
+            // Check if entry already exists
+            if (xmlContent.includes(`name="${entry.name}"`) && xmlContent.includes(`path="${entry.path}"`)) {
+                console.log(`File provider path for "${entry.name}" already exists. Skipping.`);
+                continue;
+            }
+
+            // Build the new entry line
+            let newEntry = '';
+            if (entry.comment) {
+                newEntry += `    <!-- ${entry.comment} -->\n`;
+            }
+            newEntry += `    <files-path name="${entry.name}" path="${entry.path}"/>`;
+
+            if (xmlContent.includes('</paths>')) {
+                // Insert before </paths>
+                xmlContent = xmlContent.replace(
+                    '</paths>',
+                    newEntry + '\n</paths>'
+                );
+                console.log(`Added files-path for "${entry.name}" (path="${entry.path}")`);
+                modified = true;
+            }
         }
 
-        // Find the closing </paths> tag and insert the new entry before it
-        const newEntry = '    <files-path name="img" path="img/"/>';
-
-        if (xmlContent.includes('</paths>')) {
-            // Insert before </paths>
-            xmlContent = xmlContent.replace(
-                '</paths>',
-                newEntry + '\n</paths>'
-            );
-
+        if (modified) {
             // Write the modified content back
             fs.writeFileSync(targetPath, xmlContent, 'utf8');
-            console.log('Successfully added files-path for "img" to cdv_core_file_provider_paths.xml');
+            console.log('Successfully updated cdv_core_file_provider_paths.xml');
         } else {
-            console.log('Error: Could not find </paths> tag in the XML file.');
+            console.log('All required file provider paths already exist.');
         }
 
     } catch (error) {
