@@ -268,6 +268,18 @@ class CDVMusicPlayer: NSObject {
         updateNowPlayingInfo()
         if persist {
             persistQueueState()
+            // Update current_track in UserDefaults to sync with mobile app
+            if let trackId = currentTrackIdForPersistence() {
+                CDVQueueStorage.setCurrentTrackId(trackId)
+            }
+            // Notify JavaScript about the queue/track change (for onMediaUpdate callback)
+            let currentTrack = queue[currentIndex]
+            NotificationCenter.default.post(
+                name: Notification.Name("CDVMediaTrackChanged"),
+                object: nil,
+                userInfo: ["track": currentTrack]
+            )
+            print("[CDVMusicPlayer][diag] updateQueue(): posted CDVMediaTrackChanged notification")
         } else {
             if let currentId = currentTrackIdForPersistence() {
                 print("[CDVMusicPlayer][diag] updateQueue(): persist=FALSE keeping host storage untouched (currentId=\(currentId))")

@@ -356,7 +356,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                             // Extract ID from nested data structure
                             let firstData = remote.first?["data"] as? [String: Any]
                             let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: false)
+                            // persist: true to sync queue with mobile app
+                            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true)
                             self.musicPlayer.play()
                         }
                     }
@@ -366,7 +367,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     // Extract ID from nested data structure
                     let firstData = normalizedLocal.first?["data"] as? [String: Any]
                     let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                    self.musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: false)
+                    // persist: true to sync queue with mobile app
+                    self.musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: true)
                     self.musicPlayer.play()
                 }
                 completion()
