@@ -185,6 +185,16 @@ class CDVAutoMusicPlugin: CDVPlugin {
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 
+    @objc(playCurrentTrack:)
+    func playCurrentTrack(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] playCurrentTrack called")
+        // Reload queue from storage, sync current track, and start playback
+        carPlayManager?.musicPlayer?.reloadQueue()
+        carPlayManager?.musicPlayer?.play()
+        let result = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
     // MARK: - Hardcoded content
     @objc(getHardcodedPlaylists:)
     func getHardcodedPlaylists(command: CDVInvokedUrlCommand) {
