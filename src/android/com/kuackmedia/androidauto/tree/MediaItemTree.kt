@@ -354,6 +354,61 @@ object MediaItemTree {
     return offlineItem
   }
 
+  /**
+   * Returns a MediaItem that prompts the user to log in via the mobile app.
+   * Shown when navigation data is empty (user not logged in or data not initialized).
+   */
+  fun getLoginRequiredMediaItem(context: Context): MediaBrowserCompat.MediaItem {
+    val extras = Bundle()
+    extras.putInt(
+      MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+      MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+    )
+    val iconStringPath = "img/auto-library.png"
+    val iconFile = File(context.filesDir, iconStringPath)
+    val bmp = if (iconFile.exists()) BitmapFactory.decodeFile(iconFile.absolutePath) else null
+
+    // Get localized text with fallback (AUTO_TEXTS may not exist if user never logged in)
+    var loginMessage = TextsManager.getText("no_credential_message")
+    if (loginMessage.isEmpty()) {
+      // Fallback based on device language
+      val locale = java.util.Locale.getDefault().language
+      loginMessage = when (locale) {
+        "es" -> "Inicia sesión para ver tu música"
+        "pt" -> "Faça login para ver sua música"
+        "fr" -> "Connectez-vous pour voir votre musique"
+        "sw" -> "Ingia ili kuona muziki wako"
+        else -> "Log in to see your music"
+      }
+      Log.w(TAG, "[getLoginRequiredMediaItem] no_credential_message not found, using fallback for locale=$locale")
+    }
+    Log.i(TAG, "[getLoginRequiredMediaItem] loginMessage='$loginMessage'")
+
+    // Use FLAG_PLAYABLE so Android Auto doesn't try to browse into it
+    // This will show the item but clicking it won't navigate anywhere
+    val loginItem = MediaBrowserCompat.MediaItem(
+      MediaDescriptionCompat.Builder()
+        .setMediaId("[login_required]")
+        .setTitle(loginMessage)
+        .setExtras(extras)
+        .apply { if (bmp != null) setIconBitmap(bmp) }
+        .build(),
+      MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
+    )
+    return loginItem
+  }
+
+  /**
+   * Checks if user is logged in by verifying refresh token exists.
+   */
+  fun isUserLoggedIn(context: Context): Boolean {
+    val prefs = context.getSharedPreferences("NativeStorage", Context.MODE_PRIVATE)
+    val refreshToken = prefs.getString("REFRESH_TOKEN_KEY", null)?.replace("\"", "")
+    val isLoggedIn = !refreshToken.isNullOrEmpty()
+    Log.d(TAG, "[isUserLoggedIn] refreshToken=${if (refreshToken.isNullOrEmpty()) "null/empty" else "present"}, isLoggedIn=$isLoggedIn")
+    return isLoggedIn
+  }
+
   fun getOfflineItems(): List<MediaBrowserCompat.MediaItem> {
     val offlineItems = mutableListOf<MediaBrowserCompat.MediaItem>()
    // offlineItems.add(offlineItem)

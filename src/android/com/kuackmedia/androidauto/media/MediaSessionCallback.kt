@@ -595,10 +595,12 @@ class MediaSessionCallback(
         updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
+        showNotification(PlaybackStateCompat.STATE_PLAYING)
         Log.i(TAG, "[HANDLE_PREPARE_COMPLETE_AUTO] Auto-play started successfully")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS_AUTO] Could not gain audio focus for auto-play, setting to PAUSED")
         updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+        showNotification(PlaybackStateCompat.STATE_PAUSED)
       }
     } else if(mediaPlayer.currentTrackFromApp) {
       // Track from app but no auto-play - just prepare and leave in STOPPED state
@@ -620,10 +622,12 @@ class MediaSessionCallback(
         updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
+        showNotification(PlaybackStateCompat.STATE_PLAYING)
         Log.i(TAG, "[HANDLE_PREPARE_COMPLETE] Playback started successfully")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS] Could not gain audio focus, playback not started")
         updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+        showNotification(PlaybackStateCompat.STATE_PAUSED)
       }
     }
   }

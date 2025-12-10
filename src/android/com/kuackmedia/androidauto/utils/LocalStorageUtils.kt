@@ -57,13 +57,46 @@ object LocalStorageUtils {
     }
   }
 
+  /**
+   * Stores data in a file using atomic write operation.
+   * Uses temp file + rename pattern to prevent data corruption if the app
+   * crashes or is killed during write operation.
+   */
   fun storeInFile(context: Context, key: String, data: String?) {
-    Log.i(TAG, "Storing data in file: $key - $data")
+    Log.i(TAG, "Storing data in file: $key")
 
-    if(null !== data) {
-      context.openFileOutput(key, MODE_PRIVATE).use { output ->
-        output.write(data.toByteArray())
+    if (data == null) {
+      Log.w(TAG, "storeInFile: data is null, skipping write for key: $key")
+      return
+    }
+
+    val tempKey = "$key.tmp"
+    val finalFile = File(context.filesDir, key)
+    val tempFile = File(context.filesDir, tempKey)
+
+    try {
+      // Step 1: Write to temporary file
+      tempFile.writeText(data, Charsets.UTF_8)
+      Log.d(TAG, "storeInFile: wrote ${data.length} bytes to temp file: $tempKey")
+
+      // Step 2: Atomic rename from temp to final
+      val renamed = tempFile.renameTo(finalFile)
+      if (renamed) {
+        Log.i(TAG, "storeInFile: atomic rename successful for key: $key")
+      } else {
+        // Fallback: if rename fails (e.g., cross-filesystem), copy and delete
+        Log.w(TAG, "storeInFile: rename failed, using copy fallback for key: $key")
+        tempFile.copyTo(finalFile, overwrite = true)
+        tempFile.delete()
+        Log.i(TAG, "storeInFile: copy fallback successful for key: $key")
       }
+    } catch (e: Exception) {
+      Log.e(TAG, "storeInFile: failed to write file: $key - ${e.message}", e)
+      // Clean up temp file on failure
+      if (tempFile.exists()) {
+        tempFile.delete()
+      }
+      throw e
     }
   }
 

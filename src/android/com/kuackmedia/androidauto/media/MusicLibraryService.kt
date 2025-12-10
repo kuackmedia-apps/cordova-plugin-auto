@@ -265,14 +265,35 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         result: Result<List<MediaBrowserCompat.MediaItem?>?>
     ) {
 
-        Log.i(TAG, "onLoadChildren $parentId")
-        if (parentId == OFFLINE_ROOT) {
+        Log.i(TAG, "[onLoadChildren] parentId='$parentId', ROOT_ID='$ROOT_ID', equals=${parentId == ROOT_ID}")
 
+        if (parentId == OFFLINE_ROOT) {
             //OFFLINE ITEMS
             result.sendResult(MediaItemTree.getOfflineItems())
             return
         }
+
+        // Handle login required placeholder - don't navigate into it
+        if (parentId == "[login_required]") {
+            result.sendResult(mutableListOf())
+            return
+        }
+
+        // Check if this is the ROOT and user is not logged in - BEFORE getting children
+        val isLoggedIn = MediaItemTree.isUserLoggedIn(applicationContext)
+        Log.i(TAG, "[onLoadChildren] isLoggedIn=$isLoggedIn")
+
+        if (parentId == ROOT_ID && !isLoggedIn) {
+            Log.w(TAG, "[onLoadChildren] User not logged in - showing login required message")
+            val loginItem = MediaItemTree.getLoginRequiredMediaItem(applicationContext)
+            Log.i(TAG, "[onLoadChildren] Created loginItem: ${loginItem.description.title}")
+            result.sendResult(mutableListOf(loginItem))
+            return
+        }
+
         val localChildren = MediaItemTree.getChildren(parentId)
+        Log.i(TAG, "[onLoadChildren] localChildren.size=${localChildren.size}")
+
         if  (!isNetworkAvailable(this)) {
             // This is an online-only section and we are offline. Show link to library.
             val offlineMediaItem = MediaItemTree.getOfflineMediaItem(applicationContext)

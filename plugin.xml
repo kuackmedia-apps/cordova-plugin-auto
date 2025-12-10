@@ -195,6 +195,8 @@
     <source-file src="src/ios/CDVMusicPlayer.swift" />
     <source-file src="src/ios/CDVQueueStorage.swift" />
     <source-file src="src/ios/CDVPlaylistProvider.swift" />
+    <source-file src="src/ios/CDVLocalStorageUtils.swift" />
+    <source-file src="src/ios/CDVNetworkUtils.swift" />
     <source-file src="src/ios/SceneDelegate.swift" />
 
 
