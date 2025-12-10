@@ -21,6 +21,79 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         self.plugin = plugin
         super.init()
         self.musicPlayer = CDVMusicPlayer(manager: self)
+
+        // Observe scene connection notifications to detect CarPlay availability
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSceneActivation(_:)),
+            name: UIScene.didActivateNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSceneDisconnection(_:)),
+            name: UIScene.didDisconnectNotification,
+            object: nil
+        )
+
+        // Start network monitoring and refresh templates when connectivity changes
+        CDVNetworkUtils.shared.startMonitoring()
+        CDVNetworkUtils.shared.onNetworkStatusChanged = { [weak self] isAvailable in
+            print("[CarPlay] Network status changed: \(isAvailable ? "ONLINE" : "OFFLINE")")
+            guard let self = self, self.connected, let controller = self.interfaceController else { return }
+            // Refresh templates when network state changes
+            DispatchQueue.main.async {
+                self.setupTemplates(controller)
+            }
+        }
+
+        // Check if CarPlay is already connected when plugin initializes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.checkCarPlayConnection()
+        }
+    }
+
+    @objc private func handleSceneActivation(_ notification: Notification) {
+        if notification.object is CPTemplateApplicationScene {
+            print("[CarPlay] Scene activated: CarPlay scene detected")
+            if !connected {
+                connected = true
+                NotificationCenter.default.post(
+                    name: Notification.Name("CDVCarPlayConnectionChanged"),
+                    object: nil,
+                    userInfo: ["connected": true]
+                )
+            }
+        }
+    }
+
+    @objc private func handleSceneDisconnection(_ notification: Notification) {
+        if notification.object is CPTemplateApplicationScene {
+            print("[CarPlay] Scene disconnected: CarPlay scene removed")
+            if connected {
+                connected = false
+                NotificationCenter.default.post(
+                    name: Notification.Name("CDVCarPlayConnectionChanged"),
+                    object: nil,
+                    userInfo: ["connected": false]
+                )
+            }
+        }
+    }
+
+    private func checkCarPlayConnection() {
+        let carPlayConnected = UIApplication.shared.connectedScenes.contains { scene in
+            scene is CPTemplateApplicationScene
+        }
+        print("[CarPlay] checkCarPlayConnection: carPlayConnected=\(carPlayConnected), current connected=\(connected)")
+        if carPlayConnected && !connected {
+            connected = true
+            NotificationCenter.default.post(
+                name: Notification.Name("CDVCarPlayConnectionChanged"),
+                object: nil,
+                userInfo: ["connected": true]
+            )
+        }
     }
 
     private struct QueueParentContext {
@@ -204,12 +277,38 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
 
     // MARK: - Helpers
-    private func setListItemImage(_ li: CPListItem, from urlString: String?) {
+    private func setListItemImage(_ li: CPListItem, from urlString: String?, itemType: String? = nil, itemId: String? = nil, itemDict: [String: Any]? = nil) {
+        // PRIORITY 1: Check for local image first (offline support)
+        // For tracks, we need to use the album ID, not the track ID
+        if let type = itemType, !type.isEmpty {
+            var lookupType = type.lowercased()
+            var lookupId = itemId ?? ""
+
+            // For tracks, extract albumId from the item dictionary
+            if lookupType == "track", let dict = itemDict {
+                if let albumDict = dict["album"] as? [String: Any],
+                   let albumId = albumDict["id"] {
+                    lookupId = String(describing: albumId)
+                    lookupType = "album" // Use album type for cover lookup
+                    print("[CarPlay][IMG] Track -> using album cover: albumId=\(lookupId)")
+                }
+            }
+
+            if !lookupId.isEmpty {
+                if let localImage = CDVLocalStorageUtils.getLocalImage(itemType: lookupType, itemId: lookupId) {
+                    print("[CarPlay][IMG] Using LOCAL image for \(lookupType)/\(lookupId) size=\(Int(localImage.size.width))x\(Int(localImage.size.height))")
+                    li.setImage(localImage)
+                    return
+                }
+            }
+        }
+
         guard let s = urlString, !s.isEmpty else {
             print("[CarPlay][IMG] no image URL present for list item")
             return
         }
-        // First, try remote URL
+
+        // PRIORITY 2: Try memory cache
         if let url = URL(string: s), url.scheme != nil {
             let nsurl = url as NSURL
             if let cached = listImageCache.object(forKey: nsurl) {
@@ -217,6 +316,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 li.setImage(cached)
                 return
             }
+
+            // PRIORITY 3: Download from remote URL
             print("[CarPlay][IMG] cache miss, downloading list item image: \(s)")
             URLSession.shared.dataTask(with: url) { [weak self] data, resp, err in
                 if let err = err { print("[CarPlay][IMG][ERROR] download failed for: \(s) error=\(err.localizedDescription)"); return }
@@ -282,7 +383,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let imageUrl = extractImageURL(from: d)
             if let imageUrl, !imageUrl.isEmpty { print("[CarPlay][IMG] list item has image URL: \(imageUrl)") }
             else { print("[CarPlay][IMG] list item without image URL. keys=\(Array(d.keys)) name=\(name)") }
-            setListItemImage(li, from: imageUrl)
+            setListItemImage(li, from: imageUrl, itemType: mediaType, itemId: id, itemDict: d)
             li.handler = { [weak self] _, completion in
                 guard let self else { completion(); return }
                 print("[CarPlay] select item name=\(name) id=\(id) mediaType=\(mediaType ?? "-") fileName=\(childFileName ?? "<nil>") in parent=\(parentTitle)")
@@ -444,7 +545,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
 
-    @objc func isConnected() -> Bool { connected }
+    @objc func isConnected() -> Bool {
+        // Check both our internal state and the actual scene connection
+        let sceneConnected = UIApplication.shared.connectedScenes.contains { scene in
+            scene is CPTemplateApplicationScene
+        }
+        // Update internal state if out of sync
+        if sceneConnected != connected {
+            connected = sceneConnected
+        }
+        return connected
+    }
     
     // Called when the queue has been reloaded and CarPlay UI needs to refresh
     @objc func refreshQueueUI() {
@@ -461,6 +572,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         print("[CarPlay] didConnect: interfaceController received")
         connected = true
         self.interfaceController = interfaceController
+        // Activate the music player for CarPlay (registers remote command handlers)
+        self.musicPlayer.activateForCarPlay()
         // Present a lightweight placeholder to avoid gray screen while we build templates
         presentLoadingPlaceholder(interfaceController)
         // Reload any queue stored by the host app before building templates so Now Playing can bind
@@ -473,6 +586,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnect interfaceController: CPInterfaceController) {
         print("[CarPlay] didDisconnect")
         connected = false
+        // Deactivate the music player for CarPlay (removes remote command handlers)
+        self.musicPlayer.deactivateForCarPlay()
         NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": false])
         self.interfaceController = nil
     }
@@ -496,6 +611,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
     private func setupTemplates(_ controller: CPInterfaceController) {
       print("[CarPlay] setupTemplates: begin")
+
+      // Check network availability - if offline, show offline library
+      let isOnline = CDVNetworkUtils.shared.isNetworkAvailable
+      print("[CarPlay] setupTemplates: network available = \(isOnline)")
+
+      if !isOnline {
+          print("[CarPlay] setupTemplates: OFFLINE MODE - showing offline library")
+          setupOfflineTemplates(controller)
+          return
+      }
+
       let autoNavigation = CDVPlaylistProvider.loadNavigationFromJSON()
       // Pretty-print full AUTO_NAVIGATION for diagnostics
       if let data = try? JSONSerialization.data(withJSONObject: autoNavigation, options: [.prettyPrinted]),
@@ -540,11 +666,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     for (sidx, subSection) in children.enumerated() {
                         let subTitle = (subSection["text"] as? String) ?? "Section \(sidx+1)"
                         let subItems = subSection["items"] as? [[String: Any]] ?? []
+                        let subId = String(describing: subSection["id"] ?? "")
+                        let subType = (subSection["itemType"] as? String) ?? (subSection["type"] as? String)
                         let li = CPListItem(text: subTitle, detailText: "\(subItems.count) items")
                         // Subsections may include a representative image key
                         let subImage = extractImageURL(from: subSection)
                         if let subImage, !subImage.isEmpty { print("[CarPlay][IMG] subsection image URL: \(subImage)") }
-                        setListItemImage(li, from: subImage)
+                        setListItemImage(li, from: subImage, itemType: subType, itemId: subId, itemDict: subSection)
                         li.handler = { [weak self] _, completion in
                             guard let self, let controller = self.interfaceController else { completion(); return }
                             print("[CarPlay] [NAV][LIB] open subsection title=\(subTitle) items=\(subItems.count)")
@@ -638,13 +766,14 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         let name = (itemDict["name"] as? String) ?? (itemDict["title"] as? String) ?? "Item"
                         let subtitle = itemDict["description"] as? String
                         let pid = String(describing: itemDict["id"] ?? "")
+                        let itemType = (itemDict["itemType"] as? String) ?? (itemDict["type"] as? String)
                         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             print("[CarPlay] [LIB][WARN] item with empty name. keys=\(Array(itemDict.keys))")
                         }
                         let listItem = CPListItem(text: name, detailText: subtitle)
                         let itemImage = (itemDict["artwork"] as? String) ?? (itemDict["image"] as? String) ?? (itemDict["icon"] as? String)
                         if let itemImage, !itemImage.isEmpty { print("[CarPlay][IMG] library item image URL: \(itemImage)") }
-                        setListItemImage(listItem, from: itemImage)
+                        setListItemImage(listItem, from: itemImage, itemType: itemType, itemId: pid, itemDict: itemDict)
                         listItem.handler = { [weak self] _, completion in
                             guard let self else { completion(); return }
                             print("[CarPlay] [LIB] list item selected in section=\(title) id=\(pid) name=\(name)")
@@ -730,6 +859,110 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
         NotificationCenter.default.addObserver(self, selector: #selector(showNowPlayingTemplate), name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
         print("[CarPlay] setupTemplates: end")
+    }
+
+    // MARK: - Offline Mode Templates
+    /// Setup templates for offline mode - shows downloaded albums and playlists
+    private func setupOfflineTemplates(_ controller: CPInterfaceController) {
+        print("[CarPlay] setupOfflineTemplates: begin")
+
+        let offlineItems = CDVPlaylistProvider.loadOfflineLibrary()
+        print("[CarPlay] setupOfflineTemplates: loaded \(offlineItems.count) offline items")
+
+        var listItems: [CPListItem] = []
+
+        if offlineItems.isEmpty {
+            // No offline content available - show a message
+            let emptyItem = CPListItem(text: "No hay contenido offline", detailText: "Descarga música para escuchar sin conexión")
+            if #available(iOS 15.0, *) {
+                emptyItem.isEnabled = false
+            }
+            listItems.append(emptyItem)
+        } else {
+            // Build list items for each offline album/playlist
+            for item in offlineItems {
+                let title = CDVPlaylistProvider.getOfflineItemTitle(item)
+                let subtitle = CDVPlaylistProvider.getOfflineItemSubtitle(item)
+                let itemId = CDVPlaylistProvider.getOfflineItemId(item)
+                let itemType = CDVPlaylistProvider.getOfflineItemType(item)
+                let imageUrl = CDVPlaylistProvider.getOfflineItemImageUrl(item)
+
+                print("[CarPlay] setupOfflineTemplates: adding item type=\(itemType) id=\(itemId) title=\(title)")
+
+                let listItem = CPListItem(text: title, detailText: subtitle)
+
+                // Set image - try local first, then remote
+                setListItemImage(listItem, from: imageUrl, itemType: itemType, itemId: itemId, itemDict: item)
+
+                // Handler to load and play tracks from this album/playlist
+                listItem.handler = { [weak self] _, completion in
+                    guard let self = self else { completion(); return }
+                    print("[CarPlay] Offline item selected: type=\(itemType) id=\(itemId) title=\(title)")
+
+                    // Load tracks for this item from local storage
+                    self.loadOfflineTracksAndPlay(itemType: itemType, itemId: itemId, itemDict: item)
+                    completion()
+                }
+
+                listItems.append(listItem)
+            }
+        }
+
+        // Create the offline library section
+        let section = CPListSection(items: listItems, header: "Biblioteca Offline", sectionIndexTitle: nil)
+        let offlineList = CPListTemplate(title: "Sin conexión", sections: [section])
+        offlineList.tabTitle = "Offline"
+
+        // Try to set an offline icon
+        if #available(iOS 13.0, *) {
+            offlineList.tabImage = UIImage(systemName: "arrow.down.circle.fill")
+        }
+
+        // Configure Now Playing template
+        let now = CPNowPlayingTemplate.shared
+        musicPlayer.setNowPlayingTemplate(now)
+
+        // Set as root template (single tab for offline mode)
+        let tabBar = CPTabBarTemplate(templates: [offlineList])
+        tabBar.delegate = self
+
+        print("[CarPlay] setupOfflineTemplates: presenting TabBar with offline library")
+        DispatchQueue.main.async {
+            controller.setRootTemplate(tabBar, animated: true, completion: { success, error in
+                if let error = error { print("[CarPlay] setRootTemplate(Offline) error: \(error)") }
+                else { print("[CarPlay] setRootTemplate(Offline) success: \(success)") }
+            })
+            self.isNowPlayingShown = false
+        }
+
+        NotificationCenter.default.addObserver(self, selector: #selector(showNowPlayingTemplate), name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
+        print("[CarPlay] setupOfflineTemplates: end")
+    }
+
+    /// Load tracks for an offline album or playlist and start playback
+    private func loadOfflineTracksAndPlay(itemType: String, itemId: String, itemDict: [String: Any]) {
+        print("[CarPlay] loadOfflineTracksAndPlay: type=\(itemType) id=\(itemId)")
+
+        // Load tracks from OFFLINE_TRACKS file filtered by album/playlist ID
+        // This mirrors the Android implementation in MediaItemTree.loadOfflineTracksByMediaTypeMediaId
+        var tracks = CDVPlaylistProvider.loadOfflineTracks(itemType: itemType, itemId: itemId)
+        print("[CarPlay] loadOfflineTracksAndPlay: loaded \(tracks.count) tracks from OFFLINE_TRACKS")
+
+        guard !tracks.isEmpty else {
+            print("[CarPlay] loadOfflineTracksAndPlay: no tracks found for \(itemType) \(itemId)")
+            return
+        }
+
+        // Normalize and play
+        let normalized = normalizeQueueItems(tracks)
+        print("[CarPlay] loadOfflineTracksAndPlay: normalized \(normalized.count) tracks")
+
+        if !normalized.isEmpty {
+            self.isNowPlayingShown = false
+            let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
+            self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId)
+            self.musicPlayer.play()
+        }
     }
 
     @objc private func showNowPlayingTemplate() {

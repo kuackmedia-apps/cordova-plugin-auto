@@ -34,8 +34,10 @@ class CDVMusicPlayer: NSObject {
         self.manager = manager
         super.init()
         setupAudioSession()
-        setupRemoteCommandCenter()
-        startDebugMonitoring()
+        // NOTE: Do NOT call setupRemoteCommandCenter() or startDebugMonitoring() here!
+        // These should only be called when CarPlay is connected to avoid conflicts
+        // with cordova-plugin-music-controls2 which also registers MPRemoteCommandCenter handlers.
+        // Call activateForCarPlay() when CarPlay connects and deactivateForCarPlay() when it disconnects.
     }
     
     deinit {
@@ -418,8 +420,25 @@ class CDVMusicPlayer: NSObject {
         let fallbackSource = (track["filePath"] as? String) ?? (track["path"] as? String) ?? ""
         let effectiveSource = !explicitSource.isEmpty ? explicitSource : fallbackSource
         let trimmedSource = effectiveSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        print("[CDVMusicPlayer][diag] loadCurrentTrack(): idx=\(currentIndex) hasSource=\(!trimmedSource.isEmpty) title=\(title) artist=\(artist) album=\(album)")
 
+        // Extract track ID for local file lookup
+        let idTrack = (track["id"] as? String) ?? String(describing: track["idTrack"] ?? "")
+        let idAlbumTrack = (track["idAlbumTrack"] as? String) ?? String(describing: track["idAlbumTrack"] ?? "")
+
+        print("[CDVMusicPlayer][diag] loadCurrentTrack(): idx=\(currentIndex) hasSource=\(!trimmedSource.isEmpty) title=\(title) artist=\(artist) album=\(album) idTrack=\(idTrack)")
+
+        // PRIORITY 1: Check if track exists locally (offline mode)
+        if !idTrack.isEmpty, let localPath = CDVLocalStorageUtils.getLocalTrackPath(idTrack) {
+            let localUrl = URL(fileURLWithPath: localPath)
+            print("[CDVMusicPlayer] Using LOCAL track: \(localPath)")
+            let item = AVPlayerItem(url: localUrl)
+            attachItemObservers(item)
+            player.replaceCurrentItem(with: item)
+            if isPlaying { startPeriodicUpdates() }
+            return
+        }
+
+        // PRIORITY 2: Use explicit source URL if provided
         if !trimmedSource.isEmpty {
             let candidateURL: URL? = {
                 if let remote = URL(string: trimmedSource), remote.scheme != nil {
@@ -439,12 +458,9 @@ class CDVMusicPlayer: NSObject {
             }
         }
 
-        // Fallback: resolve signed URL like Android when we only have IDs
-        let idTrack = (track["id"] as? String) ?? String(describing: track["idTrack"] ?? "")
-        let idAlbumTrack = (track["idAlbumTrack"] as? String)
-            ?? String(describing: track["idAlbumTrack"] ?? "")
+        // PRIORITY 3: Fallback - resolve signed URL from API when we only have IDs
         if !idTrack.isEmpty {
-            print("[CDVMusicPlayer] No source URL in queue item. Resolving signed URL for idTrack=\(idTrack) idAlbumTrack=\(idAlbumTrack)")
+            print("[CDVMusicPlayer] No local or source URL. Resolving signed URL for idTrack=\(idTrack) idAlbumTrack=\(idAlbumTrack)")
             let api: MusicApi = MusicApiImpl()
             let req = TrackRequest(
                 idAlbumTrack: !idAlbumTrack.isEmpty ? idAlbumTrack : "0",
@@ -490,18 +506,71 @@ class CDVMusicPlayer: NSObject {
     }
 
 
-    @objc func setupRemoteCommandCenter() {
+    private var isCarPlayActive: Bool = false
+    private var commandTargets: [Any] = []
+
+    /// Called when CarPlay connects - activates the remote command center and debug monitoring
+    @objc func activateForCarPlay() {
+        guard !isCarPlayActive else {
+            print("[CDVMusicPlayer] activateForCarPlay: already active, skipping")
+            return
+        }
+        print("[CDVMusicPlayer] activateForCarPlay: setting up remote commands and monitoring")
+        isCarPlayActive = true
+        setupRemoteCommandCenter()
+        startDebugMonitoring()
+    }
+
+    /// Called when CarPlay disconnects - removes remote command center handlers and stops monitoring
+    @objc func deactivateForCarPlay() {
+        guard isCarPlayActive else {
+            print("[CDVMusicPlayer] deactivateForCarPlay: already inactive, skipping")
+            return
+        }
+        print("[CDVMusicPlayer] deactivateForCarPlay: removing remote commands and stopping monitoring")
+        isCarPlayActive = false
+        teardownRemoteCommandCenter()
+        stopDebugMonitoring()
+        // Pause playback when CarPlay disconnects to avoid ghost playback
+        pause()
+    }
+
+    private func setupRemoteCommandCenter() {
         let cc = MPRemoteCommandCenter.shared()
         cc.playCommand.isEnabled = true
         cc.pauseCommand.isEnabled = true
         cc.nextTrackCommand.isEnabled = true
         cc.previousTrackCommand.isEnabled = true
         cc.togglePlayPauseCommand.isEnabled = true
-        cc.playCommand.addTarget { [weak self] _ in self?.play(); return .success }
-        cc.pauseCommand.addTarget { [weak self] _ in self?.pause(); return .success }
-        cc.nextTrackCommand.addTarget { [weak self] _ in self?.skipToNext(); return .success }
-        cc.previousTrackCommand.addTarget { [weak self] _ in self?.skipToPrevious(); return .success }
-        cc.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlayPause(); return .success }
+
+        // Store targets so we can remove them later
+        commandTargets.removeAll()
+        commandTargets.append(cc.playCommand.addTarget { [weak self] _ in self?.play(); return .success })
+        commandTargets.append(cc.pauseCommand.addTarget { [weak self] _ in self?.pause(); return .success })
+        commandTargets.append(cc.nextTrackCommand.addTarget { [weak self] _ in self?.skipToNext(); return .success })
+        commandTargets.append(cc.previousTrackCommand.addTarget { [weak self] _ in self?.skipToPrevious(); return .success })
+        commandTargets.append(cc.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlayPause(); return .success })
+        print("[CDVMusicPlayer] setupRemoteCommandCenter: registered \(commandTargets.count) command targets")
+    }
+
+    private func teardownRemoteCommandCenter() {
+        let cc = MPRemoteCommandCenter.shared()
+        // Remove all our registered targets
+        for target in commandTargets {
+            cc.playCommand.removeTarget(target)
+            cc.pauseCommand.removeTarget(target)
+            cc.nextTrackCommand.removeTarget(target)
+            cc.previousTrackCommand.removeTarget(target)
+            cc.togglePlayPauseCommand.removeTarget(target)
+        }
+        commandTargets.removeAll()
+        print("[CDVMusicPlayer] teardownRemoteCommandCenter: removed all command targets")
+    }
+
+    private func stopDebugMonitoring() {
+        debugTimer?.invalidate()
+        debugTimer = nil
+        print("[CDVMusicPlayer] stopDebugMonitoring: timer invalidated")
     }
 
     @objc func updatePlaybackState(_ state: String) { /* could map to MPNowPlayingInfoCenter states if needed */ }
@@ -544,24 +613,35 @@ class CDVMusicPlayer: NSObject {
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
 
         // Optional artwork (async, non-blocking)
-        if let artStr = track["artwork"] as? String, let artURL = URL(string: artStr) {
-          //  print("[CDVMusicPlayer][ART] artwork URL found: \(artStr)")
+        // PRIORITY 1: Check for local image first (offline support)
+        // Use the original queue item (not the flattened track) to access album.id
+        let originalQueueItem = currentIndex < queue.count ? queue[currentIndex] : nil
+        let localImagePath: String? = {
+            if let queueItem = originalQueueItem {
+                return CDVLocalStorageUtils.getTrackCoverPathFromQueueItem(queueItem)
+            }
+            return CDVLocalStorageUtils.getTrackCoverPath(from: track)
+        }()
+        if let localImage = localImagePath {
+            if let image = UIImage(contentsOfFile: localImage) {
+                print("[CDVMusicPlayer][ART] Using LOCAL artwork: \(localImage)")
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                info[MPMediaItemPropertyArtwork] = artwork
+            }
+        }
+        // PRIORITY 2: Try remote artwork URL if no local found
+        else if let artStr = track["artwork"] as? String, let artURL = URL(string: artStr) {
             let nsurl = artURL as NSURL
             if let cached = artworkCache.object(forKey: nsurl) {
-            //    print("[CDVMusicPlayer][ART] cache hit for artwork: \(artStr) size=\(Int(cached.size.width))x\(Int
-            //    (cached.size.height)))")
                 let artwork = MPMediaItemArtwork(boundsSize: cached.size) { _ in cached }
                 info[MPMediaItemPropertyArtwork] = artwork
             } else {
-            //    print("[CDVMusicPlayer][ART] cache miss, downloading artwork: \(artStr)")
                 URLSession.shared.dataTask(with: artURL) { [weak self] data, resp, err in
                     if let err = err { print("[CDVMusicPlayer][ART][ERROR] download failed: \(err.localizedDescription)"); return }
                     guard let self = self, let data = data, let image = UIImage(data: data) else {
                         print("[CDVMusicPlayer][ART][ERROR] invalid image data for: \(artStr)")
                         return
                     }
-              //      print("[CDVMusicPlayer][ART] download success bytes=\(data.count) size=\(Int(image.size.width))
-              //  x\(Int(image.size.height))) for \(artStr)")
                     self.artworkCache.setObject(image, forKey: nsurl)
                     DispatchQueue.main.async {
                         var current: [String: Any] = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -571,8 +651,6 @@ class CDVMusicPlayer: NSObject {
                     }
                 }.resume()
             }
-        } else {
-         //   print("[CDVMusicPlayer][ART] no artwork URL in current track dict keys=\(Array(track.keys))")
         }
 
         let applyInfo: () -> Void = {

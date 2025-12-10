@@ -341,4 +341,235 @@ class CDVPlaylistProvider: NSObject {
         }
         return nil
     }
+
+    // MARK: - Offline Library Support
+
+    /// Load offline library items (albums and playlists) from AUTO_NAVIGATION_LIBRARY_OFFLINE
+    /// Mirrors Android MediaItemTree.loadNavigationDataChildren for "AUTO_NAVIGATION_LIBRARY_OFFLINE"
+    /// - Returns: Array of offline items (albums and playlists)
+    @objc static func loadOfflineLibrary() -> [[String: Any]] {
+        print("[CDVPlaylistProvider] loadOfflineLibrary: begin")
+
+        // Try app folder first (Library/NoCloud), extensionless supported
+        let appFolderJson = (
+            loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY_OFFLINE", in: nil)
+            ?? loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY_OFFLINE", in: "navigation")
+            ?? loadJSONFromAppFolder(filename: "AUTO_NAVIGATION_LIBRARY_OFFLINE", in: "data/navigation")
+        )
+
+        if let json = appFolderJson {
+            if let arr = json as? [[String: Any]] {
+                print("[CDVPlaylistProvider] loadOfflineLibrary: loaded \(arr.count) items from app folder")
+                return arr
+            }
+        }
+
+        // Bundle fallback
+        if let json = loadJSON(from: "AUTO_NAVIGATION_LIBRARY_OFFLINE", in: "navigation") {
+            if let arr = json as? [[String: Any]] {
+                print("[CDVPlaylistProvider] loadOfflineLibrary: loaded \(arr.count) items from bundle")
+                return arr
+            }
+        }
+
+        print("[CDVPlaylistProvider] loadOfflineLibrary: not found, returning empty")
+        return []
+    }
+
+    /// Check if there are offline items available
+    @objc static func hasOfflineItems() -> Bool {
+        return !loadOfflineLibrary().isEmpty
+    }
+
+    /// Get the item type from an offline item dictionary
+    /// - Parameter item: The item dictionary
+    /// - Returns: "album" or "playlist" based on the item structure
+    @objc static func getOfflineItemType(_ item: [String: Any]) -> String {
+        // Check explicit itemType or type field
+        if let itemType = item["itemType"] as? String {
+            return itemType.lowercased()
+        }
+        if let type = item["type"] as? String {
+            return type.lowercased()
+        }
+
+        // Heuristic: albums have releaseDate, playlists have trackCount or tracks
+        if item["releaseDate"] != nil || item["release_date"] != nil {
+            return "album"
+        }
+        if item["trackCount"] != nil || item["tracks"] != nil {
+            return "playlist"
+        }
+
+        // Default to playlist
+        return "playlist"
+    }
+
+    /// Extract the ID from an offline item
+    @objc static func getOfflineItemId(_ item: [String: Any]) -> String {
+        if let id = item["id"] {
+            return String(describing: id)
+        }
+        if let id = item["idPlaylist"] {
+            return String(describing: id)
+        }
+        if let id = item["idAlbum"] {
+            return String(describing: id)
+        }
+        return ""
+    }
+
+    /// Extract the title from an offline item
+    @objc static func getOfflineItemTitle(_ item: [String: Any]) -> String {
+        if let title = item["title"] as? String, !title.isEmpty {
+            return title
+        }
+        if let name = item["name"] as? String, !name.isEmpty {
+            return name
+        }
+        return "Unknown"
+    }
+
+    /// Extract the subtitle/description from an offline item
+    @objc static func getOfflineItemSubtitle(_ item: [String: Any]) -> String? {
+        // For albums: artist name
+        if let artists = item["artists"] as? [[String: Any]], let first = artists.first {
+            if let name = first["name"] as? String {
+                return name
+            }
+        }
+        if let artist = item["artist"] as? String {
+            return artist
+        }
+        // For playlists: description or track count
+        if let desc = item["description"] as? String, !desc.isEmpty {
+            return desc
+        }
+        if let trackCount = item["trackCount"] as? Int {
+            return "\(trackCount) tracks"
+        }
+        return nil
+    }
+
+    /// Extract the image URL from an offline item (for albums uses album cover, for playlists uses playlist image)
+    @objc static func getOfflineItemImageUrl(_ item: [String: Any]) -> String? {
+        // Direct image URL
+        if let image = item["image"] as? String, !image.isEmpty {
+            return image
+        }
+        if let cover = item["cover"] as? String, !cover.isEmpty {
+            return cover
+        }
+        if let artwork = item["artwork"] as? String, !artwork.isEmpty {
+            return artwork
+        }
+
+        // Images array (common in API responses)
+        if let images = item["images"] as? [[String: Any]], !images.isEmpty {
+            // Prefer larger images
+            let sorted = images.sorted { (lhs, rhs) -> Bool in
+                let l = (lhs["size"] as? Int) ?? 0
+                let r = (rhs["size"] as? Int) ?? 0
+                return l > r
+            }
+            for img in sorted {
+                if let url = img["url"] as? String, !url.isEmpty {
+                    return url
+                }
+                // Handle create_svg type with list array
+                if let list = img["list"] as? [String], let first = list.first {
+                    return first
+                }
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: - Offline Tracks Loading
+
+    /// Load offline tracks for a specific album or playlist
+    /// Reads OFFLINE_TRACKS file and filters tracks by ALBUMS_ITEMS_OFFLINE or PLAYLISTS_ITEMS_OFFLINE
+    /// - Parameters:
+    ///   - itemType: "album" or "playlist"
+    ///   - itemId: The ID of the album or playlist
+    /// - Returns: Array of track dictionaries
+    @objc static func loadOfflineTracks(itemType: String, itemId: String) -> [[String: Any]] {
+        print("[CDVPlaylistProvider] loadOfflineTracks: itemType=\(itemType) itemId=\(itemId)")
+
+        // Load OFFLINE_TRACKS file
+        guard let offlineTracksData = loadOfflineTracksFile() else {
+            print("[CDVPlaylistProvider] loadOfflineTracks: OFFLINE_TRACKS file not found or invalid")
+            return []
+        }
+
+        guard let targetIdInt = Int(itemId) else {
+            print("[CDVPlaylistProvider] loadOfflineTracks: invalid itemId '\(itemId)' - cannot convert to Int")
+            return []
+        }
+
+        var result: [[String: Any]] = []
+        let keyToCheck = itemType.lowercased() == "album" ? "ALBUMS_ITEMS_OFFLINE" : "PLAYLISTS_ITEMS_OFFLINE"
+
+        print("[CDVPlaylistProvider] loadOfflineTracks: filtering by \(keyToCheck) containing \(targetIdInt)")
+        print("[CDVPlaylistProvider] loadOfflineTracks: total tracks in file: \(offlineTracksData.count)")
+
+        // Iterate through all tracks and filter by album/playlist ID
+        for (trackId, trackEntry) in offlineTracksData {
+            guard let entryDict = trackEntry as? [String: Any] else {
+                continue
+            }
+
+            // Check if this track belongs to the requested album/playlist
+            if let itemIds = entryDict[keyToCheck] as? [Any] {
+                let containsTarget = itemIds.contains { element in
+                    if let intVal = element as? Int {
+                        return intVal == targetIdInt
+                    }
+                    if let strVal = element as? String, let intVal = Int(strVal) {
+                        return intVal == targetIdInt
+                    }
+                    return false
+                }
+
+                if containsTarget {
+                    // Extract trackData
+                    if let trackData = entryDict["trackData"] as? [String: Any] {
+                        print("[CDVPlaylistProvider] loadOfflineTracks: found track \(trackId) - \(trackData["name"] ?? "unknown")")
+                        result.append(trackData)
+                    }
+                }
+            }
+        }
+
+        print("[CDVPlaylistProvider] loadOfflineTracks: found \(result.count) tracks for \(itemType) \(itemId)")
+        return result
+    }
+
+    /// Load and parse the OFFLINE_TRACKS file
+    /// - Returns: Dictionary where keys are track IDs and values are track entries
+    private static func loadOfflineTracksFile() -> [String: Any]? {
+        print("[CDVPlaylistProvider] loadOfflineTracksFile: begin")
+
+        // Try app folder first (Library/NoCloud), extensionless supported
+        let appFolderJson = (
+            loadJSONFromAppFolder(filename: "OFFLINE_TRACKS", in: nil)
+            ?? loadJSONFromAppFolder(filename: "OFFLINE_TRACKS", in: "navigation")
+            ?? loadJSONFromAppFolder(filename: "OFFLINE_TRACKS", in: "data/navigation")
+        )
+
+        if let json = appFolderJson as? [String: Any] {
+            print("[CDVPlaylistProvider] loadOfflineTracksFile: loaded from app folder, keys count: \(json.keys.count)")
+            return json
+        }
+
+        // Bundle fallback
+        if let json = loadJSON(from: "OFFLINE_TRACKS", in: "navigation") as? [String: Any] {
+            print("[CDVPlaylistProvider] loadOfflineTracksFile: loaded from bundle, keys count: \(json.keys.count)")
+            return json
+        }
+
+        print("[CDVPlaylistProvider] loadOfflineTracksFile: not found")
+        return nil
+    }
 }

@@ -326,6 +326,11 @@ class CDVAutoMusicPlugin: CDVPlugin {
     }
 
     @objc private func mediaTrackChanged(_ note: Notification) {
+        // Only send media updates when CarPlay is connected to avoid double playback
+        guard carPlayManager?.isConnected() == true else {
+            print("[AutoMusicPlugin] mediaTrackChanged: CarPlay not connected, skipping event")
+            return
+        }
         guard let cb = mediaUpdateCallbackId,
               let track = note.userInfo?["track"] as? [String: Any] else { return }
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: track)
@@ -334,6 +339,11 @@ class CDVAutoMusicPlugin: CDVPlugin {
     }
 
     @objc private func playbackStateChanged(_ note: Notification) {
+        // Only send playback state updates when CarPlay is connected
+        guard carPlayManager?.isConnected() == true else {
+            print("[AutoMusicPlugin] playbackStateChanged: CarPlay not connected, skipping event")
+            return
+        }
         guard let cb = playbackStateCallbackId,
               let action = note.userInfo?["action"] as? String else { return }
         // Send as object with "action" key to match Android format
