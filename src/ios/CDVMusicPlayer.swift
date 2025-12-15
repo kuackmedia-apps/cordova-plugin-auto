@@ -20,6 +20,13 @@ class CDVMusicPlayer: NSObject {
     private var debugTimer: Timer?
     private var lastKnownTrackId: String?
 
+    // MARK: - Playback State Sync (for seamless CarPlay transition)
+    // These properties store the playback state captured from the main app's MPNowPlayingInfoCenter
+    // when CarPlay connects, allowing us to sync position and playback state
+    private var pendingSyncPosition: Double? = nil
+    private var pendingSyncWasPlaying: Bool = false
+    private var pendingSyncTrackTitle: String? = nil
+
     // Helper to extract the nested 'data' field from a queue item
     private func extractTrackData(_ item: [String: Any]) -> [String: Any] {
         return CDVQueueStorage.extractFlattenedData(item)
@@ -398,14 +405,24 @@ class CDVMusicPlayer: NSObject {
         }
     }
     @objc func updateCurrentTrack() {
-        if !queue.isEmpty {
-            print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue.count=\(queue.count) idx=\(currentIndex)")
-            loadCurrentTrack()
-            updateNowPlayingInfo()
-            persistQueueState()
-        } else {
-            print("[CDVMusicPlayer][diag] updateCurrentTrack(): queue is empty")
+        // Read the new track ID from UserDefaults (set by the mobile app)
+        guard let newTrackId = CDVQueueStorage.currentTrackId() else {
+            print("[CDVMusicPlayer][diag] updateCurrentTrack(): no track ID in UserDefaults")
+            return
         }
+
+        // Check if the currently loaded track already matches - avoid reloading if same track
+        // This preserves playback position during CarPlay connection (seamless transition)
+        let currentLoadedId = currentTrackIdForPersistence()
+        if currentLoadedId == newTrackId {
+            print("[CDVMusicPlayer][diag] updateCurrentTrack(): track already matches (\(newTrackId)), skipping")
+            return
+        }
+
+        print("[CDVMusicPlayer][diag] updateCurrentTrack(): changing track from \(currentLoadedId ?? "nil") to \(newTrackId)")
+
+        // Sync currentIndex to the new track ID (this handles finding the track and loading it)
+        syncCurrentIndexToTrackId(newTrackId)
     }
 
     // MARK: - Internals
@@ -516,9 +533,117 @@ class CDVMusicPlayer: NSObject {
             return
         }
         print("[CDVMusicPlayer] activateForCarPlay: setting up remote commands and monitoring")
+
+        // IMPORTANT: Capture the existing playback state BEFORE we take over
+        // This allows us to sync position when the main app was already playing
+        captureExistingPlaybackState()
+
         isCarPlayActive = true
         setupRemoteCommandCenter()
         startDebugMonitoring()
+    }
+
+    /// Captures the current playback state from MPNowPlayingInfoCenter
+    /// This is called when CarPlay connects to preserve the main app's playback position
+    private func captureExistingPlaybackState() {
+        guard let nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
+            print("[CDVMusicPlayer][sync] No existing nowPlayingInfo to capture")
+            pendingSyncPosition = nil
+            pendingSyncWasPlaying = false
+            pendingSyncTrackTitle = nil
+            return
+        }
+
+        // Get elapsed playback time (position in seconds)
+        let elapsedTime = nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0
+
+        // Get playback rate to determine if it was playing (rate > 0 means playing)
+        let playbackRate = nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 0
+        let wasPlaying = playbackRate > 0
+
+        // Get track info for verification
+        let title = nowPlayingInfo[MPMediaItemPropertyTitle] as? String
+        let artist = nowPlayingInfo[MPMediaItemPropertyArtist] as? String
+        let duration = nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0
+
+        // Only capture if there's meaningful playback state
+        if elapsedTime > 0 || wasPlaying {
+            pendingSyncPosition = elapsedTime
+            pendingSyncWasPlaying = wasPlaying
+            pendingSyncTrackTitle = title
+
+            print("[CDVMusicPlayer][sync] Captured existing playback state:")
+            print("[CDVMusicPlayer][sync]   - Title: \(title ?? "<unknown>")")
+            print("[CDVMusicPlayer][sync]   - Artist: \(artist ?? "<unknown>")")
+            print("[CDVMusicPlayer][sync]   - Position: \(String(format: "%.1f", elapsedTime))s / \(String(format: "%.1f", duration))s")
+            print("[CDVMusicPlayer][sync]   - Was playing: \(wasPlaying)")
+        } else {
+            print("[CDVMusicPlayer][sync] No active playback to capture (elapsed=\(elapsedTime), rate=\(playbackRate))")
+            pendingSyncPosition = nil
+            pendingSyncWasPlaying = false
+            pendingSyncTrackTitle = nil
+        }
+    }
+
+    /// Applies the captured playback state after loading a track
+    /// Should be called after the AVPlayerItem is ready
+    private func applyCapturedPlaybackState() {
+        guard let syncPosition = pendingSyncPosition else {
+            print("[CDVMusicPlayer][sync] No pending sync position to apply")
+            return
+        }
+
+        // Verify the track title matches (to avoid syncing to wrong track)
+        let currentTitle = currentTrack?["title"] as? String
+        if let expectedTitle = pendingSyncTrackTitle, let actualTitle = currentTitle {
+            if expectedTitle != actualTitle {
+                print("[CDVMusicPlayer][sync] Track mismatch! Expected '\(expectedTitle)' but got '\(actualTitle)'. Skipping position sync.")
+                clearPendingSync()
+                return
+            }
+        }
+
+        print("[CDVMusicPlayer][sync] Applying captured state: position=\(String(format: "%.1f", syncPosition))s, wasPlaying=\(pendingSyncWasPlaying)")
+
+        // Seek to the captured position
+        let targetTime = CMTime(seconds: syncPosition, preferredTimescale: 1000)
+
+        // First, ensure we don't auto-play during the seek
+        let shouldResumePlayback = pendingSyncWasPlaying
+
+        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard let self = self else { return }
+
+            if finished {
+                print("[CDVMusicPlayer][sync] ✅ Seek completed successfully to \(String(format: "%.1f", syncPosition))s")
+
+                // Update Now Playing info with correct position
+                self.updateNowPlayingInfo()
+
+                // Restore playback state
+                if shouldResumePlayback {
+                    print("[CDVMusicPlayer][sync] ▶️ Resuming playback after sync")
+                    // Small delay to ensure seek is fully processed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.play()
+                    }
+                } else {
+                    print("[CDVMusicPlayer][sync] ⏸️ Keeping paused state after sync")
+                }
+            } else {
+                print("[CDVMusicPlayer][sync] ⚠️ Seek was interrupted or cancelled")
+            }
+
+            // Clear the pending sync
+            self.clearPendingSync()
+        }
+    }
+
+    /// Clears the pending sync state
+    private func clearPendingSync() {
+        pendingSyncPosition = nil
+        pendingSyncWasPlaying = false
+        pendingSyncTrackTitle = nil
     }
 
     /// Called when CarPlay disconnects - removes remote command center handlers and stops monitoring
@@ -815,6 +940,13 @@ class CDVMusicPlayer: NSObject {
         case .readyToPlay:
             print("[CDVMusicPlayer] AVPlayerItem ready to play")
             updateNowPlayingInfo()
+
+            // Apply any captured playback state from the main app
+            // This enables seamless transition when CarPlay connects while music is playing
+            if pendingSyncPosition != nil {
+                print("[CDVMusicPlayer][sync] Item ready - applying captured playback state")
+                applyCapturedPlaybackState()
+            }
         case .failed:
             print("[CDVMusicPlayer][ERROR] AVPlayerItem failed: \(item.error?.localizedDescription ?? "unknown error")")
         case .unknown:

@@ -226,18 +226,111 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
 
     // MARK: - Icons
+
+    /// SF Symbol mapping for navigation tabs based on section title or fileName
+    /// This ensures consistent, visible icons across all iOS versions and themes
+    private static let sfSymbolMapping: [String: String] = [
+        // Main navigation tabs (by text/title)
+        "home": "house.fill",
+        "inicio": "house.fill",
+        "library": "books.vertical.fill",
+        "biblioteca": "books.vertical.fill",
+        "mi música": "books.vertical.fill",
+        "mi musica": "books.vertical.fill",
+        "explorer": "safari.fill",
+        "explorar": "safari.fill",
+        "explore": "safari.fill",
+        "buscar": "magnifyingglass",
+        "search": "magnifyingglass",
+        "recents": "clock.fill",
+        "recientes": "clock.fill",
+        "recent": "clock.fill",
+        "history": "clock.fill",
+        "historial": "clock.fill",
+        "offline": "arrow.down.circle.fill",
+        "downloads": "arrow.down.circle.fill",
+        "descargas": "arrow.down.circle.fill",
+        "favorites": "heart.fill",
+        "favoritos": "heart.fill",
+        "browse": "square.grid.2x2.fill",
+        "navegar": "square.grid.2x2.fill",
+
+        // Library subsections (by text/title)
+        "playlists": "music.note.list",
+        "playlist": "music.note.list",
+        "albums": "square.stack.fill",
+        "álbumes": "square.stack.fill",
+        "album": "square.stack.fill",
+        "artists": "music.mic",
+        "artistas": "music.mic",
+        "artist": "music.mic",
+        "tracks": "music.note",
+        "canciones": "music.note",
+        "songs": "music.note",
+        "podcasts": "mic.fill",
+        "podcast": "mic.fill",
+        "radio": "dot.radiowaves.left.and.right",
+        "genres": "guitars.fill",
+        "géneros": "guitars.fill",
+
+        // By fileName
+        "auto_navigation_home": "house.fill",
+        "auto_navigation_library": "books.vertical.fill",
+        "auto_navigation_library_offline": "arrow.down.circle.fill",
+        "auto_navigation_explorer": "safari.fill",
+        "recent_listened": "clock.fill",
+        "queue_items_key": "list.bullet"
+    ]
+
     @available(iOS 13.0, *)
-    private func carPlayTabImage(from apiValue: Any?) -> UIImage? {
-        let fallback = UIImage(systemName: "music.note.list")
-        guard let raw = (apiValue as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
-            return fallback
-        }
-        // Try SF Symbol name first
-        if let symbol = UIImage(systemName: raw) {
-            let config = UIImage.SymbolConfiguration(weight: .regular)
+    private func carPlayTabImage(from apiValue: Any?, sectionTitle: String? = nil, fileName: String? = nil) -> UIImage? {
+        let config = UIImage.SymbolConfiguration(weight: .medium)
+        let fallback = UIImage(systemName: "music.note.list")?.applyingSymbolConfiguration(config)
+
+        // 1. Try to find SF Symbol from section title (case-insensitive)
+        if let title = sectionTitle?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+           let symbolName = Self.sfSymbolMapping[title],
+           let symbol = UIImage(systemName: symbolName) {
+            print("[CarPlay][ICON] Using SF Symbol '\(symbolName)' for title '\(sectionTitle ?? "")'")
             return symbol.applyingSymbolConfiguration(config) ?? symbol
         }
-        // Not a valid SF Symbol -> fallback. For URLs/paths, we keep the standard tab glyph.
+
+        // 2. Try to find SF Symbol from fileName (case-insensitive)
+        if let file = fileName?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+           let symbolName = Self.sfSymbolMapping[file],
+           let symbol = UIImage(systemName: symbolName) {
+            print("[CarPlay][ICON] Using SF Symbol '\(symbolName)' for fileName '\(fileName ?? "")'")
+            return symbol.applyingSymbolConfiguration(config) ?? symbol
+        }
+
+        // 3. Try to use apiValue directly as SF Symbol name (if it's already a valid SF Symbol)
+        if let raw = (apiValue as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            if let symbol = UIImage(systemName: raw) {
+                print("[CarPlay][ICON] Using SF Symbol '\(raw)' from API value")
+                return symbol.applyingSymbolConfiguration(config) ?? symbol
+            }
+        }
+
+        // 4. Fallback to default icon
+        print("[CarPlay][ICON] Using fallback icon for title='\(sectionTitle ?? "")' fileName='\(fileName ?? "")'")
+        return fallback
+    }
+
+    /// Get SF Symbol for library subsections
+    @available(iOS 13.0, *)
+    private func librarySubsectionImage(for title: String) -> UIImage? {
+        let config = UIImage.SymbolConfiguration(weight: .medium)
+        let lowercased = title.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let symbolName = Self.sfSymbolMapping[lowercased],
+           let symbol = UIImage(systemName: symbolName) {
+            print("[CarPlay][ICON] Library subsection '\(title)' -> SF Symbol '\(symbolName)'")
+            return symbol.applyingSymbolConfiguration(config) ?? symbol
+        }
+
+        // Default for unknown subsections
+        let fallback = UIImage(systemName: "folder.fill")?.applyingSymbolConfiguration(config)
+        print("[CarPlay][ICON] Library subsection '\(title)' -> fallback folder icon")
         return fallback
     }
 
@@ -666,13 +759,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     for (sidx, subSection) in children.enumerated() {
                         let subTitle = (subSection["text"] as? String) ?? "Section \(sidx+1)"
                         let subItems = subSection["items"] as? [[String: Any]] ?? []
-                        let subId = String(describing: subSection["id"] ?? "")
-                        let subType = (subSection["itemType"] as? String) ?? (subSection["type"] as? String)
                         let li = CPListItem(text: subTitle, detailText: "\(subItems.count) items")
-                        // Subsections may include a representative image key
-                        let subImage = extractImageURL(from: subSection)
-                        if let subImage, !subImage.isEmpty { print("[CarPlay][IMG] subsection image URL: \(subImage)") }
-                        setListItemImage(li, from: subImage, itemType: subType, itemId: subId, itemDict: subSection)
+                        // Use SF Symbol for library subsections instead of PNG icons
+                        if #available(iOS 13.0, *) {
+                            if let sfImage = librarySubsectionImage(for: subTitle) {
+                                li.setImage(sfImage)
+                            }
+                        }
                         li.handler = { [weak self] _, completion in
                             guard let self, let controller = self.interfaceController else { completion(); return }
                             print("[CarPlay] [NAV][LIB] open subsection title=\(subTitle) items=\(subItems.count)")
@@ -704,7 +797,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let safeTitle = sectionTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Section \(idx+1)" : sectionTitle
             let cpList = CPListTemplate(title: safeTitle, sections: cpSections)
             cpList.tabTitle = safeTitle
-            if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: sectionIcon) }
+            if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: sectionIcon, sectionTitle: sectionTitle, fileName: fileName) }
             let totalItems = cpSections.reduce(0) { $0 + $1.items.count }
             print("[CarPlay] [NAV] building tab title=\(safeTitle) sections=\(cpSections.count) totalItems=\(totalItems)")
             if totalItems == 0 { print("[CarPlay][TAB][EMPTY] tab title=\(safeTitle) has no items") }
@@ -751,7 +844,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let section = CPListSection(items: items)
                 let list = CPListTemplate(title: "Playlists", sections: [section])
                 list.tabTitle = "Playlists"
-                if #available(iOS 13.0, *) { list.tabImage = carPlayTabImage(from: nil) }
+                if #available(iOS 13.0, *) { list.tabImage = carPlayTabImage(from: nil, sectionTitle: "Playlists", fileName: nil) }
                 DispatchQueue.main.async {
                     list.updateSections([section])
                 }
@@ -799,7 +892,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     let cpSection = CPListSection(items: cpItems)
                     let cpList = CPListTemplate(title: safeTitle, sections: [cpSection])
                     cpList.tabTitle = safeTitle
-                    if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: nil) }
+                    if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: nil, sectionTitle: title, fileName: nil) }
                     DispatchQueue.main.async {
                         cpList.updateSections([cpSection])
                     }
@@ -822,7 +915,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let section = CPListSection(items: placeholders)
             let list = CPListTemplate(title: "Browse", sections: [section])
             list.tabTitle = "Browse"
-            if #available(iOS 13.0, *) { list.tabImage = carPlayTabImage(from: nil) }
+            if #available(iOS 13.0, *) { list.tabImage = carPlayTabImage(from: nil, sectionTitle: "Browse", fileName: nil) }
             navTemplates.append(list)
         }
 
