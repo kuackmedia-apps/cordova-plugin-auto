@@ -17,6 +17,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     private var isPresentingNowPlaying: Bool = false
     private weak var nowPlayingListTab: CPListTemplate?
 
+    // Flag to track if root template has been set - prevents crash when pushing templates
+    private var isRootTemplateSet: Bool = false
+
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
         super.init()
@@ -662,23 +665,52 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     // MARK: - CPTemplateApplicationSceneDelegate
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
-        print("[CarPlay] didConnect: interfaceController received")
+        print("[CarPlay] didConnect: interfaceController received - starting sequential setup")
         connected = true
+        isRootTemplateSet = false  // Reset flag
         self.interfaceController = interfaceController
-        // Activate the music player for CarPlay (registers remote command handlers)
-        self.musicPlayer.activateForCarPlay()
-        // Present a lightweight placeholder to avoid gray screen while we build templates
-        presentLoadingPlaceholder(interfaceController)
-        // Reload any queue stored by the host app before building templates so Now Playing can bind
-        self.musicPlayer.reloadQueueForced()
-        // Build and replace with real templates
-        setupTemplates(interfaceController)
-        NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": true])
+
+        // STEP 1: Present loading placeholder and WAIT for completion
+        // This ensures root template is set before any push operations
+        presentLoadingPlaceholder(interfaceController) { [weak self] in
+            guard let self = self else { return }
+            print("[CarPlay] didConnect: STEP 1 complete - root template set")
+
+            // STEP 2: Activate the music player for CarPlay (registers remote command handlers)
+            // This captures the existing playback state but does NOT auto-play
+            self.musicPlayer.activateForCarPlay()
+            print("[CarPlay] didConnect: STEP 2 complete - CarPlay activated")
+
+            // STEP 3: Notify JS BEFORE loading queue
+            // This gives the JS side a chance to pause the app's player
+            print("[CarPlay] didConnect: STEP 3 - notifying JS of connection")
+            NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": true])
+
+            // STEP 4: Wait 0.2s for JS to process and pause app's player
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                print("[CarPlay] didConnect: STEP 4 - delay complete, proceeding with queue load")
+
+                // STEP 5: Reload queue from storage (without auto-play due to isInitialCarPlaySetup flag)
+                self.musicPlayer.reloadQueueForced()
+                print("[CarPlay] didConnect: STEP 5 complete - queue reloaded")
+
+                // STEP 6: Build and set the real templates
+                self.setupTemplates(interfaceController)
+                print("[CarPlay] didConnect: STEP 6 complete - templates set up")
+
+                // STEP 7: Complete initial setup - this enables normal playback behavior
+                // and applies the captured playback state (seek + resume if was playing)
+                self.musicPlayer.completeInitialSetup()
+                print("[CarPlay] didConnect: STEP 7 complete - initial setup finished")
+            }
+        }
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnect interfaceController: CPInterfaceController) {
         print("[CarPlay] didDisconnect")
         connected = false
+        isRootTemplateSet = false  // Reset flag on disconnect
         // Deactivate the music player for CarPlay (removes remote command handlers)
         self.musicPlayer.deactivateForCarPlay()
         NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": false])
@@ -686,7 +718,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
 
     // MARK: - Templates
-    private func presentLoadingPlaceholder(_ controller: CPInterfaceController) {
+    private func presentLoadingPlaceholder(_ controller: CPInterfaceController, completion: @escaping () -> Void) {
         let loadingItem = CPListItem(text: "Initializing…", detailText: nil)
         if #available(iOS 15.0, *) {
             loadingItem.isEnabled = false
@@ -695,10 +727,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let loadingList = CPListTemplate(title: "Loading", sections: [section])
         loadingList.tabTitle = "Loading"
         let placeholder = CPTabBarTemplate(templates: [loadingList])
-        DispatchQueue.main.async {
-            controller.setRootTemplate(placeholder, animated: false, completion: { success, error in
-                if let error = error { print("[CarPlay] setRootTemplate(Loading) error: \(error)") }
-                else { print("[CarPlay] setRootTemplate(Loading) success: \(success)") }
+        DispatchQueue.main.async { [weak self] in
+            controller.setRootTemplate(placeholder, animated: false, completion: { [weak self] success, error in
+                if let error = error {
+                    print("[CarPlay] setRootTemplate(Loading) error: \(error)")
+                } else {
+                    print("[CarPlay] setRootTemplate(Loading) success: \(success)")
+                    self?.isRootTemplateSet = true
+                }
+                completion()
             })
         }
     }
@@ -1063,6 +1100,14 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         print("[CarPlay] showNowPlayingTemplate: interfaceController nil")
         return
       }
+
+      // CRITICAL: Don't try to push template if root template isn't set yet
+      // This prevents the crash: "Attempting to push a template without a root template"
+      guard isRootTemplateSet else {
+        print("[CarPlay] showNowPlayingTemplate: root template not set yet, skipping")
+        return
+      }
+
       let now = CPNowPlayingTemplate.shared
       print("[CarPlay] showNowPlayingTemplate: presenting")
       DispatchQueue.main.async {

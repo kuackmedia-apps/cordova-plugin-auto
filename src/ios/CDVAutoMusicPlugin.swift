@@ -188,9 +188,17 @@ class CDVAutoMusicPlugin: CDVPlugin {
     @objc(playCurrentTrack:)
     func playCurrentTrack(command: CDVInvokedUrlCommand) {
         print("[AutoMusicPlugin] playCurrentTrack called")
-        // Reload queue from storage, sync current track, and start playback
-        carPlayManager?.musicPlayer?.reloadQueue()
-        carPlayManager?.musicPlayer?.play()
+        // First sync currentIndex with the track ID from UserDefaults (like Android does)
+        // This ensures we play the correct track even if reloadQueue() exits early
+        if let trackId = CDVQueueStorage.currentTrackId() {
+            print("[AutoMusicPlugin] playCurrentTrack: syncing to trackId=\(trackId)")
+            carPlayManager?.musicPlayer?.syncToTrackIdAndPlay(trackId)
+        } else {
+            // Fallback: reload queue and play (old behavior)
+            print("[AutoMusicPlugin] playCurrentTrack: no trackId in UserDefaults, using fallback")
+            carPlayManager?.musicPlayer?.reloadQueue()
+            carPlayManager?.musicPlayer?.play()
+        }
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
     }
@@ -339,17 +347,26 @@ class CDVAutoMusicPlugin: CDVPlugin {
     }
 
     @objc private func playbackStateChanged(_ note: Notification) {
+        let action = note.userInfo?["action"] as? String ?? "unknown"
+        let isConnected = carPlayManager?.isConnected() ?? false
+        print("[AutoMusicPlugin] playbackStateChanged: action=\(action) callbackId=\(playbackStateCallbackId ?? "nil") connected=\(isConnected)")
+
         // Only send playback state updates when CarPlay is connected
-        guard carPlayManager?.isConnected() == true else {
+        guard isConnected else {
             print("[AutoMusicPlugin] playbackStateChanged: CarPlay not connected, skipping event")
             return
         }
-        guard let cb = playbackStateCallbackId,
-              let action = note.userInfo?["action"] as? String else { return }
+
+        guard let cb = playbackStateCallbackId else {
+            print("[AutoMusicPlugin] playbackStateChanged: no callback registered, skipping")
+            return
+        }
+
         // Send as object with "action" key to match Android format
         let payload: [String: Any] = ["action": action]
         let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
         result?.setKeepCallbackAs(true)
         commandDelegate.send(result, callbackId: cb)
+        print("[AutoMusicPlugin] playbackStateChanged: sent event to JS")
     }
 }

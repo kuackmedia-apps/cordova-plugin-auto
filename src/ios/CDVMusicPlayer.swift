@@ -27,6 +27,11 @@ class CDVMusicPlayer: NSObject {
     private var pendingSyncWasPlaying: Bool = false
     private var pendingSyncTrackTitle: String? = nil
 
+    // Flag to prevent auto-play during initial CarPlay setup
+    // This prevents double playback (plugin's AVPlayer + app's AVPlayer playing simultaneously)
+    // The flag is set in activateForCarPlay() and cleared after initial setup completes
+    private(set) var isInitialCarPlaySetup: Bool = false
+
     // Helper to extract the nested 'data' field from a queue item
     private func extractTrackData(_ item: [String: Any]) -> [String: Any] {
         return CDVQueueStorage.extractFlattenedData(item)
@@ -175,6 +180,69 @@ class CDVMusicPlayer: NSObject {
         )
     }
     @objc func togglePlayPause() { isPlaying ? pause() : play() }
+
+    /// Syncs currentIndex to the given trackId and starts playback.
+    /// This is called from playCurrentTrack() to ensure we play the correct track
+    /// based on UserDefaults, similar to how Android Auto handles this.
+    @objc func syncToTrackIdAndPlay(_ trackId: String) {
+        print("[CDVMusicPlayer] syncToTrackIdAndPlay: trackId=\(trackId)")
+
+        // Helper function to find track index - handles both nested and flat structures
+        func findTrackIndex(_ searchId: String, in items: [[String: Any]]) -> Int? {
+            return items.firstIndex(where: { item in
+                // Try nested structure first: { "data": { "idAlbumTrack": "...", "id": "..." } }
+                let data = (item["data"] as? [String: Any]) ?? item
+                let idAlbumTrack = stringValue(data["idAlbumTrack"])
+                let id = stringValue(data["id"])
+                return idAlbumTrack == searchId || id == searchId
+            })
+        }
+
+        // ALWAYS reload queue from disk when playCurrentTrack is called
+        // This ensures we have the latest queue from the app
+        print("[CDVMusicPlayer] syncToTrackIdAndPlay: reloading queue from disk")
+        reloadQueueForced()
+
+        guard !queue.isEmpty else {
+            print("[CDVMusicPlayer] syncToTrackIdAndPlay: queue empty after reload, cannot play")
+            return
+        }
+
+        // Find the track in the queue
+        if let idx = findTrackIndex(trackId, in: queue) {
+            let trackData = (queue[idx]["data"] as? [String: Any]) ?? queue[idx]
+            let trackName = trackData["name"] as? String ?? trackData["title"] as? String ?? "Unknown"
+
+            if idx != currentIndex {
+                print("[CDVMusicPlayer] syncToTrackIdAndPlay: changing from index \(currentIndex) to \(idx) (\(trackName))")
+                currentIndex = idx
+                loadCurrentTrack()
+                player.seek(to: .zero)
+            } else {
+                print("[CDVMusicPlayer] syncToTrackIdAndPlay: already at correct index \(idx) (\(trackName))")
+                // Ensure track is loaded even if index matches
+                if player.currentItem == nil {
+                    loadCurrentTrack()
+                }
+            }
+
+            // Update stored track ID
+            CDVQueueStorage.setCurrentTrackId(trackId)
+        } else {
+            // Track not found by ID - use whatever currentIndex was resolved by reloadQueueForced
+            print("[CDVMusicPlayer] syncToTrackIdAndPlay: trackId \(trackId) not found, using resolved currentIndex \(currentIndex)")
+
+            // Ensure track is loaded
+            if player.currentItem == nil || currentIndex < queue.count {
+                loadCurrentTrack()
+            }
+        }
+
+        // ALWAYS start playback if we have a valid queue
+        // This is critical - the app expects playback to start
+        print("[CDVMusicPlayer] syncToTrackIdAndPlay: starting playback")
+        play()
+    }
 
     @objc func skipToNext() {
         guard !queue.isEmpty else { return }
@@ -451,7 +519,9 @@ class CDVMusicPlayer: NSObject {
             let item = AVPlayerItem(url: localUrl)
             attachItemObservers(item)
             player.replaceCurrentItem(with: item)
-            if isPlaying { startPeriodicUpdates() }
+            // IMPORTANT: Resume playback after replacing item - AVPlayer stops when item changes
+            // BUT skip auto-play during initial CarPlay setup to prevent double playback
+            if isPlaying && !isInitialCarPlaySetup { player.play(); startPeriodicUpdates() }
             return
         }
 
@@ -469,8 +539,9 @@ class CDVMusicPlayer: NSObject {
                 attachItemObservers(item)
                 player.replaceCurrentItem(with: item)
                 print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with URL=\(url.absoluteString.prefix(80))…")
-                // restart periodic updates for new item
-                if isPlaying { startPeriodicUpdates() }
+                // IMPORTANT: Resume playback after replacing item - AVPlayer stops when item changes
+                // BUT skip auto-play during initial CarPlay setup to prevent double playback
+                if isPlaying && !isInitialCarPlaySetup { player.play(); startPeriodicUpdates() }
                 return
             }
         }
@@ -499,7 +570,8 @@ class CDVMusicPlayer: NSObject {
                             self.attachItemObservers(item)
                             self.player.replaceCurrentItem(with: item)
                             print("[CDVMusicPlayer][diag] loadCurrentTrack(): replaced currentItem with signed URL (main-thread)")
-                            if self.isPlaying { self.player.play(); self.startPeriodicUpdates() }
+                            // Skip auto-play during initial CarPlay setup to prevent double playback
+                            if self.isPlaying && !self.isInitialCarPlaySetup { self.player.play(); self.startPeriodicUpdates() }
                             self.updateNowPlayingInfoIfNeeded()
                         }
                     }
@@ -534,13 +606,44 @@ class CDVMusicPlayer: NSObject {
         }
         print("[CDVMusicPlayer] activateForCarPlay: setting up remote commands and monitoring")
 
+        // Mark that we're in initial setup - prevents auto-play in loadCurrentTrack()
+        // This avoids double playback (plugin + app playing simultaneously)
+        isInitialCarPlaySetup = true
+
         // IMPORTANT: Capture the existing playback state BEFORE we take over
         // This allows us to sync position when the main app was already playing
         captureExistingPlaybackState()
 
+        // NOTE: We do NOT set isPlaying = true here anymore.
+        // The applyCapturedPlaybackState() method will handle resuming playback
+        // after the JS side has been notified and had a chance to pause the app's player.
+        // This prevents double playback during initial CarPlay connection.
+
         isCarPlayActive = true
         setupRemoteCommandCenter()
         startDebugMonitoring()
+    }
+
+    /// Called when initial CarPlay setup is complete
+    /// This clears the isInitialCarPlaySetup flag, allowing normal playback behavior
+    @objc func completeInitialSetup() {
+        guard isInitialCarPlaySetup else {
+            print("[CDVMusicPlayer] completeInitialSetup: not in initial setup, skipping")
+            return
+        }
+        print("[CDVMusicPlayer] completeInitialSetup: initial setup complete, enabling normal playback")
+        isInitialCarPlaySetup = false
+
+        // Now apply the captured playback state if we have one
+        // This will seek to the correct position and resume playback if needed
+        if pendingSyncPosition != nil || pendingSyncWasPlaying {
+            print("[CDVMusicPlayer] completeInitialSetup: has pending sync state, will apply when item ready")
+            // If item is already ready, apply immediately
+            if player.currentItem?.status == .readyToPlay {
+                applyCapturedPlaybackState()
+            }
+            // Otherwise, observeValue will call applyCapturedPlaybackState when ready
+        }
     }
 
     /// Captures the current playback state from MPNowPlayingInfoCenter
@@ -943,9 +1046,12 @@ class CDVMusicPlayer: NSObject {
 
             // Apply any captured playback state from the main app
             // This enables seamless transition when CarPlay connects while music is playing
-            if pendingSyncPosition != nil {
+            // BUT only after initial setup is complete (to prevent double playback)
+            if pendingSyncPosition != nil && !isInitialCarPlaySetup {
                 print("[CDVMusicPlayer][sync] Item ready - applying captured playback state")
                 applyCapturedPlaybackState()
+            } else if pendingSyncPosition != nil && isInitialCarPlaySetup {
+                print("[CDVMusicPlayer][sync] Item ready but still in initial setup - deferring playback state application")
             }
         case .failed:
             print("[CDVMusicPlayer][ERROR] AVPlayerItem failed: \(item.error?.localizedDescription ?? "unknown error")")
