@@ -36,7 +36,7 @@ class CDVMusicPlayer: NSObject {
     private func extractTrackData(_ item: [String: Any]) -> [String: Any] {
         return CDVQueueStorage.extractFlattenedData(item)
     }
-    
+
     @objc var currentTrack: [String: Any]? {
         guard currentIndex < queue.count else { return nil }
         return extractTrackData(queue[currentIndex])
@@ -51,21 +51,21 @@ class CDVMusicPlayer: NSObject {
         // with cordova-plugin-music-controls2 which also registers MPRemoteCommandCenter handlers.
         // Call activateForCarPlay() when CarPlay connects and deactivateForCarPlay() when it disconnects.
     }
-    
+
     deinit {
         debugTimer?.invalidate()
         debugTimer = nil
     }
-    
+
     private func startDebugMonitoring() {
         debugTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.logStoredTrackInfo()
         }
     }
-    
+
     private func logStoredTrackInfo() {
         let resolvedId = CDVQueueStorage.currentTrackId()
-        
+
         // Detect if current_track changed and sync currentIndex
         if let resolvedId, resolvedId != lastKnownTrackId {
             print("[CDVMusicPlayer] Track change detected: \(lastKnownTrackId ?? "none") -> \(resolvedId)")
@@ -73,10 +73,10 @@ class CDVMusicPlayer: NSObject {
             syncCurrentIndexToTrackId(resolvedId)
         }
     }
-    
+
     private func syncCurrentIndexToTrackId(_ trackId: String) {
         guard !queue.isEmpty else { return }
-        
+
         // Search for the track in the queue by idAlbumTrack or id
         if let idx = queue.firstIndex(where: { item in
             guard let data = item["data"] as? [String: Any] else { return false }
@@ -107,7 +107,7 @@ class CDVMusicPlayer: NSObject {
             // Track not found in current queue - mobile app may have changed playlists
             print("[CDVMusicPlayer] Track ID \(trackId) not found in current queue, reloading queue from disk...")
             reloadQueueForced()
-            
+
             // Try again with the newly loaded queue
             if let idx = queue.firstIndex(where: { item in
                 guard let data = item["data"] as? [String: Any] else { return false }
@@ -122,7 +122,7 @@ class CDVMusicPlayer: NSObject {
                 loadCurrentTrack()
                 updateNowPlayingInfo()
                 CDVQueueStorage.setCurrentTrackId(trackId)
-                
+
                 // Notify manager to update CarPlay UI with new queue
                 manager?.refreshQueueUI()
             } else {
@@ -147,6 +147,11 @@ class CDVMusicPlayer: NSObject {
 
     // MARK: - Playback
     @objc func play() {
+        // IMPORTANT: Pause the app's AVPlayer before CarPlay starts playing
+        // This prevents double playback when user selects track from CarPlay UI
+        // while the app was already playing something
+        pauseAppAudioPlayer()
+
         let hadItem = (player.currentItem != nil)
         if !hadItem { print("[CDVMusicPlayer][diag] play(): currentItem is nil -> calling loadCurrentTrack()") }
         if player.currentItem == nil { loadCurrentTrack() }
@@ -801,6 +806,43 @@ class CDVMusicPlayer: NSObject {
         print("[CDVMusicPlayer] stopDebugMonitoring: timer invalidated")
     }
 
+    // MARK: - App Audio Player Control
+
+    /// Pauses the app's AVPlayer (from cordova-plugin-media) to prevent double playback.
+    /// This is called before CarPlay starts playing to ensure only one audio source is active.
+    ///
+    /// The app uses cordova-plugin-media which creates an AVPlayer instance for streaming.
+    /// When CarPlay takes over playback, we need to pause that player first.
+    private func pauseAppAudioPlayer() {
+        // Get reference to the main plugin to access commandDelegate
+        guard let plugin = CDVAutoMusicPlugin.sharedInstance(),
+              let commandDelegate = plugin.commandDelegate else {
+            print("[CDVMusicPlayer] pauseAppAudioPlayer: cannot access commandDelegate")
+            return
+        }
+
+        // Get the CDVSound plugin instance (cordova-plugin-media)
+        // The plugin is registered with the name "Sound" in plugin.xml
+        guard let soundPlugin = commandDelegate.getCommandInstance("Sound") else {
+            print("[CDVMusicPlayer] pauseAppAudioPlayer: CDVSound plugin not found")
+            return
+        }
+
+        // Access the avPlayer property using KVC (Key-Value Coding)
+        // CDVSound.m declares: AVPlayer* avPlayer; as an instance variable for streaming playback
+        if let avPlayer = (soundPlugin as AnyObject).value(forKey: "avPlayer") as? AVPlayer {
+            let wasPlaying = avPlayer.rate > 0
+            if wasPlaying {
+                print("[CDVMusicPlayer] pauseAppAudioPlayer: ⏸️ pausing app's AVPlayer (rate was \(avPlayer.rate))")
+                avPlayer.pause()
+            } else {
+                print("[CDVMusicPlayer] pauseAppAudioPlayer: app's AVPlayer already paused/stopped")
+            }
+        } else {
+            print("[CDVMusicPlayer] pauseAppAudioPlayer: no avPlayer instance in CDVSound (app may not be using streaming)")
+        }
+    }
+
     @objc func updatePlaybackState(_ state: String) { /* could map to MPNowPlayingInfoCenter states if needed */ }
 
     @objc func updateNowPlayingInfo() {
@@ -947,14 +989,14 @@ class CDVMusicPlayer: NSObject {
         let items = queueItemsForPersistence()
         do {
             var data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
-            
+
             // Fix escaped slashes to match mobile app format
             // JSONSerialization escapes forward slashes as \/, but mobile app doesn't
             if let jsonString = String(data: data, encoding: .utf8) {
                 let unescaped = jsonString.replacingOccurrences(of: "\\/", with: "/")
                 data = unescaped.data(using: .utf8) ?? data
             }
-            
+
             let path = CDVQueueStorage.queueFilePath()
             let url = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
@@ -977,10 +1019,10 @@ class CDVMusicPlayer: NSObject {
         if let currentId = currentTrackIdForPersistence() {
             UserDefaults.standard.setValue(currentId, forKey: "CURRENT_TRACK_KEY")
             UserDefaults.standard.synchronize()
-            
+
             // Also call CDVQueueStorage.setCurrentTrackId to store in mobile app's format
             CDVQueueStorage.setCurrentTrackId(currentId)
-            
+
             print("[CDVMusicPlayer][persist] current track stored id=\(currentId)")
         } else {
             print("[CDVMusicPlayer][persist][WARN] current track id unavailable while persisting queue")
