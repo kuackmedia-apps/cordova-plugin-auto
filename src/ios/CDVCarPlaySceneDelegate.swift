@@ -54,12 +54,11 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
     
     func sceneDidEnterBackground(_ scene: UIScene) {
-        print("[CarPlay][SceneDelegate] sceneDidEnterBackground - CarPlay entered background")
-        // Post disconnect notification when scene enters background
-        if let plugin = CDVAutoMusicPlugin.sharedInstance(), let manager = plugin.carPlayManager {
-            print("[CarPlay][SceneDelegate] sceneDidEnterBackground - notifying manager of disconnect")
-            NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": false])
-        }
+        print("[CarPlay][SceneDelegate] sceneDidEnterBackground - CarPlay scene in background (another app in foreground)")
+        // NOTE: Do NOT send disconnect notification here!
+        // sceneDidEnterBackground is called when user switches to another app in CarPlay (Maps, Messages, etc.)
+        // but CarPlay is still connected and music continues playing.
+        // Real disconnection is handled by didDisconnect() and UIScene.didDisconnectNotification
     }
     
     func sceneWillEnterForeground(_ scene: UIScene) {
