@@ -188,7 +188,25 @@
       <true/>
     </config-file>
 
+    <!-- Siri Integration -->
+    <config-file target="*-Info.plist" parent="NSSiriUsageDescription">
+      <string>This app uses Siri to play music with voice commands.</string>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="NSUserActivityTypes">
+      <array>
+        <string>INPlayMediaIntent</string>
+      </array>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="INIntentsSupported">
+      <array>
+        <string>INPlayMediaIntent</string>
+      </array>
+    </config-file>
+
     <!-- Swift Source files (Objective-C versions removed) -->
+    <source-file src="src/ios/CDVSiriIntentHandler.swift" />
     <source-file src="src/ios/CDVAutoMusicPlugin.swift" />
     <source-file src="src/ios/CDVCarPlayManager.swift" />
     <source-file src="src/ios/CDVCarPlaySceneDelegate.swift" />
@@ -233,5 +251,6 @@
 
     <framework src="MediaPlayer.framework" />
     <framework src="CarPlay.framework" weak="true" />
+    <framework src="Intents.framework" />
   </platform>
 </plugin>

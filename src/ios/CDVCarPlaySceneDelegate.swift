@@ -12,11 +12,11 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     deinit {
         print("[CarPlay][SceneDelegate] deinit - scene being deallocated")
-        // Post disconnect notification when scene is deallocated
-        if let plugin = CDVAutoMusicPlugin.sharedInstance(), let manager = plugin.carPlayManager {
-            print("[CarPlay][SceneDelegate] deinit - notifying manager of disconnect")
-            NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": false])
-        }
+        // NOTE: Do NOT send disconnect notification here.
+        // Real disconnection is reliably handled by:
+        // 1. templateApplicationScene(_:didDisconnect:) - CPTemplateApplicationSceneDelegate protocol
+        // 2. UIScene.didDisconnectNotification - observed by CDVCarPlayManager
+        // Sending notification here would cause false disconnects if iOS recreates the SceneDelegate.
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
