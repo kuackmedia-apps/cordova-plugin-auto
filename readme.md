@@ -11,6 +11,7 @@ This plugin allows Cordova applications to integrate with vehicle infotainment s
 - Seamless integration with Apple CarPlay and Android Auto
 - Music playlist creation and management
 - Playback controls through vehicle interface
+- **Siri voice commands for music playback (iOS)**
 - Cross-platform support (iOS and Android)
 - Simple JavaScript API for Cordova applications
 
@@ -32,6 +33,7 @@ cordova plugin add https://github.com/fmaceachen/cordova-plugin-auto.git
 - iOS 14.0+
 - Xcode 12.0+
 - CarPlay entitlement in your Apple Developer account
+- **Siri entitlement (for voice commands)**
 
 ### Android
 - Android 6.0+ (API level 23+)
@@ -155,6 +157,23 @@ Receives playback commands from the car interface (play, pause, next, previous).
 
 #### onConnectionChange(callback)
 Notifies when the connection to CarPlay/Android Auto changes.
+
+#### onSiriIntent(callback) - iOS only
+Receives Siri voice commands for music playback. Callback receives an object with:
+- `mediaName`: General search term (artist, song, or album)
+- `artistName`: Specific artist name
+- `albumName`: Specific album name
+- `mediaType`: Type of media requested (1=Music, 2=Podcast, etc.)
+
+Example:
+```javascript
+cordova.plugins.auto.onSiriIntent(function(data) {
+    console.log('Siri wants to play:', data.artistName || data.mediaName);
+    // Search your music catalog and play the requested content
+});
+```
+
+**See [SIRI_INTEGRATION.md](SIRI_INTEGRATION.md) for detailed setup instructions.**
 
 ## License
 

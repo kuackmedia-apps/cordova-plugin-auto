@@ -1,5 +1,6 @@
 import Foundation
 import Intents
+import MediaPlayer
 
 /// Handles Siri intents for music playback
 /// Detects voice commands like "Hey Siri, play Shakira on Brisamusic"
@@ -23,65 +24,97 @@ class CDVSiriIntentHandler: NSObject, INPlayMediaIntentHandling {
         print("🎤 [SiriIntentHandler] SIRI INTENT RECEIVED!")
         print("========================================")
         
-        // Extract and log detailed intent information
+        // Check if CarPlay is connected
+        let isCarPlayConnected = CDVAutoMusicPlugin.sharedInstance()?.carPlayManager?.isConnected() ?? false
+        print("🚗 [SiriIntentHandler] CarPlay connected: \(isCarPlayConnected)")
+        
+        // Extract search parameters
+        var searchParams: [String: Any] = [:]
+        
         if let mediaSearch = intent.mediaSearch {
             print("🎵 Media Name: \(mediaSearch.mediaName ?? "none")")
             print("🎤 Artist Name: \(mediaSearch.artistName ?? "none")")
             print("💿 Album Name: \(mediaSearch.albumName ?? "none")")
             print("📱 Media Type: \(mediaSearch.mediaType.rawValue)")
-            print("🎼 Genre Names: \(mediaSearch.genreNames ?? [])")
-            print("🎧 Mood Names: \(mediaSearch.moodNames ?? [])")
-            print("📻 Reference: \(String(describing: mediaSearch.reference))")
+            
+            if let mediaName = mediaSearch.mediaName {
+                searchParams["mediaName"] = mediaName
+            }
+            if let artistName = mediaSearch.artistName {
+                searchParams["artistName"] = artistName
+            }
+            if let albumName = mediaSearch.albumName {
+                searchParams["albumName"] = albumName
+            }
+            searchParams["mediaType"] = mediaSearch.mediaType.rawValue
         } else {
             print("⚠️ No media search in intent")
         }
         
-        // Log playback mode
-        if #available(iOS 13.0, *) {
-            print("▶️ Playback Mode: \(intent.playbackRepeatMode.rawValue)")
-            print("🔀 Playback Speed: \(intent.playbackSpeed ?? 1.0)")
-        }
-        
-        // Log resume playback flag
-        if #available(iOS 13.4, *) {
-            let resumePlayback = intent.resumePlayback as? Bool ?? false
-            print("⏯️ Resume Playback: \(resumePlayback)")
-        }
+        searchParams["isCarPlayConnected"] = isCarPlayConnected
         
         print("========================================")
         
-        // Create user activity to pass data to the app
-        let userActivity = NSUserActivity(activityType: "INPlayMediaIntent")
-        if let mediaSearch = intent.mediaSearch {
-            var userInfo: [String: Any] = [:]
-            if let mediaName = mediaSearch.mediaName {
-                userInfo["mediaName"] = mediaName
+        // Notify the plugin directly
+        DispatchQueue.main.async {
+            if let plugin = CDVAutoMusicPlugin.sharedInstance() {
+                print("🎤 [SiriIntentHandler] Notifying plugin")
+                plugin.handleSiriSearchFromIntent(searchParams: searchParams)
+            } else {
+                print("⚠️ [SiriIntentHandler] Plugin not available, posting notification")
+                NotificationCenter.default.post(
+                    name: Notification.Name("CDVPendingSiriIntent"),
+                    object: nil,
+                    userInfo: searchParams
+                )
             }
-            if let artistName = mediaSearch.artistName {
-                userInfo["artistName"] = artistName
-            }
-            if let albumName = mediaSearch.albumName {
-                userInfo["albumName"] = albumName
-            }
-            userInfo["mediaType"] = mediaSearch.mediaType.rawValue
-            userActivity.userInfo = userInfo
         }
         
-        // Respond to Siri that we're handling the request
-        let response = INPlayMediaIntentResponse(code: .handleInApp, userActivity: userActivity)
+        // Return success - this tells Siri the intent was handled
+        // Using .success instead of .handleInApp to avoid "doesn't allow" error
+        let response = INPlayMediaIntentResponse(code: .success, userActivity: nil)
         completion(response)
         
-        print("✅ [SiriIntentHandler] Intent handled - opening app with user activity")
+        print("✅ [SiriIntentHandler] Responding with .success")
     }
     
-    // MARK: - Optional: Resolve methods for better Siri interaction
+    // MARK: - Resolution methods (REQUIRED for Siri to work properly)
+    
+    /// Confirm the intent can be handled
+    @objc func confirm(intent: INPlayMediaIntent, completion: @escaping (INPlayMediaIntentResponse) -> Void) {
+        print("🎤 [SiriIntentHandler] Confirming intent...")
+        
+        // Return ready to play - this confirms we can handle the request
+        let response = INPlayMediaIntentResponse(code: .ready, userActivity: nil)
+        completion(response)
+        
+        print("✅ [SiriIntentHandler] Confirmed with .ready")
+    }
     
     /// Resolve media items before handling (optional but recommended)
     @objc func resolveMediaItems(for intent: INPlayMediaIntent, with completion: @escaping ([INPlayMediaMediaItemResolutionResult]) -> Void) {
         print("🔍 [SiriIntentHandler] Resolving media items...")
         
         // For now, we'll let the app handle the search
-        // Return .needsValue to indicate we need more info, or .notRequired if app will handle it
+        // Return .notRequired to indicate app will handle it
         completion([INPlayMediaMediaItemResolutionResult.notRequired()])
+    }
+    
+    /// Resolve playback speed
+    @objc func resolvePlaybackSpeed(for intent: INPlayMediaIntent, with completion: @escaping (INPlayMediaPlaybackSpeedResolutionResult) -> Void) {
+        print("🔍 [SiriIntentHandler] Resolving playback speed...")
+        completion(.notRequired())
+    }
+    
+    /// Resolve shuffle mode
+    @objc func resolvePlayShuffled(for intent: INPlayMediaIntent, with completion: @escaping (INBooleanResolutionResult) -> Void) {
+        print("🔍 [SiriIntentHandler] Resolving shuffle mode...")
+        completion(.notRequired())
+    }
+    
+    /// Resolve repeat mode
+    @objc func resolveResumePlayback(for intent: INPlayMediaIntent, with completion: @escaping (INBooleanResolutionResult) -> Void) {
+        print("🔍 [SiriIntentHandler] Resolving resume playback...")
+        completion(.notRequired())
     }
 }

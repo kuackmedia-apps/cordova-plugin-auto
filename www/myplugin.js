@@ -334,6 +334,111 @@ var exec = require('cordova/exec');
         [url, metadata || {}]
       );
     },
+
+    // ---- Siri Integration (iOS only) ----
+    
+    /**
+     * Request Siri authorization from the user.
+     * This should be called early in your app to prompt for Siri permissions.
+     * @param {function} callback - Called with status: 'authorized', 'denied', 'restricted', 'notDetermined', or 'unknown'
+     * @param {function} errorCb - Called on error
+     */
+    requestSiriAuthorization: function(callback, errorCb) {
+      console.log('[auto] requestSiriAuthorization called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri authorization is only supported on iOS');
+        if (typeof errorCb === 'function') errorCb('Not supported on this platform');
+        return;
+      }
+
+      exec(
+        function(status) {
+          console.log('[auto] Siri authorization status:', status);
+          if (typeof callback === 'function') callback(status);
+        },
+        function(err) {
+          console.error('[auto] Siri authorization error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'requestSiriAuthorization',
+        []
+      );
+    },
+
+    /**
+     * Get current Siri authorization status without prompting the user.
+     * @param {function} callback - Called with status: 'authorized', 'denied', 'restricted', 'notDetermined', or 'unknown'
+     * @param {function} errorCb - Called on error
+     */
+    getSiriAuthorizationStatus: function(callback, errorCb) {
+      console.log('[auto] getSiriAuthorizationStatus called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri authorization is only supported on iOS');
+        if (typeof errorCb === 'function') errorCb('Not supported on this platform');
+        return;
+      }
+
+      exec(
+        function(status) {
+          console.log('[auto] Current Siri status:', status);
+          if (typeof callback === 'function') callback(status);
+        },
+        function(err) {
+          console.error('[auto] Siri status check error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'getSiriAuthorizationStatus',
+        []
+      );
+    },
+
+    onSiriIntent: function(callback) {
+      console.log('[auto] onSiriIntent called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri intents are only supported on iOS');
+        return;
+      }
+
+      exec(
+        function(data) {
+          console.log('[auto] Siri intent received:', data);
+          if (typeof callback === 'function') {
+            callback(data);
+          }
+        },
+        function(err) {
+          console.error('[auto] Siri intent listener error:', err);
+        },
+        SERVICE,
+        'registerSiriIntentListener',
+        []
+      );
+    },
+
+    playSiriSearchResults: function(cb, errorCb) {
+      console.log('[auto] playSiriSearchResults called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri is only supported on iOS');
+        if (typeof errorCb === 'function') errorCb('Not supported on this platform');
+        return;
+      }
+
+      exec(
+        function success(result) {
+          console.log('[auto] Siri search results playback started');
+          if (typeof cb === 'function') cb(result);
+        },
+        function error(err) {
+          console.error('[auto] Error starting Siri playback:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'playSiriSearchResults',
+        []
+      );
+    },
   }
 
   module.exports = AutoPlugin;

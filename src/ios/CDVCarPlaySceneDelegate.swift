@@ -1,5 +1,6 @@
 import UIKit
 import CarPlay
+import Intents
 
 @objc(CDVCarPlaySceneDelegate)
 class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
@@ -67,6 +68,30 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     
     func sceneDidBecomeActive(_ scene: UIScene) {
         print("[CarPlay][SceneDelegate] sceneDidBecomeActive - CarPlay became active")
+    }
+    
+    // MARK: - Siri Intent Handling for CarPlay
+    
+    /// Called when Siri triggers a user activity while CarPlay scene is active
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        print("🎤 [CarPlay][SceneDelegate] scene continue userActivity: \(userActivity.activityType)")
+        handleCarPlaySiriIntent(userActivity)
+    }
+    
+    /// Handle Siri user activity in CarPlay context
+    private func handleCarPlaySiriIntent(_ userActivity: NSUserActivity) {
+        print("🎤 [CarPlay][SceneDelegate] handleCarPlaySiriIntent: \(userActivity.activityType)")
+        
+        if userActivity.activityType == "INPlayMediaIntent" {
+            print("🎤 [CarPlay][SceneDelegate] Detected INPlayMediaIntent from Siri in CarPlay!")
+            
+            if let plugin = CDVAutoMusicPlugin.sharedInstance() {
+                print("🎤 [CarPlay][SceneDelegate] Forwarding Siri intent to plugin (CarPlay active)")
+                plugin.handleSiriIntent(userActivity: userActivity)
+            } else {
+                print("⚠️ [CarPlay][SceneDelegate] Plugin not available")
+            }
+        }
     }
 }
 

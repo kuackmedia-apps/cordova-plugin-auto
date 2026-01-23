@@ -10,6 +10,7 @@
   <!-- Hooks that run late in the build process, after other plugins have generated their files -->
   <hook type="before_compile" src="hooks/modify_file_provider.js"/>
   <hook type="before_build" src="hooks/modify_file_provider.js"/>
+  <hook type="after_prepare" src="hooks/add_siri_appdelegate.js"/>
 
   <js-module src="www/myplugin.js" name="auto">
       <clobbers target="cordova.plugins.auto" />
@@ -187,22 +188,66 @@
     <config-file target="*-Info.plist" parent="com.apple.developer.carplay-audio">
       <true/>
     </config-file>
+    
+    <!-- UIBackgroundModes for audio playback (required for Siri in CarPlay) -->
+    <config-file target="*-Info.plist" parent="UIBackgroundModes">
+      <array>
+        <string>audio</string>
+      </array>
+    </config-file>
 
     <!-- Siri Integration -->
     <config-file target="*-Info.plist" parent="NSSiriUsageDescription">
       <string>This app uses Siri to play music with voice commands.</string>
     </config-file>
+    
+    <!-- Declare supported media categories for Siri -->
+    <config-file target="*-Info.plist" parent="NSMusicUsageDescription">
+      <string>This app plays music through CarPlay and supports voice commands.</string>
+    </config-file>
 
     <config-file target="*-Info.plist" parent="NSUserActivityTypes">
       <array>
         <string>INPlayMediaIntent</string>
+        <string>INSearchForMediaIntent</string>
       </array>
     </config-file>
 
     <config-file target="*-Info.plist" parent="INIntentsSupported">
       <array>
         <string>INPlayMediaIntent</string>
+        <string>INSearchForMediaIntent</string>
       </array>
+    </config-file>
+    
+    <!-- CRITICAL: Declare supported media categories for Siri Media Intents -->
+    <!-- This tells Siri what types of media your app can play -->
+    <config-file target="*-Info.plist" parent="INSupportedMediaCategories">
+      <array>
+        <string>INMediaCategoryGeneral</string>
+        <string>INMediaCategoryMusic</string>
+      </array>
+    </config-file>
+    
+    <!-- Tell iOS this app can handle its own intents (not requiring extension) -->
+    <config-file target="*-Info.plist" parent="INAppSupportsIntents">
+      <true/>
+    </config-file>
+    
+    <!-- Declare media player identifier for Siri -->
+    <config-file target="*-Info.plist" parent="MPMediaLibrary">
+      <dict>
+        <key>MPMediaLibraryShowMusic</key>
+        <true/>
+      </dict>
+    </config-file>
+
+    <!-- Add Siri entitlement -->
+    <config-file target="*-Debug.plist" parent="com.apple.developer.siri">
+      <true/>
+    </config-file>
+    <config-file target="*-Release.plist" parent="com.apple.developer.siri">
+      <true/>
     </config-file>
 
     <!-- Swift Source files (Objective-C versions removed) -->
