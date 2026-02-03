@@ -57,7 +57,10 @@ class MusicApiImpl: MusicApi {
     func getArtistTracks(artistId: String, completion: @escaping (Result<ArtistTracks, Error>) -> Void) {
         let pathURL = baseURL.appendingPathComponent("artists").appendingPathComponent(artistId).appendingPathComponent("tracks")
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "limit", value: "40")]
+        components?.queryItems = [
+            URLQueryItem(name: "order", value: "popularity"),
+            URLQueryItem(name: "limit", value: "100")
+        ]
         guard let url = components?.url else {
             completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid artists URL"])) )
             return
