@@ -265,6 +265,15 @@ class CDVAutoMusicPlugin: CDVPlugin {
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 
+    // MARK: - Navigation
+    @objc(updateNavigation:)
+    func updateNavigation(command: CDVInvokedUrlCommand) {
+        print("[AutoMusicPlugin] updateNavigation called")
+        carPlayManager?.refreshNavigation()
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: "Navigation updated successfully")
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
     // MARK: - Auth Config (UserDefaults bridge)
     @objc(setAuthConfig:)
     func setAuthConfig(command: CDVInvokedUrlCommand) {

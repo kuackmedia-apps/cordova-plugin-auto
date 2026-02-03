@@ -663,6 +663,27 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         setupTemplates(controller)
     }
 
+    /// Refresh the CarPlay navigation tree.
+    /// This reloads navigation data from JSON files and rebuilds the CarPlay templates.
+    /// Equivalent to Android's MusicLibraryService.refreshNavigation()
+    @objc func refreshNavigation() {
+        print("[CarPlay] refreshNavigation: Starting navigation refresh")
+        guard let controller = interfaceController else {
+            print("[CarPlay] refreshNavigation: No interface controller available")
+            return
+        }
+        guard connected else {
+            print("[CarPlay] refreshNavigation: CarPlay not connected, skipping refresh")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            print("[CarPlay] refreshNavigation: Rebuilding templates with updated data")
+            self.setupTemplates(controller)
+            print("[CarPlay] refreshNavigation: Navigation refresh completed")
+        }
+    }
+
     // MARK: - CPTemplateApplicationSceneDelegate
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
         print("[CarPlay] didConnect: interfaceController received - starting sequential setup")
