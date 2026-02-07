@@ -439,6 +439,42 @@ var exec = require('cordova/exec');
         []
       );
     },
+
+    /**
+     * Search for music and start playback (works like Siri search)
+     * Can be used to add a search button in the app that triggers CarPlay/Auto search
+     * @param {object} searchParams - Search parameters
+     * @param {string} searchParams.query - The search query (e.g., artist name, song title)
+     * @param {string} [searchParams.artistName] - Optional artist name hint
+     * @param {string} [searchParams.albumName] - Optional album name hint
+     * @param {function} callback - Called on success
+     * @param {function} errorCb - Called on error
+     */
+    searchAndPlay: function(searchParams, callback, errorCb) {
+      console.log('[auto] searchAndPlay called', searchParams);
+      
+      var params = {
+        mediaName: searchParams.query || searchParams.mediaName || '',
+        artistName: searchParams.artistName || null,
+        albumName: searchParams.albumName || null,
+        mediaType: searchParams.mediaType || 0,
+        isCarPlayConnected: false // Will be determined by native side
+      };
+
+      exec(
+        function success(result) {
+          console.log('[auto] searchAndPlay success:', result);
+          if (typeof callback === 'function') callback(result);
+        },
+        function error(err) {
+          console.error('[auto] searchAndPlay error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'searchAndPlay',
+        [params]
+      );
+    },
   }
 
   module.exports = AutoPlugin;

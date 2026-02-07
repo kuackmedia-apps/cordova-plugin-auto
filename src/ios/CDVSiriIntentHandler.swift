@@ -55,11 +55,17 @@ class CDVSiriIntentHandler: NSObject, INPlayMediaIntentHandling {
         
         print("========================================")
         
-        // Notify the plugin directly
+        // Handle the search natively in CarPlay manager
         DispatchQueue.main.async {
             if let plugin = CDVAutoMusicPlugin.sharedInstance() {
                 print("🎤 [SiriIntentHandler] Notifying plugin")
                 plugin.handleSiriSearchFromIntent(searchParams: searchParams)
+                
+                // Also trigger native search in CarPlay manager
+                if let carPlayManager = plugin.carPlayManager {
+                    print("🔍 [SiriIntentHandler] Triggering native search in CarPlay manager")
+                    carPlayManager.handleSiriSearch(searchParams: searchParams)
+                }
             } else {
                 print("⚠️ [SiriIntentHandler] Plugin not available, posting notification")
                 NotificationCenter.default.post(

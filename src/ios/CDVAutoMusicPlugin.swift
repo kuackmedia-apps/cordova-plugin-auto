@@ -589,4 +589,30 @@ class CDVAutoMusicPlugin: CDVPlugin {
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
     }
+    
+    /// Search for music and start playback - can be triggered from app UI
+    /// This provides the same functionality as Siri search but callable from JavaScript
+    @objc(searchAndPlay:)
+    func searchAndPlay(command: CDVInvokedUrlCommand) {
+        print("🔍 [AutoMusicPlugin] searchAndPlay called")
+        
+        guard let searchParams = command.argument(at: 0) as? [String: Any] else {
+            print("⚠️ [AutoMusicPlugin] searchAndPlay: Invalid parameters")
+            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Invalid search parameters")
+            commandDelegate.send(result, callbackId: command.callbackId)
+            return
+        }
+        
+        print("🔍 [AutoMusicPlugin] Search params: \(searchParams)")
+        
+        // Add CarPlay connection status
+        var params = searchParams
+        params["isCarPlayConnected"] = carPlayManager?.isConnected() ?? false
+        
+        // Trigger native search in CarPlay manager
+        carPlayManager?.handleSiriSearch(searchParams: params)
+        
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: "Search started")
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
 }

@@ -201,7 +201,10 @@ function modifyAppDelegate(iosPath, projectName) {
             let modified = false;
 
             // Add continueUserActivity method if not present
-            if (!content.includes('application:continueUserActivity:restorationHandler:')) {
+            // Check for the method signature more thoroughly
+            const hasContinueUserActivity = content.match(/- \(BOOL\)\s*application:\s*\(UIApplication\s*\*\)\s*application\s+continueUserActivity:/);
+            
+            if (!hasContinueUserActivity) {
                 const continueUserActivityMethod = `
 #pragma mark - Siri Intent Handling
 
@@ -226,14 +229,19 @@ function modifyAppDelegate(iosPath, projectName) {
     return NO;
 }
 `;
-                // Insert before @end
-                content = content.replace('@end', continueUserActivityMethod + '\n@end');
+                // Insert before the last @end
+                const lastEndIndex = content.lastIndexOf('@end');
+                content = content.substring(0, lastEndIndex) + continueUserActivityMethod + '\n@end\n';
                 console.log('Added continueUserActivity method to AppDelegate.m');
                 modified = true;
+            } else {
+                console.log('continueUserActivity method already exists in AppDelegate.m, skipping');
             }
 
             // Add handlerForIntent method ONLY if not already present
-            if (!content.includes('handlerForIntent:')) {
+            const hasHandlerForIntent = content.match(/- \(id\)\s*application:\s*\(UIApplication\s*\*\)\s*application\s+handlerForIntent:/);
+            
+            if (!hasHandlerForIntent) {
                 const handlerForIntentMethod = `
 - (id)application:(UIApplication *)application handlerForIntent:(INIntent *)intent API_AVAILABLE(ios(13.0)) {
     NSLog(@"🎤 [AppDelegate] handlerForIntent called");
@@ -246,8 +254,9 @@ function modifyAppDelegate(iosPath, projectName) {
     return nil;
 }
 `;
-                // Insert before @end
-                content = content.replace('@end', handlerForIntentMethod + '\n@end');
+                // Insert before the last @end
+                const lastEndIndex = content.lastIndexOf('@end');
+                content = content.substring(0, lastEndIndex) + handlerForIntentMethod + '\n@end\n';
                 console.log('Added handlerForIntent method to AppDelegate.m');
                 modified = true;
             } else {

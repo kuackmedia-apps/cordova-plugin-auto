@@ -175,16 +175,14 @@ class CDVLocalStorageUtils: NSObject {
         for (folder, filename) in candidates {
             let path = (documentsPath as NSString).appendingPathComponent("\(folder)/\(filename)")
             if FileManager.default.fileExists(atPath: path) {
-                print("\(TAG) Found local image at: \(path)")
                 return path
             }
         }
 
-        // Check NoCloud directory as fallback
+        // Search in NoCloud
         for (folder, filename) in candidates {
             let path = (noCloudPath as NSString).appendingPathComponent("\(folder)/\(filename)")
             if FileManager.default.fileExists(atPath: path) {
-                print("\(TAG) Found local image at: \(path)")
                 return path
             }
         }
@@ -263,7 +261,6 @@ class CDVLocalStorageUtils: NSObject {
     @objc static func getTrackCoverPathFromQueueItem(_ queueItem: [String: Any]) -> String? {
         // The queue item has structure: { "data": { ..., "album": { "id": X, ... }, ... } }
         guard let data = queueItem["data"] as? [String: Any] else {
-            print("\(TAG) getTrackCoverPathFromQueueItem: no 'data' field in queue item")
             return nil
         }
 
@@ -271,7 +268,6 @@ class CDVLocalStorageUtils: NSObject {
         if let albumDict = data["album"] as? [String: Any],
            let albumId = albumDict["id"] {
             let albumIdStr = String(describing: albumId)
-            print("\(TAG) getTrackCoverPathFromQueueItem: looking for album cover with albumId=\(albumIdStr)")
             if let path = getLocalImagePath(itemType: "album", itemId: albumIdStr) {
                 return path
             }
@@ -280,11 +276,9 @@ class CDVLocalStorageUtils: NSObject {
         // Fallback: try track's own ID as cover
         if let trackId = data["id"] {
             let trackIdStr = String(describing: trackId)
-            print("\(TAG) getTrackCoverPathFromQueueItem: fallback to track cover with trackId=\(trackIdStr)")
             return getLocalImagePath(itemType: "track", itemId: trackIdStr)
         }
 
-        print("\(TAG) getTrackCoverPathFromQueueItem: no album or track ID found")
         return nil
     }
 }

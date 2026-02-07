@@ -15,6 +15,7 @@ class CDVMusicPlayer: NSObject {
     private var nowPlayingTemplate: CPNowPlayingTemplate?
     private var timeObserverToken: Any?
     private let artworkCache = NSCache<NSURL, UIImage>()
+    private var lastLocalArtworkPath: String?  // Track to avoid log spam
     private var forceClearOnNextApply: Bool = false
     private var lastQueueModifiedDate: Date?
     private var debugTimer: Timer?
@@ -840,7 +841,11 @@ class CDVMusicPlayer: NSObject {
         }()
         if let localImage = localImagePath {
             if let image = UIImage(contentsOfFile: localImage) {
-                print("[CDVMusicPlayer][ART] Using LOCAL artwork: \(localImage)")
+                // Only log when artwork path changes to avoid log spam
+                if lastLocalArtworkPath != localImage {
+                    print("[CDVMusicPlayer][ART] Using LOCAL artwork: \(localImage)")
+                    lastLocalArtworkPath = localImage
+                }
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 info[MPMediaItemPropertyArtwork] = artwork
             }

@@ -8,6 +8,18 @@ struct AnyMediaItem: MediaItem, Codable {
     var id: String { base.id }
     var itemType: String { base.itemType }
     var itemStyle: String { base.itemStyle }
+    
+    /// Get the display name from the underlying concrete type
+    var name: String? {
+        switch base {
+        case let v as Track: return v.name
+        case let v as PlayListItem: return v.name
+        case let v as Tag: return v.name
+        case let v as AlbumItem: return v.title
+        case let v as Artist: return v.name
+        default: return nil
+        }
+    }
 
     init(_ base: MediaItem) {
         self.base = base
