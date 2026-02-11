@@ -25,6 +25,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
         NotificationCenter.default.addObserver(self, selector: #selector(carPlayConnectionChanged(_:)), name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(mediaTrackChanged(_:)), name: Notification.Name("CDVMediaTrackChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(playbackStateChanged(_:)), name: Notification.Name("CDVPlaybackStateChanged"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(nativeQueueUpdated(_:)), name: Notification.Name("CDVNativeQueueUpdated"), object: nil)
         
         // Listen for pending Siri intents that arrived before plugin was ready
         NotificationCenter.default.addObserver(self, selector: #selector(handlePendingSiriIntent(_:)), name: Notification.Name("CDVPendingSiriIntent"), object: nil)
@@ -97,6 +98,8 @@ class CDVAutoMusicPlugin: CDVPlugin {
             mediaUpdateCallbackId = command.callbackId
         case "onPlaybackStateChange":
             playbackStateCallbackId = command.callbackId
+        case "onNativeQueueUpdate":
+            queueUpdateCallbackId = command.callbackId
         default:
             let err = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Unknown event: \(event)")
             commandDelegate.send(err, callbackId: command.callbackId)
@@ -392,6 +395,37 @@ class CDVAutoMusicPlugin: CDVPlugin {
         result?.setKeepCallbackAs(true)
         commandDelegate.send(result, callbackId: cb)
         print("[AutoMusicPlugin] playbackStateChanged: sent event to JS")
+    }
+
+    /// Called when native code (Siri/CarPlay) updates the queue
+    /// This notifies JavaScript to reload its queue from storage and sync UI
+    @objc private func nativeQueueUpdated(_ note: Notification) {
+        let isConnected = carPlayManager?.isConnected() ?? false
+        print("[AutoMusicPlugin] nativeQueueUpdated: connected=\(isConnected) callbackId=\(queueUpdateCallbackId ?? "nil")")
+        
+        // Build payload with queue info
+        var payload: [String: Any] = [
+            "source": note.userInfo?["source"] as? String ?? "native",
+            "queueCount": carPlayManager?.musicPlayer?.queue.count ?? 0
+        ]
+        
+        // Include current track info if available
+        if let currentTrack = carPlayManager?.musicPlayer?.currentTrack {
+            payload["currentTrack"] = currentTrack
+        }
+        if let currentIndex = carPlayManager?.musicPlayer?.currentIndex {
+            payload["currentIndex"] = currentIndex
+        }
+        
+        // Send to JavaScript callback if registered
+        if let cb = queueUpdateCallbackId {
+            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
+            result?.setKeepCallbackAs(true)
+            commandDelegate.send(result, callbackId: cb)
+            print("[AutoMusicPlugin] nativeQueueUpdated: sent event to JS with \(payload["queueCount"] ?? 0) tracks")
+        } else {
+            print("[AutoMusicPlugin] nativeQueueUpdated: no callback registered, skipping")
+        }
     }
     
     // MARK: - Siri Intent Handling

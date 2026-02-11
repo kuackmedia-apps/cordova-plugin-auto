@@ -75,11 +75,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             print("[CarPlay] Scene disconnected: CarPlay scene removed")
             if connected {
                 connected = false
+                isRootTemplateSet = false
+                // CRITICAL: Stop the CarPlay player to prevent double playback
+                musicPlayer.deactivateForCarPlay()
                 NotificationCenter.default.post(
                     name: Notification.Name("CDVCarPlayConnectionChanged"),
                     object: nil,
                     userInfo: ["connected": false]
                 )
+                interfaceController = nil
             }
         }
     }
@@ -1119,8 +1123,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
 
     /// Load tracks for an offline album or playlist and start playback
-    private func loadOfflineTracksAndPlay(itemType: String, itemId: String, itemDict: [String: Any]) {
-        print("[CarPlay] loadOfflineTracksAndPlay: type=\(itemType) id=\(itemId)")
+    private func loadOfflineTracksAndPlay(itemType: String, itemId: String, itemDict: [String: Any], fromSiri: Bool = false) {
+        print("[CarPlay] loadOfflineTracksAndPlay: type=\(itemType) id=\(itemId) fromSiri=\(fromSiri)")
 
         // Load tracks from OFFLINE_TRACKS file filtered by album/playlist ID
         // This mirrors the Android implementation in MediaItemTree.loadOfflineTracksByMediaTypeMediaId
@@ -1139,7 +1143,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if !normalized.isEmpty {
             self.isNowPlayingShown = false
             let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
-            self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId)
+            self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId, persist: true, fromNative: fromSiri)
             self.musicPlayer.play()
         }
     }
@@ -1156,6 +1160,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         
         print("🎤 [CarPlay][Siri] handleSiriSearch called")
         print("🎤 [CarPlay][Siri] mediaName='\(mediaName)' artistName='\(artistName ?? "nil")' albumName='\(albumName ?? "nil")' mediaType=\(mediaType)")
+        
+        // Ensure remote command center is set up for Siri-initiated playback
+        // This is important because Siri can trigger playback before CarPlay UI fully connects
+        musicPlayer.activateForCarPlay()
+        // Clear initial setup flag immediately since this is direct Siri playback
+        musicPlayer.clearInitialSetupFlag()
         
         // Build search query - combine available parameters
         var searchQuery = mediaName
@@ -1309,7 +1319,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             self.isNowPlayingShown = false
             let firstData = validItems.first?["data"] as? [String: Any]
             let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(validItems, selectedTrackId: selectedId, persist: true)
+            self.musicPlayer.updateQueue(validItems, selectedTrackId: selectedId, persist: true, fromNative: true)
             self.musicPlayer.play()
         }
     }
@@ -1326,7 +1336,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             self.isNowPlayingShown = false
             let firstData = queueItems.first?["data"] as? [String: Any]
             let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true)
+            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true, fromNative: true)
             self.musicPlayer.play()
         }
     }
@@ -1343,7 +1353,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             self.isNowPlayingShown = false
             let firstData = queueItems.first?["data"] as? [String: Any]
             let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true)
+            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true, fromNative: true)
             self.musicPlayer.play()
         }
     }
@@ -1413,7 +1423,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 
                 DispatchQueue.main.async {
                     self.isNowPlayingShown = false
-                    self.musicPlayer.updateQueue([entry], selectedTrackId: trackId, persist: true)
+                    self.musicPlayer.updateQueue([entry], selectedTrackId: trackId, persist: true, fromNative: true)
                     self.musicPlayer.play()
                 }
                 
@@ -1459,7 +1469,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             self.isNowPlayingShown = false
             let firstData = queueItems.first?["data"] as? [String: Any]
             let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true)
+            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true, fromNative: true)
             self.musicPlayer.play()
         }
     }
@@ -1488,8 +1498,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         
         print("✅ [CarPlay][Siri] Found offline match: \(itemTitle) (type=\(itemType), id=\(itemId))")
         
-        // Load and play offline tracks
-        loadOfflineTracksAndPlay(itemType: itemType, itemId: itemId, itemDict: item)
+        // Load and play offline tracks (fromSiri: true to notify JS about native queue update)
+        loadOfflineTracksAndPlay(itemType: itemType, itemId: itemId, itemDict: item, fromSiri: true)
     }
 
     @objc private func showNowPlayingTemplate() {

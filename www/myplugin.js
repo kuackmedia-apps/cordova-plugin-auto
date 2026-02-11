@@ -65,6 +65,26 @@ var exec = require('cordova/exec');
       );
     },
 
+    onNativeQueueUpdate: function (callback) {
+      console.log('[auto] onNativeQueueUpdate called');
+      AutoPlugin.onNativeQueueUpdateCallback = callback;
+
+      exec(
+        function (data) {
+          console.log('[auto] Native queue update received:', data);
+          if (typeof AutoPlugin.onNativeQueueUpdateCallback === 'function') {
+            AutoPlugin.onNativeQueueUpdateCallback(data);
+          }
+        },
+        function (err) {
+          console.error('AutoPlugin onNativeQueueUpdate error:', err);
+        },
+        SERVICE,
+        'registerEvents',
+        ['onNativeQueueUpdate']
+      );
+    },
+
     play: function(cb, errorCb) {
       console.log('[auto] play called');
       cordova.exec(
