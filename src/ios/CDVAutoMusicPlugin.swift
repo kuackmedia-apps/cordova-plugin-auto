@@ -1,5 +1,6 @@
 import Foundation
 import CarPlay
+import Intents
 
 @objc(CDVAutoMusicPlugin)
 class CDVAutoMusicPlugin: CDVPlugin {
@@ -14,6 +15,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
     private var queueUpdateCallbackId: String?
     private var seekCallbackId: String?
     private var customActionCallbackId: String?
+    private var siriIntentCallbackId: String?
 
     override func pluginInitialize() {
         super.pluginInitialize()
@@ -23,9 +25,32 @@ class CDVAutoMusicPlugin: CDVPlugin {
         NotificationCenter.default.addObserver(self, selector: #selector(carPlayConnectionChanged(_:)), name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(mediaTrackChanged(_:)), name: Notification.Name("CDVMediaTrackChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(playbackStateChanged(_:)), name: Notification.Name("CDVPlaybackStateChanged"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(nativeQueueUpdated(_:)), name: Notification.Name("CDVNativeQueueUpdated"), object: nil)
+        
+        // Listen for pending Siri intents that arrived before plugin was ready
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePendingSiriIntent(_:)), name: Notification.Name("CDVPendingSiriIntent"), object: nil)
+        
         print("[AutoMusicPlugin] pluginInitialize: manager created, observers registered")
         // Load any existing queue stored by the app so play can immediately reflect on CarPlay
         carPlayManager?.musicPlayer?.reloadQueue()
+        
+        // Register Siri intent handler
+        if #available(iOS 13.0, *) {
+            registerSiriIntentHandler()
+        }
+    }
+    
+    /// Handle pending Siri intent that was received before plugin was ready
+    @objc private func handlePendingSiriIntent(_ notification: Notification) {
+        print("🎤 [AutoMusicPlugin] Received pending Siri intent notification")
+        
+        if let userActivity = notification.object as? NSUserActivity {
+            print("🎤 [AutoMusicPlugin] Processing pending NSUserActivity")
+            handleSiriIntent(userActivity: userActivity)
+        } else if let userInfo = notification.userInfo as? [String: Any] {
+            print("🎤 [AutoMusicPlugin] Processing pending userInfo")
+            handleSiriSearchFromIntent(searchParams: userInfo)
+        }
     }
 
     override func onAppTerminate() {
@@ -73,6 +98,8 @@ class CDVAutoMusicPlugin: CDVPlugin {
             mediaUpdateCallbackId = command.callbackId
         case "onPlaybackStateChange":
             playbackStateCallbackId = command.callbackId
+        case "onNativeQueueUpdate":
+            queueUpdateCallbackId = command.callbackId
         default:
             let err = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Unknown event: \(event)")
             commandDelegate.send(err, callbackId: command.callbackId)
@@ -377,5 +404,258 @@ class CDVAutoMusicPlugin: CDVPlugin {
         result?.setKeepCallbackAs(true)
         commandDelegate.send(result, callbackId: cb)
         print("[AutoMusicPlugin] playbackStateChanged: sent event to JS")
+    }
+
+    /// Called when native code (Siri/CarPlay) updates the queue
+    /// This notifies JavaScript to reload its queue from storage and sync UI
+    @objc private func nativeQueueUpdated(_ note: Notification) {
+        let isConnected = carPlayManager?.isConnected() ?? false
+        print("[AutoMusicPlugin] nativeQueueUpdated: connected=\(isConnected) callbackId=\(queueUpdateCallbackId ?? "nil")")
+        
+        // Build payload with queue info
+        var payload: [String: Any] = [
+            "source": note.userInfo?["source"] as? String ?? "native",
+            "queueCount": carPlayManager?.musicPlayer?.queue.count ?? 0
+        ]
+        
+        // Include current track info if available
+        if let currentTrack = carPlayManager?.musicPlayer?.currentTrack {
+            payload["currentTrack"] = currentTrack
+        }
+        if let currentIndex = carPlayManager?.musicPlayer?.currentIndex {
+            payload["currentIndex"] = currentIndex
+        }
+        
+        // Send to JavaScript callback if registered
+        if let cb = queueUpdateCallbackId {
+            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
+            result?.setKeepCallbackAs(true)
+            commandDelegate.send(result, callbackId: cb)
+            print("[AutoMusicPlugin] nativeQueueUpdated: sent event to JS with \(payload["queueCount"] ?? 0) tracks")
+        } else {
+            print("[AutoMusicPlugin] nativeQueueUpdated: no callback registered, skipping")
+        }
+    }
+    
+    // MARK: - Siri Intent Handling
+    
+    /// Register the Siri intent handler with the system
+    @available(iOS 13.0, *)
+    private func registerSiriIntentHandler() {
+        print("🎤 [AutoMusicPlugin] Registering Siri intent handler")
+        // The intent handler is registered automatically via Info.plist INIntentsRestrictionsKey
+        // This method can be used for additional setup if needed
+    }
+    
+    /// Request Siri authorization from the user
+    /// Call this from JavaScript to prompt the user for Siri permissions
+    @objc(requestSiriAuthorization:)
+    func requestSiriAuthorization(command: CDVInvokedUrlCommand) {
+        print("🎤 [AutoMusicPlugin] requestSiriAuthorization called")
+        
+        if #available(iOS 10.0, *) {
+            INPreferences.requestSiriAuthorization { status in
+                DispatchQueue.main.async {
+                    var statusString = "unknown"
+                    switch status {
+                    case .authorized:
+                        statusString = "authorized"
+                        print("✅ [AutoMusicPlugin] Siri authorization: authorized")
+                    case .denied:
+                        statusString = "denied"
+                        print("❌ [AutoMusicPlugin] Siri authorization: denied")
+                    case .restricted:
+                        statusString = "restricted"
+                        print("⚠️ [AutoMusicPlugin] Siri authorization: restricted")
+                    case .notDetermined:
+                        statusString = "notDetermined"
+                        print("⚠️ [AutoMusicPlugin] Siri authorization: not determined")
+                    @unknown default:
+                        statusString = "unknown"
+                        print("⚠️ [AutoMusicPlugin] Siri authorization: unknown status")
+                    }
+                    
+                    let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: statusString)
+                    self.commandDelegate.send(result, callbackId: command.callbackId)
+                }
+            }
+        } else {
+            print("⚠️ [AutoMusicPlugin] Siri authorization requires iOS 10+")
+            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Siri requires iOS 10 or later")
+            self.commandDelegate.send(result, callbackId: command.callbackId)
+        }
+    }
+    
+    /// Get current Siri authorization status without prompting
+    @objc(getSiriAuthorizationStatus:)
+    func getSiriAuthorizationStatus(command: CDVInvokedUrlCommand) {
+        print("🎤 [AutoMusicPlugin] getSiriAuthorizationStatus called")
+        
+        if #available(iOS 10.0, *) {
+            let status = INPreferences.siriAuthorizationStatus()
+            var statusString = "unknown"
+            switch status {
+            case .authorized:
+                statusString = "authorized"
+            case .denied:
+                statusString = "denied"
+            case .restricted:
+                statusString = "restricted"
+            case .notDetermined:
+                statusString = "notDetermined"
+            @unknown default:
+                statusString = "unknown"
+            }
+            
+            print("🎤 [AutoMusicPlugin] Current Siri status: \(statusString)")
+            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: statusString)
+            self.commandDelegate.send(result, callbackId: command.callbackId)
+        } else {
+            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Siri requires iOS 10 or later")
+            self.commandDelegate.send(result, callbackId: command.callbackId)
+        }
+    }
+    
+    /// Pending Siri intent saved when JavaScript callback is not yet registered
+    private var pendingSiriIntent: [String: Any]? = nil
+    
+    /// JavaScript method to register a callback for Siri intents
+    @objc(registerSiriIntentListener:)
+    func registerSiriIntentListener(command: CDVInvokedUrlCommand) {
+        print("🎤 [AutoMusicPlugin] registerSiriIntentListener called")
+        siriIntentCallbackId = command.callbackId
+        
+        let result = CDVPluginResult(status: CDVCommandStatus_NO_RESULT)
+        result?.setKeepCallbackAs(true)
+        commandDelegate.send(result, callbackId: command.callbackId)
+        
+        // If there's a pending intent, send it now
+        if let pending = pendingSiriIntent {
+            print("🎤 [AutoMusicPlugin] Sending pending Siri intent to JavaScript")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let pendingResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: pending)
+                pendingResult?.setKeepCallbackAs(true)
+                self.commandDelegate.send(pendingResult, callbackId: command.callbackId)
+            }
+            pendingSiriIntent = nil
+        }
+    }
+    
+    /// Handle Siri intent when app is opened via "Hey Siri, play..."
+    /// This should be called from AppDelegate's application:continueUserActivity:restorationHandler:
+    @objc public func handleSiriIntent(userActivity: NSUserActivity) {
+        print("🎤 [AutoMusicPlugin] handleSiriIntent called")
+        print("🎤 Activity type: \(userActivity.activityType)")
+        
+        guard userActivity.activityType == "INPlayMediaIntent" else {
+            print("⚠️ [AutoMusicPlugin] Not a play media intent")
+            return
+        }
+        
+        // Extract search parameters from userInfo
+        guard let userInfo = userActivity.userInfo else {
+            print("⚠️ [AutoMusicPlugin] No userInfo in activity")
+            return
+        }
+        
+        print("🎤 [AutoMusicPlugin] User info: \(userInfo)")
+        
+        var searchParams: [String: Any] = [:]
+        
+        if let mediaName = userInfo["mediaName"] as? String {
+            searchParams["mediaName"] = mediaName
+        }
+        if let artistName = userInfo["artistName"] as? String {
+            searchParams["artistName"] = artistName
+        }
+        if let albumName = userInfo["albumName"] as? String {
+            searchParams["albumName"] = albumName
+        }
+        if let mediaType = userInfo["mediaType"] as? Int {
+            searchParams["mediaType"] = mediaType
+        }
+        
+        // Add CarPlay connection status
+        let isCarPlayConnected = carPlayManager?.isConnected() ?? false
+        searchParams["isCarPlayConnected"] = isCarPlayConnected
+        print("🎤 [AutoMusicPlugin] CarPlay connected: \(isCarPlayConnected)")
+        
+        // Send to JavaScript
+        if let callbackId = siriIntentCallbackId {
+            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: searchParams)
+            result?.setKeepCallbackAs(true)
+            commandDelegate.send(result, callbackId: callbackId)
+            print("✅ [AutoMusicPlugin] Siri intent sent to JavaScript: \(searchParams)")
+        } else {
+            print("⚠️ [AutoMusicPlugin] No callback registered for Siri intents")
+            print("⚠️ [AutoMusicPlugin] Make sure to call cordova.plugins.auto.onSiriIntent() in your app")
+        }
+    }
+    
+    /// Handle Siri search directly from intent handler (for CarPlay mode)
+    /// This is called when CarPlay is connected and we need to process the intent without opening the app UI
+    @objc public func handleSiriSearchFromIntent(searchParams: [String: Any]) {
+        print("🎤 [AutoMusicPlugin] handleSiriSearchFromIntent called")
+        print("🎤 [AutoMusicPlugin] Search params: \(searchParams)")
+        
+        // Send to JavaScript callback if registered
+        if let callbackId = siriIntentCallbackId {
+            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: searchParams)
+            result?.setKeepCallbackAs(true)
+            commandDelegate.send(result, callbackId: callbackId)
+            print("✅ [AutoMusicPlugin] Siri intent sent to JavaScript")
+        } else {
+            print("⚠️ [AutoMusicPlugin] No Siri callback registered - saving as pending")
+            // Save the intent for when JavaScript registers its callback
+            pendingSiriIntent = searchParams
+        }
+    }
+    
+    /// Called from JavaScript after search results are ready to play
+    /// This ensures the queue is updated in both phone and CarPlay
+    @objc(playSiriSearchResults:)
+    func playSiriSearchResults(command: CDVInvokedUrlCommand) {
+        print("🎤 [AutoMusicPlugin] playSiriSearchResults called")
+        
+        // JavaScript should have already updated the queue via updateQueue()
+        // and set the current track via notifyCurrentTrackUpdated()
+        // Now we just need to trigger playback
+        
+        // Reload queue from storage to ensure CarPlay has latest data
+        carPlayManager?.musicPlayer?.reloadQueue()
+        
+        // Start playback
+        carPlayManager?.musicPlayer?.play()
+        
+        print("✅ [AutoMusicPlugin] Siri search results playback started")
+        
+        let result = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+    
+    /// Search for music and start playback - can be triggered from app UI
+    /// This provides the same functionality as Siri search but callable from JavaScript
+    @objc(searchAndPlay:)
+    func searchAndPlay(command: CDVInvokedUrlCommand) {
+        print("🔍 [AutoMusicPlugin] searchAndPlay called")
+        
+        guard let searchParams = command.argument(at: 0) as? [String: Any] else {
+            print("⚠️ [AutoMusicPlugin] searchAndPlay: Invalid parameters")
+            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Invalid search parameters")
+            commandDelegate.send(result, callbackId: command.callbackId)
+            return
+        }
+        
+        print("🔍 [AutoMusicPlugin] Search params: \(searchParams)")
+        
+        // Add CarPlay connection status
+        var params = searchParams
+        params["isCarPlayConnected"] = carPlayManager?.isConnected() ?? false
+        
+        // Trigger native search in CarPlay manager
+        carPlayManager?.handleSiriSearch(searchParams: params)
+        
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: "Search started")
+        commandDelegate.send(result, callbackId: command.callbackId)
     }
 }

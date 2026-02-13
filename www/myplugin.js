@@ -65,6 +65,26 @@ var exec = require('cordova/exec');
       );
     },
 
+    onNativeQueueUpdate: function (callback) {
+      console.log('[auto] onNativeQueueUpdate called');
+      AutoPlugin.onNativeQueueUpdateCallback = callback;
+
+      exec(
+        function (data) {
+          console.log('[auto] Native queue update received:', data);
+          if (typeof AutoPlugin.onNativeQueueUpdateCallback === 'function') {
+            AutoPlugin.onNativeQueueUpdateCallback(data);
+          }
+        },
+        function (err) {
+          console.error('AutoPlugin onNativeQueueUpdate error:', err);
+        },
+        SERVICE,
+        'registerEvents',
+        ['onNativeQueueUpdate']
+      );
+    },
+
     play: function(cb, errorCb) {
       console.log('[auto] play called');
       cordova.exec(
@@ -332,6 +352,147 @@ var exec = require('cordova/exec');
         SERVICE,
         'playHardcodedTrack',
         [url, metadata || {}]
+      );
+    },
+
+    // ---- Siri Integration (iOS only) ----
+    
+    /**
+     * Request Siri authorization from the user.
+     * This should be called early in your app to prompt for Siri permissions.
+     * @param {function} callback - Called with status: 'authorized', 'denied', 'restricted', 'notDetermined', or 'unknown'
+     * @param {function} errorCb - Called on error
+     */
+    requestSiriAuthorization: function(callback, errorCb) {
+      console.log('[auto] requestSiriAuthorization called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri authorization is only supported on iOS');
+        if (typeof errorCb === 'function') errorCb('Not supported on this platform');
+        return;
+      }
+
+      exec(
+        function(status) {
+          console.log('[auto] Siri authorization status:', status);
+          if (typeof callback === 'function') callback(status);
+        },
+        function(err) {
+          console.error('[auto] Siri authorization error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'requestSiriAuthorization',
+        []
+      );
+    },
+
+    /**
+     * Get current Siri authorization status without prompting the user.
+     * @param {function} callback - Called with status: 'authorized', 'denied', 'restricted', 'notDetermined', or 'unknown'
+     * @param {function} errorCb - Called on error
+     */
+    getSiriAuthorizationStatus: function(callback, errorCb) {
+      console.log('[auto] getSiriAuthorizationStatus called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri authorization is only supported on iOS');
+        if (typeof errorCb === 'function') errorCb('Not supported on this platform');
+        return;
+      }
+
+      exec(
+        function(status) {
+          console.log('[auto] Current Siri status:', status);
+          if (typeof callback === 'function') callback(status);
+        },
+        function(err) {
+          console.error('[auto] Siri status check error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'getSiriAuthorizationStatus',
+        []
+      );
+    },
+
+    onSiriIntent: function(callback) {
+      console.log('[auto] onSiriIntent called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri intents are only supported on iOS');
+        return;
+      }
+
+      exec(
+        function(data) {
+          console.log('[auto] Siri intent received:', data);
+          if (typeof callback === 'function') {
+            callback(data);
+          }
+        },
+        function(err) {
+          console.error('[auto] Siri intent listener error:', err);
+        },
+        SERVICE,
+        'registerSiriIntentListener',
+        []
+      );
+    },
+
+    playSiriSearchResults: function(cb, errorCb) {
+      console.log('[auto] playSiriSearchResults called');
+      if (cordova.platformId !== 'ios') {
+        console.warn('[auto] Siri is only supported on iOS');
+        if (typeof errorCb === 'function') errorCb('Not supported on this platform');
+        return;
+      }
+
+      exec(
+        function success(result) {
+          console.log('[auto] Siri search results playback started');
+          if (typeof cb === 'function') cb(result);
+        },
+        function error(err) {
+          console.error('[auto] Error starting Siri playback:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'playSiriSearchResults',
+        []
+      );
+    },
+
+    /**
+     * Search for music and start playback (works like Siri search)
+     * Can be used to add a search button in the app that triggers CarPlay/Auto search
+     * @param {object} searchParams - Search parameters
+     * @param {string} searchParams.query - The search query (e.g., artist name, song title)
+     * @param {string} [searchParams.artistName] - Optional artist name hint
+     * @param {string} [searchParams.albumName] - Optional album name hint
+     * @param {function} callback - Called on success
+     * @param {function} errorCb - Called on error
+     */
+    searchAndPlay: function(searchParams, callback, errorCb) {
+      console.log('[auto] searchAndPlay called', searchParams);
+      
+      var params = {
+        mediaName: searchParams.query || searchParams.mediaName || '',
+        artistName: searchParams.artistName || null,
+        albumName: searchParams.albumName || null,
+        mediaType: searchParams.mediaType || 0,
+        isCarPlayConnected: false // Will be determined by native side
+      };
+
+      exec(
+        function success(result) {
+          console.log('[auto] searchAndPlay success:', result);
+          if (typeof callback === 'function') callback(result);
+        },
+        function error(err) {
+          console.error('[auto] searchAndPlay error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'searchAndPlay',
+        [params]
       );
     },
   }

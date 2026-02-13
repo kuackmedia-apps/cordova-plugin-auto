@@ -1,10 +1,16 @@
 import UIKit
+import Intents
 
 @objc(SceneDelegate)
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        // Handle any Siri intents that launched this scene
+        if let userActivity = connectionOptions.userActivities.first {
+            print("🎤 [SceneDelegate] Scene launched with user activity: \(userActivity.activityType)")
+            handleSiriUserActivity(userActivity)
+        }
         guard let windowScene = scene as? UIWindowScene else { return }
 
         if session.role == .windowApplication {
@@ -193,5 +199,37 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         print("[SceneDelegate] sceneDidEnterBackground")
+    }
+    
+    // MARK: - Siri Intent Handling
+    
+    /// Called when Siri triggers a user activity while the scene is active
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        print("🎤 [SceneDelegate] scene continue userActivity: \(userActivity.activityType)")
+        handleSiriUserActivity(userActivity)
+    }
+    
+    /// Handle Siri user activity and forward to the plugin
+    private func handleSiriUserActivity(_ userActivity: NSUserActivity) {
+        print("🎤 [SceneDelegate] handleSiriUserActivity: \(userActivity.activityType)")
+        
+        if userActivity.activityType == "INPlayMediaIntent" {
+            print("🎤 [SceneDelegate] Detected INPlayMediaIntent from Siri")
+            
+            // Forward to plugin - may need to wait for plugin to initialize
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if let plugin = CDVAutoMusicPlugin.sharedInstance() {
+                    print("🎤 [SceneDelegate] Forwarding Siri intent to plugin")
+                    plugin.handleSiriIntent(userActivity: userActivity)
+                } else {
+                    print("⚠️ [SceneDelegate] Plugin not ready, storing intent for later")
+                    // Store the activity to process when plugin is ready
+                    NotificationCenter.default.post(
+                        name: Notification.Name("CDVPendingSiriIntent"),
+                        object: userActivity
+                    )
+                }
+            }
+        }
     }
 }

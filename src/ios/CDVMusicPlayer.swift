@@ -15,6 +15,7 @@ class CDVMusicPlayer: NSObject {
     private var nowPlayingTemplate: CPNowPlayingTemplate?
     private var timeObserverToken: Any?
     private let artworkCache = NSCache<NSURL, UIImage>()
+    private var lastLocalArtworkPath: String?  // Track to avoid log spam
     private var forceClearOnNextApply: Bool = false
     private var lastQueueModifiedDate: Date?
     private var debugTimer: Timer?
@@ -145,6 +146,11 @@ class CDVMusicPlayer: NSObject {
 
     // MARK: - Playback
     @objc func play() {
+        // Don't play if CarPlay has been deactivated (prevents ghost playback)
+        guard isCarPlayActive else {
+            print("[CDVMusicPlayer][diag] play(): CarPlay not active, ignoring play request")
+            return
+        }
         let hadItem = (player.currentItem != nil)
         if !hadItem { print("[CDVMusicPlayer][diag] play(): currentItem is nil -> calling loadCurrentTrack()") }
         if player.currentItem == nil { loadCurrentTrack() }
@@ -304,10 +310,10 @@ class CDVMusicPlayer: NSObject {
 
     // MARK: - Queue
     @objc func updateQueue(_ queue: [[String: Any]]) {
-        updateQueue(queue, selectedTrackId: nil, persist: true)
+        updateQueue(queue, selectedTrackId: nil, persist: true, fromNative: false)
     }
 
-    func updateQueue(_ queue: [[String: Any]], selectedTrackId: String?, persist: Bool = true) {
+    func updateQueue(_ queue: [[String: Any]], selectedTrackId: String?, persist: Bool = true, fromNative: Bool = false) {
         print("[CDVMusicPlayer][diag] updateQueue(persist=\(persist)) selectedId=\(selectedTrackId ?? "<nil>") incomingCount=\(queue.count)")
         self.queue = queue
 
@@ -355,6 +361,16 @@ class CDVMusicPlayer: NSObject {
                 userInfo: ["track": currentTrack]
             )
             print("[CDVMusicPlayer][diag] updateQueue(): posted CDVMediaTrackChanged notification")
+            
+            // If this update came from native code (Siri/CarPlay), notify JS to sync its state
+            if fromNative {
+                NotificationCenter.default.post(
+                    name: Notification.Name("CDVNativeQueueUpdated"),
+                    object: nil,
+                    userInfo: ["source": "siri", "queueCount": queue.count, "currentIndex": currentIndex]
+                )
+                print("[CDVMusicPlayer][diag] updateQueue(): posted CDVNativeQueueUpdated notification (fromNative=true)")
+            }
         } else {
             if let currentId = currentTrackIdForPersistence() {
                 print("[CDVMusicPlayer][diag] updateQueue(): persist=FALSE keeping host storage untouched (currentId=\(currentId))")
@@ -618,6 +634,15 @@ class CDVMusicPlayer: NSObject {
         startDebugMonitoring()
     }
 
+    /// Clears the initial setup flag without applying start position
+    /// Used when Siri initiates direct playback (not going through normal CarPlay connection flow)
+    @objc func clearInitialSetupFlag() {
+        if isInitialCarPlaySetup {
+            print("[CDVMusicPlayer] clearInitialSetupFlag: clearing initial setup flag for direct Siri playback")
+            isInitialCarPlaySetup = false
+        }
+    }
+
     /// Called when initial CarPlay setup is complete
     /// This clears the isInitialCarPlaySetup flag, allowing normal playback behavior
     @objc func completeInitialSetup() {
@@ -747,8 +772,36 @@ class CDVMusicPlayer: NSObject {
         isCarPlayActive = false
         teardownRemoteCommandCenter()
         stopDebugMonitoring()
-        // Pause playback when CarPlay disconnects to avoid ghost playback
-        pause()
+        // Fully stop playback when CarPlay disconnects to avoid ghost playback
+        // This is more aggressive than pause() - it removes the current item entirely
+        stopPlayback()
+    }
+
+    /// Fully stops playback by pausing and removing the current AVPlayerItem
+    /// This ensures no audio continues playing from this player after CarPlay disconnects
+    private func stopPlayback() {
+        print("[CDVMusicPlayer] stopPlayback: fully stopping CarPlay audio player")
+        
+        // 1. Pause the player first
+        player.pause()
+        isPlaying = false
+        
+        // 2. Remove the current item to fully stop any audio
+        // This is crucial - pause() alone may not prevent ghost playback
+        player.replaceCurrentItem(with: nil)
+        
+        // 3. Clear now playing info from MPNowPlayingInfoCenter
+        // This removes this player's metadata from the system
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
+        
+        // 4. Stop periodic updates
+        if let token = timeObserverToken {
+            player.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        
+        print("[CDVMusicPlayer] stopPlayback: CarPlay audio player fully stopped")
     }
 
     private func setupRemoteCommandCenter() {
@@ -840,7 +893,11 @@ class CDVMusicPlayer: NSObject {
         }()
         if let localImage = localImagePath {
             if let image = UIImage(contentsOfFile: localImage) {
-                print("[CDVMusicPlayer][ART] Using LOCAL artwork: \(localImage)")
+                // Only log when artwork path changes to avoid log spam
+                if lastLocalArtworkPath != localImage {
+                    print("[CDVMusicPlayer][ART] Using LOCAL artwork: \(localImage)")
+                    lastLocalArtworkPath = localImage
+                }
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 info[MPMediaItemPropertyArtwork] = artwork
             }
