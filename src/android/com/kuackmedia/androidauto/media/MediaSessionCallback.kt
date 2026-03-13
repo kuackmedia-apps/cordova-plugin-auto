@@ -30,6 +30,7 @@ import com.kuackmedia.androidauto.media.MusicLibraryService.Companion.PLAYLIST_D
 import com.kuackmedia.androidauto.tree.MediaItemTree
 import com.kuackmedia.androidauto.utils.LocalStorageUtils
 import com.kuackmedia.androidauto.utils.MediaUtils
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -346,8 +347,13 @@ class MediaSessionCallback(
                 )
                 showNotification(PlaybackStateCompat.STATE_PLAYING)
 
-                // Override parentData to save TRACK_RADIO type for JS app sync
-                val radioParentData = "{\"type\":\"TRACK_RADIO\",\"id\":\"$trackIdForApi\"}"
+                // Override parentData with TRACK_RADIO type + full trackData from extras
+                val trackJson = trackExtras.getString("track") ?: "{}"
+                val radioParentData = JSONObject().apply {
+                  put("type", "TRACK_RADIO")
+                  put("id", trackIdForApi)
+                  put("trackData", JSONObject(trackJson))
+                }.toString()
                 val radioExtras = Bundle(trackExtras)
                 radioExtras.putString("parentData", radioParentData)
                 storeLocalData(radioExtras, idAlbumTrack)
@@ -374,7 +380,11 @@ class MediaSessionCallback(
 
       val parentItem = MediaItemTree.getItem(mediaId)
       val itemName = parentItem?.description?.title?.toString() ?: ""
-      val parentData = "{\"type\":\"TRACK_RADIO\",\"id\":\"$stationId\",\"name\":\"$itemName\"}"
+      val parentData = JSONObject().apply {
+        put("type", "RADIO")
+        put("id", stationId)
+        put("name", itemName)
+      }.toString()
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
@@ -429,7 +439,11 @@ class MediaSessionCallback(
 
       val parentItem = MediaItemTree.getItem(mediaId)
       val itemName = parentItem?.description?.title?.toString() ?: ""
-      val parentData = "{\"type\":\"ARTIST_RADIO\",\"id\":\"$artistId\",\"name\":\"$itemName\"}"
+      val parentData = JSONObject().apply {
+        put("type", "ARTIST_STATION")
+        put("id", artistId)
+        put("name", itemName)
+      }.toString()
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
