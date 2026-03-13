@@ -1,13 +1,19 @@
 import Foundation
 
 protocol MusicApi {
-    func getAlbumTracks(albumId: String, completion: @escaping (Result<AlbumTracks, Error>) -> Void)
-    func getPlayListTracks(playListId: String, completion: @escaping (Result<PlaylistTracks, Error>) -> Void)
-    func getArtistTracks(artistId: String, completion: @escaping (Result<ArtistTracks, Error>) -> Void)
+    func getAlbumTracks(albumId: String, limit: Int, offset: Int, completion: @escaping (Result<AlbumTracks, Error>) -> Void)
+    func getPlayListTracks(playListId: String, limit: Int, offset: Int, completion: @escaping (Result<PlaylistTracks, Error>) -> Void)
+    func getArtistTracks(artistId: String, order: String, limit: Int, offset: Int, completion: @escaping (Result<ArtistTracks, Error>) -> Void)
     func getTrackUrl(trackRequest: TrackRequest, completion: @escaping (Result<TrackResponse, Error>) -> Void)
-    func getTagTracks(tagId: String, lastIdAlbumTrack: String, completion: @escaping (Result<Track, Error>) -> Void)
+    func getRadioTracks(stationId: String, count: Int, lastIdAlbumTrack: Int64?, completion: @escaping (Result<[Track], Error>) -> Void)
     func getTagPlaylists(tagId: String, completion: @escaping (Result<[[String: Any]], Error>) -> Void)
     func search(text: String, limit: Int, completion: @escaping (Result<SearchResponse, Error>) -> Void)
+    func getArtistAlbums(artistId: String, limit: Int, offset: Int, completion: @escaping (Result<ArtistAlbumsResponse, Error>) -> Void)
+    func getArtistPlaylists(artistId: String, limit: Int, offset: Int, completion: @escaping (Result<ArtistPlaylistsResponse, Error>) -> Void)
+    func getRelatedArtists(artistId: String, limit: Int, completion: @escaping (Result<RelatedArtistsResponse, Error>) -> Void)
+    func getRelatedTracks(trackId: String, limit: Int, completion: @escaping (Result<ArtistTracks, Error>) -> Void)
+    func getRelatedTracksByQueue(request: RelatedTracksByQueueRequest, limit: Int, completion: @escaping (Result<ArtistTracks, Error>) -> Void)
+    func getPodcastEpisodes(showId: String, limit: Int, offset: Int, completion: @escaping (Result<PodcastShowResponse, Error>) -> Void)
 }
 
 class MusicApiImpl: MusicApi {
@@ -29,10 +35,13 @@ class MusicApiImpl: MusicApi {
         print("[MusicApi] Initialized with baseURL=\(baseURL.absoluteString)")
     }
 
-    func getAlbumTracks(albumId: String, completion: @escaping (Result<AlbumTracks, Error>) -> Void) {
+    func getAlbumTracks(albumId: String, limit: Int = 15, offset: Int = 0, completion: @escaping (Result<AlbumTracks, Error>) -> Void) {
         let pathURL = baseURL.appendingPathComponent("albums").appendingPathComponent(albumId)
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "limit", value: "5")]
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
         guard let url = components?.url else {
             completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid albums URL"])) )
             return
@@ -40,12 +49,12 @@ class MusicApiImpl: MusicApi {
         request(url: url, completion: completion)
     }
 
-    func getPlayListTracks(playListId: String, completion: @escaping (Result<PlaylistTracks, Error>) -> Void) {
+    func getPlayListTracks(playListId: String, limit: Int = 15, offset: Int = 0, completion: @escaping (Result<PlaylistTracks, Error>) -> Void) {
         let pathURL = baseURL.appendingPathComponent("playlists").appendingPathComponent(playListId)
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
-            URLQueryItem(name: "limit", value: "40"),
-            URLQueryItem(name: "offset", value: "0")
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
         ]
         guard let url = components?.url else {
             completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid playlists URL"])) )
@@ -54,12 +63,13 @@ class MusicApiImpl: MusicApi {
         request(url: url, completion: completion)
     }
 
-    func getArtistTracks(artistId: String, completion: @escaping (Result<ArtistTracks, Error>) -> Void) {
+    func getArtistTracks(artistId: String, order: String = "popularity", limit: Int = 15, offset: Int = 0, completion: @escaping (Result<ArtistTracks, Error>) -> Void) {
         let pathURL = baseURL.appendingPathComponent("artists").appendingPathComponent(artistId).appendingPathComponent("tracks")
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
         components?.queryItems = [
-            URLQueryItem(name: "order", value: "popularity"),
-            URLQueryItem(name: "limit", value: "100")
+            URLQueryItem(name: "order", value: order),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
         ]
         guard let url = components?.url else {
             completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid artists URL"])) )
@@ -82,21 +92,22 @@ class MusicApiImpl: MusicApi {
         dataTask(request: request, completion: completion)
     }
 
-    func getTagTracks(tagId: String, lastIdAlbumTrack: String, completion: @escaping (Result<Track, Error>) -> Void) {
-        // Build URL with proper query encoding; do NOT include '?' inside a path component
+    func getRadioTracks(stationId: String, count: Int = 15, lastIdAlbumTrack: Int64? = nil, completion: @escaping (Result<[Track], Error>) -> Void) {
         let pathURL = baseURL
             .appendingPathComponent("stations")
-            .appendingPathComponent(tagId)
+            .appendingPathComponent(stationId)
             .appendingPathComponent("track")
         var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "lastIdAlbumTrack", value: lastIdAlbumTrack)]
+        var queryItems = [URLQueryItem(name: "count", value: String(count))]
+        if let lastId = lastIdAlbumTrack {
+            queryItems.append(URLQueryItem(name: "lastIdAlbumTrack", value: String(lastId)))
+        }
+        components?.queryItems = queryItems
         guard let finalURL = components?.url else {
             completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid stations URL"])) )
             return
         }
-        var request = URLRequest(url: finalURL)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        dataTask(request: request, completion: completion)
+        request(url: finalURL, completion: completion)
     }
 
     func getTagPlaylists(tagId: String, completion: @escaping (Result<[[String: Any]], Error>) -> Void) {
@@ -112,7 +123,7 @@ class MusicApiImpl: MusicApi {
         }
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
@@ -151,6 +162,98 @@ class MusicApiImpl: MusicApi {
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         dataTask(request: request, completion: completion)
+    }
+
+    // MARK: - New endpoints (Fase 1)
+
+    func getArtistAlbums(artistId: String, limit: Int = 15, offset: Int = 0, completion: @escaping (Result<ArtistAlbumsResponse, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("artists").appendingPathComponent(artistId).appendingPathComponent("albums")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid artist albums URL"])) )
+            return
+        }
+        request(url: url, completion: completion)
+    }
+
+    func getArtistPlaylists(artistId: String, limit: Int = 15, offset: Int = 0, completion: @escaping (Result<ArtistPlaylistsResponse, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("artists").appendingPathComponent(artistId).appendingPathComponent("playlists")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid artist playlists URL"])) )
+            return
+        }
+        request(url: url, completion: completion)
+    }
+
+    func getRelatedArtists(artistId: String, limit: Int = 15, completion: @escaping (Result<RelatedArtistsResponse, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("artists").appendingPathComponent(artistId).appendingPathComponent("related_artists")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid related artists URL"])) )
+            return
+        }
+        request(url: url, completion: completion)
+    }
+
+    func getRelatedTracks(trackId: String, limit: Int = 15, completion: @escaping (Result<ArtistTracks, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("tracks").appendingPathComponent(trackId).appendingPathComponent("related_tracks")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid related tracks URL"])) )
+            return
+        }
+        request(url: url, completion: completion)
+    }
+
+    func getRelatedTracksByQueue(request body: RelatedTracksByQueueRequest, limit: Int = 10, completion: @escaping (Result<ArtistTracks, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("tracks").appendingPathComponent("related")
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid related tracks by queue URL"])) )
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            request.httpBody = try JSONEncoder().encode(body)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        dataTask(request: request, completion: completion)
+    }
+
+    func getPodcastEpisodes(showId: String, limit: Int = 20, offset: Int = 0, completion: @escaping (Result<PodcastShowResponse, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("podcast").appendingPathComponent(showId)
+        var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+        guard let url = components?.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid podcast URL"])) )
+            return
+        }
+        request(url: url, completion: completion)
     }
 
     // MARK: - Helpers

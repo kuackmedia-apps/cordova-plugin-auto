@@ -291,8 +291,17 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
             return
         }
 
-        val localChildren = MediaItemTree.getChildren(parentId)
+        var localChildren = MediaItemTree.getChildren(parentId)
         Log.i(TAG, "[onLoadChildren] localChildren.size=${localChildren.size}")
+
+        // If ROOT has no children, try refreshing the tree from files
+        // This handles the race condition where the service initialized before JS wrote the navigation files
+        if (parentId == ROOT_ID && localChildren.isEmpty()) {
+            Log.w(TAG, "[onLoadChildren] ROOT has no children, attempting to refresh tree from files")
+            MediaItemTree.refresh(applicationContext)
+            localChildren = MediaItemTree.getChildren(parentId)
+            Log.i(TAG, "[onLoadChildren] After refresh, localChildren.size=${localChildren.size}")
+        }
 
         if  (!isNetworkAvailable(this)) {
             // This is an online-only section and we are offline. Show link to library.

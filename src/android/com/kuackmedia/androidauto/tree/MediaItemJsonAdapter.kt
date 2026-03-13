@@ -5,6 +5,8 @@ import com.kuackmedia.androidauto.models.Artist
 import com.kuackmedia.androidauto.models.EmptyModel
 import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.PlayListItem
+import com.kuackmedia.androidauto.models.PodcastEpisode
+import com.kuackmedia.androidauto.models.PodcastShow
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
 import com.squareup.moshi.FromJson
@@ -17,12 +19,14 @@ import com.squareup.moshi.ToJson
 class MediaItemJsonAdapter(
   private val moshi: Moshi
 ) : JsonAdapter<MediaItem>() {
-  private val albumAdapter    = moshi.adapter(AlbumItem::class.java)
-  private val playlistAdapter = moshi.adapter(PlayListItem::class.java)
-  private val trackAdapter      = moshi.adapter(Track::class.java)
-  private val tagAdapter      = moshi.adapter(Tag::class.java)
-  private val artistAdapter   = moshi.adapter(Artist::class.java)
-  private val emptyAdapter    = moshi.adapter(EmptyModel::class.java)
+  private val albumAdapter          = moshi.adapter(AlbumItem::class.java)
+  private val playlistAdapter      = moshi.adapter(PlayListItem::class.java)
+  private val trackAdapter         = moshi.adapter(Track::class.java)
+  private val tagAdapter           = moshi.adapter(Tag::class.java)
+  private val artistAdapter        = moshi.adapter(Artist::class.java)
+  private val podcastShowAdapter   = moshi.adapter(PodcastShow::class.java)
+  private val podcastEpisodeAdapter = moshi.adapter(PodcastEpisode::class.java)
+  private val emptyAdapter         = moshi.adapter(EmptyModel::class.java)
 
   @FromJson
   override fun fromJson(reader: JsonReader): MediaItem? {
@@ -37,12 +41,17 @@ class MediaItemJsonAdapter(
     // 3) Decide which adapter to delegate to based on the map’s "itemType"
     val type = map?.get("itemType") as? String
     return when (type) {
-      "album"    -> albumAdapter.fromJson(reader)
-      "playlist" -> playlistAdapter.fromJson(reader)
-      "track"      -> trackAdapter.fromJson(reader)
-      "tag"      -> tagAdapter.fromJson(reader)
-      "artist"   -> artistAdapter.fromJson(reader)
-      else       -> emptyAdapter.fromJson(reader)  // fallback for unknown or missing
+      "album"           -> albumAdapter.fromJson(reader)
+      "playlist"        -> playlistAdapter.fromJson(reader)
+      "track"           -> trackAdapter.fromJson(reader)
+      "tag"             -> tagAdapter.fromJson(reader)
+      "artist"          -> artistAdapter.fromJson(reader)
+      "artist_radio"    -> artistAdapter.fromJson(reader)
+      "radio"           -> tagAdapter.fromJson(reader)
+      "radio_track"     -> trackAdapter.fromJson(reader)
+      "podcast"         -> podcastShowAdapter.fromJson(reader)
+      "podcast_episode", "podcastEpisode" -> podcastEpisodeAdapter.fromJson(reader)
+      else              -> emptyAdapter.fromJson(reader)
     }
   }
 

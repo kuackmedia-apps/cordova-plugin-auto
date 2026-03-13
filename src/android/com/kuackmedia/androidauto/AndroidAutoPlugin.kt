@@ -25,6 +25,9 @@ class AndroidAutoPlugin : CordovaPlugin() {
         val result = PluginResult(PluginResult.Status.NO_RESULT)
         result.keepCallback = true
         callbackContext.sendPluginResult(result)
+
+        // Deliver any events that were sent before this callback was registered
+        CordovaEventBridge.deliverPendingEvents(action)
         return true
       }
 
@@ -63,7 +66,7 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "getPosition" -> {
-        callbackContext.success(MediaControlBridge.mediaPlayer?.currentPosition?.toInt()!!)
+        callbackContext.success(MediaControlBridge.mediaPlayer?.currentPosition?.toInt() ?: 0)
         return true
       }
 

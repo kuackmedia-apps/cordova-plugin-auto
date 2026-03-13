@@ -19,8 +19,10 @@ import com.kuackmedia.androidauto.models.OfflineTrack
 import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.RecentListened
 import com.kuackmedia.androidauto.models.Tag
+import com.kuackmedia.androidauto.models.Track
 import com.kuackmedia.androidauto.utils.TextsManager
 import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -60,7 +62,10 @@ object MediaItemTree {
     isInitialized = true
 
     val navigationData = loadNavigationData(context)
+    Log.i(TAG, "[INITIALIZE] Navigation data loaded: ${navigationData.size} items")
     buildNavigationMenu(navigationData, context)
+    val rootChildren = getChildren(ROOT_ID)
+    Log.i(TAG, "[INITIALIZE] Root children after build: ${rootChildren.size}")
   }
 
   /**
@@ -126,15 +131,12 @@ object MediaItemTree {
 
     } catch (e: java.io.EOFException) {
       Log.e(TAG, "Incomplete JSON file AUTO_NAVIGATION (EOF): ${e.message}", e)
-      jsonFile.delete() // Delete corrupted file
       return emptyList()
     } catch (e: com.squareup.moshi.JsonDataException) {
       Log.e(TAG, "JSON data exception in AUTO_NAVIGATION: ${e.message}", e)
-      jsonFile.delete() // Delete corrupted file
       return emptyList()
     } catch (e: com.squareup.moshi.JsonEncodingException) {
       Log.e(TAG, "JSON encoding exception in AUTO_NAVIGATION: ${e.message}", e)
-      jsonFile.delete() // Delete corrupted file
       return emptyList()
     } catch (e: Exception) {
       Log.e(TAG, "Unexpected error parsing AUTO_NAVIGATION: ${e.message}", e)
@@ -182,14 +184,43 @@ object MediaItemTree {
         .build()
 
       when (fileName) {
-      "RECENT_LISTENED" -> {
-        val listType = Types.newParameterizedType(List::class.java, RecentListened::class.java)
-        val adapter: JsonAdapter<List<RecentListened>> = moshi.adapter(listType)
-        val items: List<RecentListened>? = adapter.fromJson(jsonArray)
+      "RECENT_LISTENED_AUTO" -> {
+        // Parse as raw list first, then parse each item from its own JSON string.
+        // This avoids JsonReader state corruption when an adapter fails mid-parse on a nested object.
+        val anyAdapter = Moshi.Builder().build().adapter(Any::class.java)
+        val listAnyType = Types.newParameterizedType(List::class.java, Any::class.java)
+        val listAnyAdapter: JsonAdapter<List<Any>> = Moshi.Builder().build().adapter(listAnyType)
+        val rawItems: List<Any>? = listAnyAdapter.fromJson(jsonArray)
+
+        val itemAdapter: JsonAdapter<RecentListened> = moshi.adapter(RecentListened::class.java)
+        val items = mutableListOf<RecentListened>()
+        val total = rawItems?.size ?: 0
+        rawItems?.forEachIndexed { idx, rawItem ->
+          try {
+            val itemJson = anyAdapter.toJson(rawItem)
+            // Debug: log type and itemType for each raw item
+            val rawMap = rawItem as? Map<*, *>
+            val rawType = rawMap?.get("type") as? String
+            val rawData = rawMap?.get("data") as? Map<*, *>
+            val rawItemType = rawData?.get("itemType") as? String
+            val rawId = rawData?.get("id")
+            Log.d(TAG, "[RECENT_LISTENED] item[$idx] type=$rawType itemType=$rawItemType id=$rawId idClass=${rawId?.javaClass?.simpleName}")
+
+            val item = itemAdapter.fromJson(itemJson)
+            if (item != null) items.add(item)
+          } catch (e: Exception) {
+            val rawMap = rawItem as? Map<*, *>
+            val rawType = rawMap?.get("type") as? String
+            val rawData = rawMap?.get("data") as? Map<*, *>
+            val rawItemType = rawData?.get("itemType") as? String
+            Log.w(TAG, "[RECENT_LISTENED] Skipping item[$idx] type=$rawType itemType=$rawItemType: ${e.message}")
+          }
+        }
+        Log.i(TAG, "[RECENT_LISTENED] Parsed ${items.size}/$total items from file")
         result = items
-          ?.filter { it.data !is EmptyModel }
-          ?.filter { it.data.itemType != "track" }  // Exclude track items from navigation
-          ?.mapNotNull {
+          .filter { it.data !is EmptyModel }
+          .filter { it.data.itemType != "track" }
+          .mapNotNull {
             try {
               MediaItemFactory.parseMediaItems(it.data, "", context)
             } catch (e: Exception) {
@@ -197,14 +228,15 @@ object MediaItemTree {
               null
             }
           }
-        if (result != null && result.isNotEmpty()) {
+        Log.i(TAG, "[RECENT_LISTENED] After filtering: ${result.size} items")
+        if (result.isNotEmpty()) {
           result.forEach { item ->
             val mediaId = item.mediaId ?: return@forEach
             treeNodes[mediaId] = MediaItemNode(item)
             treeNodes[mediaId]?.let { node ->
               titleMap[item.description.title.toString()] = node
             }
-            treeNodes["RECENT_LISTENED_MENU"]?.addChild(mediaId)
+            treeNodes["RECENT_LISTENED_AUTO_MENU"]?.addChild(mediaId)
           }
         }
       }
@@ -213,9 +245,11 @@ object MediaItemTree {
         val listType = Types.newParameterizedType(List::class.java, AutoNavigationExplorer::class.java)
         val adapter: JsonAdapter<List<AutoNavigationExplorer>> = moshi.adapter(listType)
         val libraryItems: List<AutoNavigationExplorer>? = adapter.fromJson(jsonArray)
+        Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] Parsed ${libraryItems?.size ?: 0} sections")
 
         if (libraryItems != null && libraryItems.isNotEmpty()) {
           libraryItems.forEach { libraryItem ->
+            Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] Section: ${libraryItem.text}, mediaId: ${libraryItem.mediaId}, items: ${libraryItem.items.size}")
             val libraryMediaItem = MediaItemFactory.createBrowsable(
               mediaId = libraryItem.mediaId,
               title = libraryItem.text,
@@ -231,21 +265,29 @@ object MediaItemTree {
             }
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaId)
 
+            var parsedCount = 0
+            var emptyCount = 0
             libraryItem.items.forEach { item ->
               try {
+                Log.d(TAG, "[AUTO_NAVIGATION_LIBRARY] Item itemType=${item.itemType}, class=${item::class.simpleName}")
                 val categoryMediaItem = MediaItemFactory.parseMediaItems(item, "", context)
                 if (categoryMediaItem != null) {
+                  parsedCount++
                   val categoryMediaId = categoryMediaItem.mediaId ?: return@forEach
                   treeNodes[categoryMediaId] = MediaItemNode(categoryMediaItem)
                   treeNodes[categoryMediaId]?.let { node ->
                     titleMap[categoryMediaItem.description.title.toString()] = node
                   }
                   treeNodes[libraryMediaId]?.addChild(categoryMediaId)
+                } else {
+                  emptyCount++
                 }
               } catch (e: Exception) {
+                emptyCount++
                 Log.w(TAG, "Failed to parse library category item: ${e.message}")
               }
             }
+            Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] ${libraryItem.text}: parsed=$parsedCount, empty/failed=$emptyCount")
           }
         }
       }
@@ -311,19 +353,15 @@ object MediaItemTree {
 
     } catch (e: com.squareup.moshi.JsonDataException) {
       Log.e(TAG, "JSON data exception in file $fileName: ${e.message}", e)
-      jsonFile.delete() // Delete corrupted file
       return emptyList()
     } catch (e: com.squareup.moshi.JsonEncodingException) {
       Log.e(TAG, "JSON encoding exception in file $fileName: ${e.message}", e)
-      jsonFile.delete() // Delete corrupted file
       return emptyList()
     } catch (e: java.io.EOFException) {
       Log.e(TAG, "Incomplete JSON file $fileName (EOF): ${e.message}", e)
-      jsonFile.delete() // Delete corrupted file
       return emptyList()
     } catch (e: Exception) {
       Log.e(TAG, "Unexpected error parsing file $fileName: ${e.message}", e)
-      // Don't delete file on unexpected errors, might be recoverable
       return emptyList()
     }
   }
@@ -432,13 +470,14 @@ object MediaItemTree {
     navigationData.forEach {
       try {
         val mediaId = it.fileName + "_MENU"
+        val style = if (it.fileName == "RECENT_LISTENED_AUTO") "LIST" else "GRID"
         treeNodes[mediaId] =
           MediaItemNode(
             MediaItemFactory.createBrowsable(
               title = it.text,
               mediaId = mediaId,
               iconStringPath = it.icon,
-              itemStyle = "GRID",
+              itemStyle = style,
               context = context
             )
           )
@@ -584,7 +623,20 @@ object MediaItemTree {
   }
 
   fun parseSearchResult(matches: MutableList<MediaBrowserCompat.MediaItem>, mediaItem: MediaItem, context: Context) {
-    val parsedItem = MediaItemFactory.parseMediaItems(mediaItem, "", context)
+    val parentData = when (mediaItem.itemType) {
+      "track" -> {
+        val track = mediaItem as Track
+        val trackJson = try {
+          val adapter = MediaItemJsonAdapter(
+            Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+          )
+          adapter.toJson(track)
+        } catch (e: Exception) { "{}" }
+        "{\"type\":\"TRACK_RADIO\",\"id\":\"${track.id}\",\"trackData\":$trackJson}"
+      }
+      else -> ""
+    }
+    val parsedItem = MediaItemFactory.parseMediaItems(mediaItem, parentData, context)
     if(parsedItem != null) {
       val mediaId = parsedItem.mediaId ?: return
       treeNodes[mediaId] = MediaItemNode(parsedItem)
@@ -760,40 +812,59 @@ object MediaItemTree {
     Log.i(TAG, "Trying to load remote children for $itemId - $mediaType")
     when (mediaType) {
       "playlist" -> {
-        result = this.musicApi.getPlayListTracks(itemId).tracks.items.mapNotNull {
-          val parentData = "{" +
-            " \"id\": \"${itemId}\",\n" +
-            "  \"type\": \"PLAYLIST\",\n" +
-            "  \"name\": \"${parent.description.title}\"" +
-            "}"
-          MediaItemFactory.parseMediaItems(it.track, parentData, context)
+        val parentData = "{" +
+          " \"id\": \"${itemId}\",\n" +
+          "  \"type\": \"PLAYLIST\",\n" +
+          "  \"name\": \"${parent.description.title}\"" +
+          "}"
+        val tracks = this.musicApi.getPlayListTracks(itemId).tracks.items.mapNotNull {
+          val mediaItem = MediaItemFactory.parseMediaItems(it.track, parentData, context)
+          if (mediaItem != null) {
+            val mid = mediaItem.mediaId ?: return@mapNotNull null
+            treeNodes[mid] = MediaItemNode(mediaItem)
+          }
+          mediaItem
         }
+        val actionItems = buildActionItems("playlist", itemId, parent.description.title?.toString() ?: "")
+        result = actionItems + tracks
       }
 
       "album" -> {
-        result =  this.musicApi.getAlbumTracks(itemId).tracks.items.mapNotNull {
-          val parentData = "{" +
-            " \"id\": \"${itemId}\",\n" +
-            "  \"type\": \"ALBUM\",\n" +
-            "  \"name\": \"${parent.description.title}\"" +
-            "}"
-          MediaItemFactory.parseMediaItems(it, parentData, context)
+        val parentData = "{" +
+          " \"id\": \"${itemId}\",\n" +
+          "  \"type\": \"ALBUM\",\n" +
+          "  \"name\": \"${parent.description.title}\"" +
+          "}"
+        val tracks = this.musicApi.getAlbumTracks(itemId).tracks.items.mapNotNull {
+          val mediaItem = MediaItemFactory.parseMediaItems(it, parentData, context)
+          if (mediaItem != null) {
+            val mid = mediaItem.mediaId ?: return@mapNotNull null
+            treeNodes[mid] = MediaItemNode(mediaItem)
+          }
+          mediaItem
         }
+        val actionItems = buildActionItems("album", itemId, parent.description.title?.toString() ?: "")
+        result = actionItems + tracks
       }
 
       "artist" -> {
-        result =  this.musicApi.getArtistTracks(itemId).list.mapNotNull {
+        result = this.musicApi.getArtistTracks(itemId).list.mapNotNull {
           val parentData = "{" +
             " \"id\": \"${itemId}\",\n" +
             "  \"type\": \"ARTIST\",\n" +
             "  \"name\": \"${parent.description.title}\"" +
             "}"
-          MediaItemFactory.parseMediaItems(it, parentData, context)
+          val mediaItem = MediaItemFactory.parseMediaItems(it, parentData, context)
+          if (mediaItem != null) {
+            val mid = mediaItem.mediaId ?: return@mapNotNull null
+            treeNodes[mid] = MediaItemNode(mediaItem)
+          }
+          mediaItem
         }
       }
 
       "tag" -> {
-        result = this.musicApi.getTagTracks(itemId).list.mapNotNull {
+        result = this.musicApi.getTagPlaylists(itemId).list.mapNotNull {
           val parentData = "{" +
               " \"id\": \"${itemId}\",\n" +
               "  \"type\": \"PLAYLIST\",\n" +
@@ -808,9 +879,152 @@ object MediaItemTree {
           mediaItem
         }
       }
+
+      "podcast" -> {
+        Log.i(TAG, "[PODCAST_EPISODES_START] Fetching episodes for podcast $itemId")
+        try {
+          val response = this.musicApi.getPodcastEpisodes(itemId)
+          Log.i(TAG, "[PODCAST_EPISODES_RESPONSE] id=${response.id}, title=${response.title}, episodesCount=${response.episodesCount}, episodes=${response.episodes?.size ?: "null"}")
+          result = response.episodes?.mapNotNull { episode ->
+            try {
+              val mediaItem = MediaItemFactory.parseMediaItems(episode, "", context)
+              if (mediaItem != null) {
+                val epMediaId = mediaItem.mediaId ?: return@mapNotNull null
+                treeNodes[epMediaId] = MediaItemNode(mediaItem)
+              }
+              mediaItem
+            } catch (e: Exception) {
+              Log.e(TAG, "[PODCAST_EPISODES_ERROR] Episode ${episode.id}: ${e.message}", e)
+              null
+            }
+          } ?: emptyList()
+          Log.i(TAG, "[PODCAST_EPISODES_END] Parsed ${result.size} episodes for podcast $itemId")
+        } catch (e: Exception) {
+          Log.e(TAG, "[PODCAST_EPISODES_ERROR] Exception fetching episodes for podcast $itemId: ${e.message}", e)
+          result = emptyList()
+        }
+      }
     }
     Log.i(TAG, "Remote children for $parentId - $mediaType size is ${result.size}")
     return result
+  }
+
+  /**
+   * Builds a track radio queue: the selected track + related tracks.
+   * Returns MediaBrowserCompat.MediaItem list ready for QueueManager.
+   */
+  suspend fun getTrackRadioQueue(
+    selectedTrack: MediaBrowserCompat.MediaItem,
+    trackId: String,
+    context: Context
+  ): List<MediaBrowserCompat.MediaItem> {
+    val result = mutableListOf(selectedTrack)
+    try {
+      val parentData = selectedTrack.description.extras?.getString("parentData") ?: ""
+      val related = this.musicApi.getRelatedTracks(trackId, 14)
+      val relatedItems = related.list.mapNotNull { track ->
+        MediaItemFactory.parseMediaItems(track, parentData, context)
+      }
+      result.addAll(relatedItems)
+      Log.i(TAG, "[TRACK_RADIO] Built queue: 1 selected + ${relatedItems.size} related = ${result.size} total")
+    } catch (e: Exception) {
+      Log.e(TAG, "[TRACK_RADIO] Failed to load related tracks: ${e.message}", e)
+    }
+    return result
+  }
+
+  /**
+   * Builds an artist radio queue: fetch artist's popular tracks.
+   * Same as JS app: /artists/{id}/tracks?order=popularity, then caller shuffles.
+   */
+  suspend fun getArtistRadioQueue(
+    artistId: String,
+    parentData: String,
+    context: Context
+  ): List<MediaBrowserCompat.MediaItem> {
+    val result = mutableListOf<MediaBrowserCompat.MediaItem>()
+    try {
+      val response = this.musicApi.getArtistTracks(artistId, limit = 100)
+      Log.i(TAG, "[ARTIST_RADIO] API returned ${response.list.size} tracks for artist $artistId")
+      response.list.forEach { track ->
+        val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+        if (mediaItem != null) {
+          result.add(mediaItem)
+        }
+      }
+      Log.i(TAG, "[ARTIST_RADIO] Built queue: ${result.size} tracks")
+    } catch (e: Exception) {
+      Log.e(TAG, "[ARTIST_RADIO] Failed to load artist tracks: ${e.message}", e)
+    }
+    return result
+  }
+
+  /**
+   * Builds a station/tag radio queue using the stations endpoint.
+   * Used for TAG_RADIO types from Recents.
+   */
+  suspend fun getStationRadioQueue(
+    stationId: String,
+    parentData: String,
+    context: Context
+  ): List<MediaBrowserCompat.MediaItem> {
+    val result = mutableListOf<MediaBrowserCompat.MediaItem>()
+    try {
+      val tracks = this.musicApi.getRadioTracks(stationId, 15)
+      Log.i(TAG, "[STATION_RADIO] API returned ${tracks.size} tracks for station $stationId")
+      tracks.forEach { track ->
+        val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+        if (mediaItem != null) {
+          result.add(mediaItem)
+        }
+      }
+      Log.i(TAG, "[STATION_RADIO] Built queue: ${result.size} tracks")
+    } catch (e: Exception) {
+      Log.e(TAG, "[STATION_RADIO] Failed to load station tracks: ${e.message}", e)
+    }
+    return result
+  }
+
+  /**
+   * Builds Play and Shuffle action items for album/playlist drill-down.
+   * These appear at the top of the track list.
+   */
+  private fun buildActionItems(
+    mediaType: String,
+    itemId: String,
+    itemName: String
+  ): List<MediaBrowserCompat.MediaItem> {
+    val playText = TextsManager.getText("play").ifEmpty { "Play" }
+    val shuffleText = TextsManager.getText("shuffle").ifEmpty { "Shuffle" }
+
+    val playExtras = Bundle().apply {
+      putInt(
+        MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+      )
+    }
+    val shuffleExtras = Bundle().apply {
+      putInt(
+        MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM,
+        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+      )
+    }
+
+    val playItem = MediaItemFactory.buildMediaItem(
+      title = "\u25B6 $playText",
+      subtitle = itemName,
+      mediaId = "play_all:${mediaType}:${itemId}",
+      flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+      extras = playExtras
+    )
+    val shuffleItem = MediaItemFactory.buildMediaItem(
+      title = "\u21C6 $shuffleText",
+      subtitle = itemName,
+      mediaId = "shuffle:${mediaType}:${itemId}",
+      flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+      extras = shuffleExtras
+    )
+    return listOf(playItem, shuffleItem)
   }
 
   private fun normalizeSearchText(text: CharSequence?): String {

@@ -48,12 +48,12 @@ var exec = require('cordova/exec');
 
     onPlaybackStateChange: function (callback) {
       console.log('[auto] onPlaybackStateChange called');
-      AutoPlugin.onPlaybackStateChange = callback;
+      AutoPlugin.onPlaybackStateChangeCallback = callback;
 
       exec(
         function (data) {
-          if (typeof AutoPlugin.onPlaybackStateChange === 'function') {
-            AutoPlugin.onPlaybackStateChange(data);
+          if (typeof AutoPlugin.onPlaybackStateChangeCallback === 'function') {
+            AutoPlugin.onPlaybackStateChangeCallback(data);
           }
         },
         function (err) {

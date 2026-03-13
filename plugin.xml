@@ -7,9 +7,6 @@
       <engine name="cordova-ios" version=">=6.0.0" />
   </engines>
 
-  <!-- Hooks that run late in the build process, after other plugins have generated their files -->
-  <hook type="before_compile" src="hooks/modify_file_provider.js"/>
-  <hook type="before_build" src="hooks/modify_file_provider.js"/>
   <hook type="after_prepare" src="hooks/add_siri_appdelegate.js"/>
 
   <js-module src="www/myplugin.js" name="auto">
@@ -29,6 +26,7 @@
 
     <resource-file src="src/android/res/xml/automotive_app_desc.xml" target="res/xml/automotive_app_desc.xml" />
     <resource-file src="src/android/res/xml/allowed_media_browser_callers.xml" target="res/xml/allowed_media_browser_callers.xml" />
+    <resource-file src="src/android/res/xml/auto_file_provider_paths.xml" target="res/xml/auto_file_provider_paths.xml" />
     <config-file target="res/xml/config.xml" parent="/*">
         <feature name="AndroidAutoPlugin">
             <param name="android-package" value="com.kuackmedia.androidauto.AndroidAutoPlugin" />
@@ -57,6 +55,16 @@
           <action android:name="android.intent.action.MEDIA_BUTTON" />
         </intent-filter>
       </receiver>
+
+      <provider
+        android:name="com.kuackmedia.androidauto.utils.AutoFileProvider"
+        android:authorities="${applicationId}.auto.file.provider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/auto_file_provider_paths" />
+      </provider>
     </config-file>
 
     <config-file target="AndroidManifest.xml" parent="/*">
@@ -92,6 +100,7 @@
     <source-file src="src/android/com/kuackmedia/androidauto/tree/MediaItemFactory.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/tree" />
     <source-file src="src/android/com/kuackmedia/androidauto/tree/MediaItemJsonAdapter.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/tree" />
 
+    <source-file src="src/android/com/kuackmedia/androidauto/utils/AutoFileProvider.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/utils" />
     <source-file src="src/android/com/kuackmedia/androidauto/utils/LocalStorageUtils.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/utils" />
     <source-file src="src/android/com/kuackmedia/androidauto/utils/MediaUtils.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/utils" />
     <source-file src="src/android/com/kuackmedia/androidauto/utils/TextsManager.kt"

@@ -15,6 +15,8 @@ import com.kuackmedia.androidauto.models.Artist
 import com.kuackmedia.androidauto.models.CoverImage
 import com.kuackmedia.androidauto.models.MediaItem
 import com.kuackmedia.androidauto.models.PlayListItem
+import com.kuackmedia.androidauto.models.PodcastEpisode
+import com.kuackmedia.androidauto.models.PodcastShow
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
 import com.kuackmedia.androidauto.utils.TextsManager
@@ -26,9 +28,19 @@ import kotlin.compareTo
 
 object MediaItemFactory {
   private const val TAG: String = "MediaItemFactory"
+
+  /**
+   * Sanitizes an ID string by removing trailing ".0" from Double-parsed numbers.
+   * JSON numbers parsed via readJsonValue() become Double (e.g., 9206567 -> "9206567.0").
+   */
+  fun sanitizeId(id: String): String {
+    return if (id.endsWith(".0")) id.dropLast(2) else id
+  }
+
   fun parseMediaItems(mediaItem: MediaItem, parentData: String, context: Context): MediaBrowserCompat.MediaItem? {
     var result: MediaBrowserCompat.MediaItem? = null
-    val mediaId = "item_" + mediaItem.itemType + "_" + mediaItem.id
+    val cleanId = sanitizeId(mediaItem.id)
+    val mediaId = "item_" + mediaItem.itemType + "_" + cleanId
     var extras = Bundle()
 
     extras.putString("parentData", parentData)
@@ -58,7 +70,7 @@ object MediaItemFactory {
           title = playlist.name,
           subtitle = TextsManager.getText("playlist"),
           mediaId = mediaId,
-          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = localURI,
           extras = extras
         )
@@ -71,7 +83,7 @@ object MediaItemFactory {
           title = album.title,
           subtitle = TextsManager.getText("album") + " - " +getArtistsNames(album.artists),
           mediaId = mediaId,
-          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = getImageUri(album.images, "album", album.id.toString(), context),
           extras = extras
         )
@@ -85,7 +97,7 @@ object MediaItemFactory {
           title = artist.name,
           subtitle = TextsManager.getText("artist"),
           mediaId = mediaId,
-          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
           imageUri = getImageUri(artist.images, "artist", artist.id.toString(), context),
           extras = extras
         )
@@ -106,13 +118,14 @@ object MediaItemFactory {
 
       "track" -> {
         val track = mediaItem as Track
-        val imageUri = if(track.album != null) getImageUri(track.album.images, "album",  track.album.id.toString(), context ) else null
+        val cleanAlbumId = if (track.album != null) sanitizeId(track.album.id.toString()) else null
+        val imageUri = if(track.album != null) getImageUri(track.album.images, "album", cleanAlbumId, context ) else null
         extras.putString("title", track.name)
         extras.putString("artist", getArtistsNames(track.artists))
         extras.putString("album", track.album?.title)
         extras.putString("image", imageUri.toString())
         extras.putString("length", track.length)
-        extras.putString("id", track.id)
+        extras.putString("id", cleanId)
         extras.putString("idAlbumTrack", track.idAlbumTrack.toString())
 
         val mediaItemAdapter = MediaItemJsonAdapter(
@@ -128,6 +141,95 @@ object MediaItemFactory {
           mediaId = mediaId,
           flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
           imageUri = if(track.album != null) getImageUri(track.album.images, "album",  track.album.id.toString(), context ) else null,
+          extras = extras
+        )
+      }
+
+      "artist_radio" -> {
+        val artist = mediaItem as Artist
+        result = this.buildMediaItem(
+          title = artist.name,
+          subtitle = TextsManager.getText("station") + " - " + TextsManager.getText("artist"),
+          mediaId = mediaId,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          imageUri = getImageUri(artist.images, "artist", artist.id.toString(), context),
+          extras = extras
+        )
+      }
+
+      "radio" -> {
+        val tag = mediaItem as Tag
+        result = this.buildMediaItem(
+          title = tag.name,
+          subtitle = TextsManager.getText("station"),
+          mediaId = mediaId,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          imageUri = getImageUri(tag.images, "tag", tag.id.toString(), context),
+          extras = extras
+        )
+      }
+
+      "radio_track" -> {
+        val track = mediaItem as Track
+        val cleanAlbumId = if (track.album != null) sanitizeId(track.album.id.toString()) else null
+        val imageUri = if(track.album != null) getImageUri(track.album.images, "album", cleanAlbumId, context) else null
+
+        extras.putString("title", track.name)
+        extras.putString("artist", getArtistsNames(track.artists))
+        extras.putString("album", track.album?.title)
+        extras.putString("image", imageUri.toString())
+        extras.putString("length", track.length)
+        extras.putString("id", cleanId)
+        extras.putString("idAlbumTrack", track.idAlbumTrack.toString())
+
+        val mediaItemAdapter = MediaItemJsonAdapter(
+          Moshi.Builder()
+            .add(KotlinJsonAdapterFactory())
+            .build()
+        )
+        extras.putString("track", mediaItemAdapter.toJson(track))
+
+        result = this.buildMediaItem(
+          title = track.name,
+          subtitle = TextsManager.getText("station") + " - " + TextsManager.getText("track"),
+          mediaId = mediaId,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          imageUri = imageUri,
+          extras = extras
+        )
+      }
+
+      "podcast" -> {
+        val podcast = mediaItem as PodcastShow
+        val displayTitle = podcast.title ?: podcast.name ?: "Podcast"
+        val imageUrl = podcast.ourImage ?: podcast.image ?: podcast.imageUrl
+        val imageUri = if (imageUrl != null) {
+          getPodcastImageUri(podcast.id, imageUrl, context)
+        } else null
+
+        result = this.buildMediaItem(
+          title = displayTitle,
+          subtitle = "Podcast",
+          mediaId = mediaId,
+          flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+          imageUri = imageUri,
+          extras = extras
+        )
+      }
+
+      "podcast_episode", "podcastEpisode" -> {
+        val episode = mediaItem as PodcastEpisode
+        val displayTitle = episode.title ?: "Episode"
+        val subtitle = episode.duration ?: episode.showTitle ?: "Podcast"
+        val imageUrl = episode.ourImage ?: episode.image
+        val imageUri = if (imageUrl != null) Uri.parse(imageUrl) else null
+
+        result = this.buildMediaItem(
+          title = displayTitle,
+          subtitle = subtitle,
+          mediaId = mediaId,
+          flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+          imageUri = imageUri,
           extras = extras
         )
       }
@@ -185,7 +287,7 @@ object MediaItemFactory {
           val iconFile = File(context.filesDir, iconStringPath)
           Log.i(TAG, "createBrowsable: checking local file ${iconFile.absolutePath} (exists=${iconFile.exists()})")
           if (iconFile.exists()) {
-            uri = FileProvider.getUriForFile(context, "${context.packageName}.cdv.core.file.provider", iconFile)
+            uri = FileProvider.getUriForFile(context, "${context.packageName}.auto.file.provider", iconFile)
             Log.i(TAG, "createBrowsable: content Uri for file: $uri")
             // grant permission to likely clients (debug)
             grantReadPermissionToCarApps(context, uri)
@@ -222,6 +324,27 @@ object MediaItemFactory {
     }
 
     return MediaBrowserCompat.MediaItem(descriptionBuilder.build(), MediaBrowserCompat.MediaItem.FLAG_BROWSABLE)
+  }
+
+  private fun getPodcastImageUri(podcastId: String, imageUrl: String, context: Context): Uri? {
+    // Check local podcast image first
+    val basePath = File(context.filesDir, "img/podcast/")
+    val extensions = listOf("jpg", "jpeg", "png")
+    for (ext in extensions) {
+      val localFile = File(basePath, "$podcastId.$ext")
+      if (localFile.exists()) {
+        try {
+          val authority = "${context.packageName}.auto.file.provider"
+          val uri = FileProvider.getUriForFile(context, authority, localFile)
+          grantReadPermissionToCarApps(context, uri)
+          return uri
+        } catch (e: Exception) {
+          Log.w(TAG, "getPodcastImageUri: FileProvider failed for ${localFile.absolutePath}: ${e.message}")
+        }
+      }
+    }
+    // Fallback to remote URL
+    return Uri.parse(imageUrl)
   }
 
   private fun getImageUri(images: List<CoverImage>?, itemType: String?, itemId: String?, context: Context): Uri? {
@@ -288,7 +411,7 @@ object MediaItemFactory {
       }
       Log.i(TAG, "Checking local candidate: ${fileCanonical.absolutePath} (exists=${fileCanonical.exists()})")
       if (fileCanonical.exists()) {
-        val authority = "${context.packageName}.cdv.core.file.provider"
+        val authority = "${context.packageName}.auto.file.provider"
 
         // Try with canonical file first, then fallback to raw file if it fails
         // This handles edge cases with symlinks on different Android versions

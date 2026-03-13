@@ -309,10 +309,9 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun seekTo(position: Long) {
-    Log.i(TAG, "Seek to $position isPreparing $isPreparing")
+    Log.i(TAG, "Seek to $position isPreparing $isPreparing isPlaying ${mediaPlayer.isPlaying}")
     if(!isPreparing) {
       mediaPlayer.seekTo(position.toInt())
-      mediaPlayer.start()
     }
   }
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Base files directory -->
+    <files-path name="files_root" path="." />
+    <!-- Image directories -->
+    <files-path name="img" path="img/" />
+    <files-path name="img_cover" path="img/cover/" />
+    <files-path name="img_playlist" path="img/playlist/" />
+    <files-path name="img_tag" path="img/tag/" />
+    <files-path name="img_podcast" path="img/podcast/" />
+</paths>
