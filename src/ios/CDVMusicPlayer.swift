@@ -21,6 +21,17 @@ class CDVMusicPlayer: NSObject {
     private var debugTimer: Timer?
     private var lastKnownTrackId: String?
 
+    // Serial queue to protect mutations to self.queue and self.currentIndex (Phase 0 stabilization)
+    private let playerQueue = DispatchQueue(label: "com.kuack.carplay.player")
+
+    // Cached playback context (Phase 1: PLAYLIST_DATA persistence)
+    // Updated when queue changes via setCurrentParentContext(), read in updateNowPlayingInfo()
+    var currentParentContext: [String: Any]?
+
+    // Phase 9: Preloaded next track item for seamless transitions
+    private var nextPlayerItem: AVPlayerItem?
+    private var nextPlayerTrackId: String?
+
     // Flag to prevent auto-play during initial CarPlay setup
     // This prevents double playback (plugin's AVPlayer + app's AVPlayer playing simultaneously)
     // The flag is set in activateForCarPlay() and cleared after initial setup completes
@@ -249,9 +260,26 @@ class CDVMusicPlayer: NSObject {
     }
 
     @objc func skipToNext() {
-        guard !queue.isEmpty else { return }
-        currentIndex = (currentIndex + 1) % queue.count
-        loadCurrentTrack()
+        playerQueue.sync {
+            guard !queue.isEmpty else { return }
+            currentIndex = (currentIndex + 1) % queue.count
+        }
+        // Phase 9: Try to use preloaded next track for seamless transition
+        var usedPreload = false
+        if let preloaded = nextPlayerItem, let preloadedId = nextPlayerTrackId {
+            let currentTrackData = extractTrackData(queue[currentIndex])
+            let currentId = (currentTrackData["id"] as? String) ?? ""
+            if currentId == preloadedId {
+                print("[CDVMusicPlayer][Preload] Using preloaded item for track \(preloadedId)")
+                attachItemObservers(preloaded)
+                player.replaceCurrentItem(with: preloaded)
+                invalidatePreload()
+                usedPreload = true
+            }
+        }
+        if !usedPreload {
+            loadCurrentTrack()
+        }
         // Explicitly seek to 0 to ensure position is reset
         player.seek(to: .zero)
         play()
@@ -275,8 +303,10 @@ class CDVMusicPlayer: NSObject {
         )
     }
     @objc func skipToPrevious() {
-        guard !queue.isEmpty else { return }
-        currentIndex = (currentIndex - 1 + queue.count) % queue.count
+        playerQueue.sync {
+            guard !queue.isEmpty else { return }
+            currentIndex = (currentIndex - 1 + queue.count) % queue.count
+        }
         loadCurrentTrack()
         // Explicitly seek to 0 to ensure position is reset
         player.seek(to: .zero)
@@ -315,7 +345,10 @@ class CDVMusicPlayer: NSObject {
 
     func updateQueue(_ queue: [[String: Any]], selectedTrackId: String?, persist: Bool = true, fromNative: Bool = false) {
         print("[CDVMusicPlayer][diag] updateQueue(persist=\(persist)) selectedId=\(selectedTrackId ?? "<nil>") incomingCount=\(queue.count)")
-        self.queue = queue
+        invalidatePreload() // Phase 9: Invalidate preloaded item when queue changes
+        playerQueue.sync {
+            self.queue = queue
+        }
 
         guard !queue.isEmpty else {
             print("[CDVMusicPlayer][diag] updateQueue(): received empty queue")
@@ -326,15 +359,17 @@ class CDVMusicPlayer: NSObject {
         let persistedId = CDVQueueStorage.currentTrackId()
         let candidateId = stringValue(selectedTrackId) ?? stringValue(persistedId)
 
-        if let candidateId,
-           let idx = queue.firstIndex(where: { item in
-               guard let data = item["data"] as? [String: Any] else { return false }
-               let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
-               return directId == candidateId
-           }) {
-            currentIndex = idx
-        } else {
-            currentIndex = min(max(0, currentIndex), max(0, queue.count - 1))
+        playerQueue.sync {
+            if let candidateId,
+               let idx = queue.firstIndex(where: { item in
+                   guard let data = item["data"] as? [String: Any] else { return false }
+                   let directId = stringValue(data["idAlbumTrack"]) ?? stringValue(data["id"])
+                   return directId == candidateId
+               }) {
+                currentIndex = idx
+            } else {
+                currentIndex = min(max(0, currentIndex), max(0, queue.count - 1))
+            }
         }
 
         let preview = queue.prefix(3).map { (item) -> String in
@@ -466,8 +501,10 @@ class CDVMusicPlayer: NSObject {
             return min(currentIndex, max(0, items.count - 1))
         }()
 
-        self.queue = items
-        self.currentIndex = resolvedIndex
+        playerQueue.sync {
+            self.queue = items
+            self.currentIndex = resolvedIndex
+        }
 
         let formattedDate = modifiedDate.map { ISO8601DateFormatter().string(from: $0) } ?? "<nil>"
         print("[CDVMusicPlayer][diag] reloadQueue(force=\(force)): loaded=\(items.count) currentIndex=\(self.currentIndex) currentId=\(currentId ?? "<nil>") fileMTime=\(formattedDate)")
@@ -479,6 +516,10 @@ class CDVMusicPlayer: NSObject {
         }
 
         if !items.isEmpty {
+            // Load cached playback context if not already set (Phase 2)
+            if currentParentContext == nil {
+                currentParentContext = CDVQueueStorage.getPlaylistData()
+            }
             // Prepare current item and metadata without forcing playback
             loadCurrentTrack()
             updateNowPlayingInfo()
@@ -536,6 +577,8 @@ class CDVMusicPlayer: NSObject {
             // IMPORTANT: Resume playback after replacing item - AVPlayer stops when item changes
             // BUT skip auto-play during initial CarPlay setup to prevent double playback
             if isPlaying && !isInitialCarPlaySetup { player.play(); startPeriodicUpdates() }
+            // Phase 9: Preload next track in background
+            DispatchQueue.global(qos: .utility).async { [weak self] in self?.preloadNextTrack() }
             return
         }
 
@@ -556,6 +599,8 @@ class CDVMusicPlayer: NSObject {
                 // IMPORTANT: Resume playback after replacing item - AVPlayer stops when item changes
                 // BUT skip auto-play during initial CarPlay setup to prevent double playback
                 if isPlaying && !isInitialCarPlaySetup { player.play(); startPeriodicUpdates() }
+                // Phase 9: Preload next track in background
+                DispatchQueue.global(qos: .utility).async { [weak self] in self?.preloadNextTrack() }
                 return
             }
         }
@@ -587,6 +632,8 @@ class CDVMusicPlayer: NSObject {
                             // Skip auto-play during initial CarPlay setup to prevent double playback
                             if self.isPlaying && !self.isInitialCarPlaySetup { self.player.play(); self.startPeriodicUpdates() }
                             self.updateNowPlayingInfoIfNeeded()
+                            // Phase 9: Preload next track in background
+                            DispatchQueue.global(qos: .utility).async { [weak self] in self?.preloadNextTrack() }
                         }
                     }
                 case .failure(let err):
@@ -595,6 +642,77 @@ class CDVMusicPlayer: NSObject {
             }
         } else {
             print("[CDVMusicPlayer][WARN] Neither 'source' nor ids present to play current track.")
+        }
+    }
+
+    // MARK: - Phase 9: Preload next track for seamless transitions
+
+    /// Resolve the URL for the next track in the queue and create an AVPlayerItem
+    private func preloadNextTrack() {
+        let nextIdx = (currentIndex + 1) % queue.count
+        guard nextIdx != currentIndex, nextIdx < queue.count else {
+            nextPlayerItem = nil
+            nextPlayerTrackId = nil
+            return
+        }
+        let nextTrack = extractTrackData(queue[nextIdx])
+        let nextId = (nextTrack["id"] as? String) ?? ""
+        guard !nextId.isEmpty else { return }
+
+        // Skip if already preloaded for this track
+        if nextPlayerTrackId == nextId, nextPlayerItem != nil { return }
+
+        print("[CDVMusicPlayer][Preload] Preloading next track idx=\(nextIdx) id=\(nextId)")
+
+        // Check local first
+        if let localPath = CDVLocalStorageUtils.getLocalTrackPath(nextId) {
+            let item = AVPlayerItem(url: URL(fileURLWithPath: localPath))
+            playerQueue.sync {
+                self.nextPlayerItem = item
+                self.nextPlayerTrackId = nextId
+            }
+            print("[CDVMusicPlayer][Preload] Preloaded LOCAL track: \(nextId)")
+            return
+        }
+
+        // Try source URL
+        let source = (nextTrack["source"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !source.isEmpty, let url = URL(string: source), url.scheme != nil {
+            let item = AVPlayerItem(url: url)
+            playerQueue.sync {
+                self.nextPlayerItem = item
+                self.nextPlayerTrackId = nextId
+            }
+            print("[CDVMusicPlayer][Preload] Preloaded from source URL: \(nextId)")
+            return
+        }
+
+        // Resolve signed URL
+        let idAlbumTrack = (nextTrack["idAlbumTrack"] as? String) ?? ""
+        let api: MusicApi = MusicApiImpl()
+        let req = TrackRequest(
+            idAlbumTrack: !idAlbumTrack.isEmpty ? idAlbumTrack : "0",
+            idTrack: nextId,
+            forceDevice: false, useCloudFront: true, forcePreview: false, extraLife: true
+        )
+        api.getTrackUrl(trackRequest: req) { [weak self] result in
+            guard let self = self else { return }
+            if let signed = try? result.get(), let url = URL(string: signed.signedUrl) {
+                let item = AVPlayerItem(url: url)
+                self.playerQueue.sync {
+                    self.nextPlayerItem = item
+                    self.nextPlayerTrackId = nextId
+                }
+                print("[CDVMusicPlayer][Preload] Preloaded from signed URL: \(nextId)")
+            }
+        }
+    }
+
+    /// Invalidate any preloaded item (call when queue changes)
+    private func invalidatePreload() {
+        playerQueue.sync {
+            nextPlayerItem = nil
+            nextPlayerTrackId = nil
         }
     }
 
@@ -842,6 +960,12 @@ class CDVMusicPlayer: NSObject {
         print("[CDVMusicPlayer] stopDebugMonitoring: timer invalidated")
     }
 
+    /// Set the current playback context and persist to PLAYLIST_DATA file
+    @objc func setCurrentParentContext(_ context: [String: Any]?) {
+        self.currentParentContext = context
+        CDVQueueStorage.setPlaylistData(context)
+    }
+
     @objc func updatePlaybackState(_ state: String) { /* could map to MPNowPlayingInfoCenter states if needed */ }
 
     @objc func updateNowPlayingInfo() {
@@ -855,7 +979,12 @@ class CDVMusicPlayer: NSObject {
         let album = (track["album"] as? String) ?? ""
         if !title.isEmpty { info[MPMediaItemPropertyTitle] = title }
         if !artist.isEmpty { info[MPMediaItemPropertyArtist] = artist }
-        if !album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = album }
+        // Phase 2: If no album title, use playback context name ("Playing from...")
+        if !album.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = album
+        } else if let contextName = currentParentContext?["name"] as? String, !contextName.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = contextName
+        }
 
         // Playback timing
         let elapsed = CMTimeGetSeconds(player.currentTime())
@@ -957,7 +1086,7 @@ class CDVMusicPlayer: NSObject {
     @objc func updateNowPlayingInfoIfNeeded() { updateNowPlayingInfo() }
 
     // MARK: - Hardcoded content
-    @objc func playTrack(_ track: [String: Any]) { self.queue = [track]; currentIndex = 0; loadCurrentTrack(); play() }
+    @objc func playTrack(_ track: [String: Any]) { playerQueue.sync { self.queue = [track]; currentIndex = 0 }; loadCurrentTrack(); play() }
 
     @objc func cleanup() {
         player.pause()

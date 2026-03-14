@@ -7,8 +7,7 @@ class CDVQueueStorage {
     }
 
     @objc static func queueFilePath() -> String {
-        let path = (queueDirectory() as NSString).appendingPathComponent("QUEUE_ITEMS_KEY")
-        return path
+        return (queueDirectory() as NSString).appendingPathComponent("QUEUE_ITEMS_KEY")
     }
 
     static func queueFileStatus() -> (path: String, exists: Bool, attributes: [FileAttributeKey: Any]?) {
@@ -59,6 +58,92 @@ class CDVQueueStorage {
         let quotedValue = "\"\(trackId)\""
         UserDefaults.standard.set(quotedValue, forKey: "current_track")
         UserDefaults.standard.synchronize()
+    }
+
+    // MARK: - Playlist Data (context: "playing from") persistence
+    // Mirrors Android's MediaSessionCallback.storeLocalData() which writes PLAYLIST_DATA file
+
+    private static func playlistDataFilePath() -> String {
+        return (queueDirectory() as NSString).appendingPathComponent("playlist_data")
+    }
+
+    /// Persist the current playback context (id, type, name) to Library/NoCloud/playlist_data
+    static func setPlaylistData(_ data: [String: Any]?) {
+        let path = playlistDataFilePath()
+        guard let data = data else {
+            try? FileManager.default.removeItem(atPath: path)
+            print("[QueueStorage] Removed PLAYLIST_DATA")
+            return
+        }
+        do {
+            var jsonData = try JSONSerialization.data(withJSONObject: data, options: [])
+            // Fix escaped slashes to match mobile app format
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                let unescaped = jsonString.replacingOccurrences(of: "\\/", with: "/")
+                jsonData = unescaped.data(using: .utf8) ?? jsonData
+            }
+            try jsonData.write(to: URL(fileURLWithPath: path), options: .atomic)
+            print("[QueueStorage] Wrote playlist_data: \(data)")
+        } catch {
+            print("[QueueStorage][ERROR] Failed to write playlist_data: \(error.localizedDescription)")
+        }
+    }
+
+    /// Read the persisted playback context from Library/NoCloud/playlist_data
+    static func getPlaylistData() -> [String: Any]? {
+        let path = playlistDataFilePath()
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let json = try JSONSerialization.jsonObject(with: data, options: [])
+            return json as? [String: Any]
+        } catch {
+            print("[QueueStorage][ERROR] Failed to read PLAYLIST_DATA: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    // MARK: - Current Episode persistence (for podcast support)
+
+    private static func currentEpisodeFilePath() -> String {
+        return (queueDirectory() as NSString).appendingPathComponent("current_episode")
+    }
+
+    /// Persist the current podcast episode data
+    static func setCurrentEpisode(_ data: [String: Any]?) {
+        let path = currentEpisodeFilePath()
+        guard let data = data else {
+            try? FileManager.default.removeItem(atPath: path)
+            print("[QueueStorage] Removed current_episode")
+            return
+        }
+        do {
+            let dir = queueDirectory()
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: nil)
+            var jsonData = try JSONSerialization.data(withJSONObject: data, options: [])
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                let unescaped = jsonString.replacingOccurrences(of: "\\/", with: "/")
+                jsonData = unescaped.data(using: .utf8) ?? jsonData
+            }
+            try jsonData.write(to: URL(fileURLWithPath: path), options: .atomic)
+            print("[QueueStorage] Wrote current_episode")
+        } catch {
+            print("[QueueStorage][ERROR] Failed to write current_episode: \(error.localizedDescription)")
+        }
+    }
+
+    /// Read the persisted current podcast episode
+    static func getCurrentEpisode() -> [String: Any]? {
+        let path = currentEpisodeFilePath()
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let json = try JSONSerialization.jsonObject(with: data, options: [])
+            return json as? [String: Any]
+        } catch {
+            print("[QueueStorage][ERROR] Failed to read current_episode: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // Extract flattened data from a queue item for internal use (CarPlay UI, etc.)
