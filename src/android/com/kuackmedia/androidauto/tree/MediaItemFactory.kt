@@ -224,6 +224,19 @@ object MediaItemFactory {
         val imageUrl = episode.ourImage ?: episode.image
         val imageUri = if (imageUrl != null) Uri.parse(imageUrl) else null
 
+        extras.putString("title", displayTitle)
+        extras.putString("artist", episode.showTitle ?: "Podcast")
+        extras.putString("album", episode.showTitle ?: "Podcast")
+        extras.putString("image", imageUri?.toString() ?: "")
+        extras.putString("id", cleanId)
+        extras.putString("showId", episode.showId ?: "")
+        extras.putString("enclosure_url", episode.enclosure?.url ?: "")
+        extras.putString("isPodcast", "true")
+        if (episode.durationMs != null) {
+          extras.putLong("durationMs", episode.durationMs)
+        }
+        extras.putString("length", episode.duration ?: "0")
+
         result = this.buildMediaItem(
           title = displayTitle,
           subtitle = subtitle,
@@ -370,7 +383,28 @@ object MediaItemFactory {
           return Uri.parse(urlImage)
         }
       } else {
-        return Uri.parse(image.url)
+        val url = image.url
+        // Convert file:// URIs to content:// via FileProvider (Android Auto can't read file:// URIs)
+        if (url != null && url.startsWith("file://")) {
+          val filePath = Uri.parse(url).path
+          if (filePath != null) {
+            val file = File(filePath)
+            if (file.exists()) {
+              try {
+                val authority = "${context.packageName}.auto.file.provider"
+                val contentUri = FileProvider.getUriForFile(context, authority, file.canonicalFile)
+                Log.i(TAG, "getImageUri: converted file:// to content:// URI: $contentUri")
+                grantReadPermissionToCarApps(context, contentUri)
+                return contentUri
+              } catch (e: Exception) {
+                Log.w(TAG, "getImageUri: FileProvider failed for $filePath: ${e.message}")
+              }
+            } else {
+              Log.w(TAG, "getImageUri: local file not found: $filePath")
+            }
+          }
+        }
+        return Uri.parse(url)
       }
     }
     return Uri.parse("https://example.com/default_image.png") // Default image URL

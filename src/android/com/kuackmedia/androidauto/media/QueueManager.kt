@@ -12,6 +12,7 @@ import com.kuackmedia.androidauto.models.QueueItem
 import com.kuackmedia.androidauto.tree.MediaItemFactory
 import com.kuackmedia.androidauto.tree.MediaItemJsonAdapter
 import com.kuackmedia.androidauto.utils.LocalStorageUtils
+import com.kuackmedia.androidauto.utils.TextsManager
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -36,9 +37,13 @@ object QueueManager {
     Log.i(TAG, "[BUILD_QUEUE] Built queue with ${this.queue?.size ?: 0} items, reset currentQueueIndex to 0")
   }
 
-  fun setQueue(mediaSession: MediaSessionCompat,) {
+  fun setQueue(mediaSession: MediaSessionCompat, queueTitle: String? = null) {
     CordovaEventBridge.sendEvent(CordovaEvents.ON_MEDIA_UPDATE, JSONObject())
     mediaSession.setQueue(queue)
+    if (!queueTitle.isNullOrEmpty()) {
+      mediaSession.setQueueTitle(queueTitle)
+      Log.i(TAG, "[SET_QUEUE] Queue title: $queueTitle")
+    }
 
     // Validate currentQueueIndex after setting queue
     val queueSize = queue?.size ?: 0
@@ -46,6 +51,22 @@ object QueueManager {
       Log.w(TAG, "[SET_QUEUE] currentQueueIndex ($currentQueueIndex) >= queue.size ($queueSize), resetting to 0")
       currentQueueIndex = 0
     }
+  }
+
+  fun buildQueueTitle(type: String, name: String): String {
+    val prefix = TextsManager.getText("queue_title").ifEmpty { "Playing from " }
+    val typeLabel = when (type.uppercase()) {
+      "PLAYLIST" -> TextsManager.getText("queue_playlist")
+      "ALBUM" -> TextsManager.getText("queue_album")
+      "ARTIST" -> TextsManager.getText("queue_artist")
+      "TRACK_RADIO" -> TextsManager.getText("queue_radioTrack")
+      "ARTIST_STATION" -> TextsManager.getText("queue_radioArtist")
+      "RADIO" -> TextsManager.getText("queue_station")
+      "MIX" -> TextsManager.getText("queue_mix")
+      "PODCAST" -> TextsManager.getText("queue_podcast")
+      else -> type
+    }.ifEmpty { type }
+    return "$prefix$typeLabel: $name"
   }
 
   fun getCurrentQueue(context: Context): List<MediaSessionCompat.QueueItem>? {
@@ -220,6 +241,39 @@ object QueueManager {
       Log.w(TAG, "[SYNC_INDEX] Could not find mediaId '$currentMediaId' in queue, keeping current index: $currentQueueIndex")
     }
   }
+
+  /**
+   * Appends tracks to the end of the existing queue without resetting currentQueueIndex.
+   * Returns the number of items appended.
+   */
+  fun appendQueue(
+    newItems: List<MediaBrowserCompat.MediaItem>,
+    mediaSession: MediaSessionCompat
+  ): Int {
+    val currentQueue = this.queue?.toMutableList() ?: mutableListOf()
+    val startIndex = currentQueue.size
+
+    val newQueueItems = newItems.mapIndexed { index, track ->
+      MediaSessionCompat.QueueItem(track.description, (startIndex + index).toLong())
+    }
+
+    currentQueue.addAll(newQueueItems)
+    this.queue = currentQueue
+    mediaSession.setQueue(this.queue)
+
+    Log.i(TAG, "[APPEND_QUEUE] Appended ${newItems.size} items. Queue now has ${currentQueue.size} items. currentQueueIndex=$currentQueueIndex")
+    return newItems.size
+  }
+
+  fun shouldLoadMore(threshold: Int = 3): Boolean {
+    val queueSize = queue?.size ?: return false
+    val remaining = queueSize - currentQueueIndex - 1
+    return remaining <= threshold
+  }
+
+  fun getCurrentQueueIndex(): Int = currentQueueIndex
+
+  fun getQueueSize(): Int = queue?.size ?: 0
 
   private fun isAlreadyInQueue(
     mediaSession: MediaSessionCompat,

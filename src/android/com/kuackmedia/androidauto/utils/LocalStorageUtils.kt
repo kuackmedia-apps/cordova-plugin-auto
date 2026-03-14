@@ -100,6 +100,36 @@ object LocalStorageUtils {
     }
   }
 
+  /**
+   * Resolves a podcast episode audio URI.
+   * 1. Check offline: Documents/offline/episodes/{episodeId}.mp3
+   * 2. Fallback: enclosure URL (direct HTTP stream from RSS feed)
+   */
+  fun getEpisodeUri(context: Context, episodeId: String?, enclosureUrl: String?): Uri? {
+    Log.i(TAG, "[GET_EPISODE_URI] episodeId=$episodeId, enclosureUrl=$enclosureUrl")
+
+    if (episodeId.isNullOrEmpty() || episodeId == "null") {
+      Log.e(TAG, "[GET_EPISODE_URI] Invalid episodeId: $episodeId")
+      return null
+    }
+
+    // Check offline episode file
+    val episodeFile = File(context.filesDir, "offline/episodes/$episodeId.mp3")
+    if (episodeFile.exists()) {
+      Log.i(TAG, "[GET_EPISODE_URI_LOCAL] Using offline episode: ${episodeFile.absolutePath}")
+      return Uri.fromFile(episodeFile)
+    }
+
+    // Fallback to enclosure URL
+    if (!enclosureUrl.isNullOrEmpty() && enclosureUrl != "null") {
+      Log.i(TAG, "[GET_EPISODE_URI_REMOTE] Using enclosure URL: $enclosureUrl")
+      return Uri.parse(enclosureUrl)
+    }
+
+    Log.e(TAG, "[GET_EPISODE_URI_ERROR] No offline file and no enclosure URL for episodeId=$episodeId")
+    return null
+  }
+
   suspend fun getTrackUri(context: Context, trackId: String?, idAlbumTrack: String?): Uri? {
     Log.i(TAG, "[GET_TRACK_URI_START] Called with trackId=$trackId, idAlbumTrack=$idAlbumTrack")
 
@@ -110,13 +140,23 @@ object LocalStorageUtils {
     }
 
     val trackName = "$trackId.mp3"
-    val trackFile = File(context.filesDir, "offline/$trackName")
-    Log.d(TAG, "[GET_TRACK_URI_CHECK_LOCAL] Checking local file: ${trackFile.absolutePath}")
 
+    // 1. Check user's offline downloads
+    val trackFile = File(context.filesDir, "offline/$trackName")
+    Log.d(TAG, "[GET_TRACK_URI_CHECK_LOCAL] Checking offline: ${trackFile.absolutePath}")
     if (trackFile.exists()) {
-      Log.i(TAG, "[GET_TRACK_URI_LOCAL_FOUND] Using local track: ${trackFile.absolutePath}")
+      Log.i(TAG, "[GET_TRACK_URI_LOCAL_FOUND] Using offline track: ${trackFile.absolutePath}")
       return Uri.fromFile(trackFile)
-    } else {
+    }
+
+    // 2. Check auto_cache (preloaded by TrackPreloader)
+    val cacheFile = File(context.filesDir, "auto_cache/$trackName")
+    if (cacheFile.exists()) {
+      Log.i(TAG, "[GET_TRACK_URI_CACHE_FOUND] Using cached track: ${cacheFile.absolutePath}")
+      return Uri.fromFile(cacheFile)
+    }
+
+    run {
       Log.i(TAG, "[GET_TRACK_URI_REMOTE] Local file not found, attempting remote fetch")
 
       // Check if idAlbumTrack is valid

@@ -119,6 +119,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
         MediaItemTree.initialize(applicationContext, musicApi)
 
+        // Clear preloaded cache from previous session
+        TrackPreloader.clearCache(applicationContext)
+
         if (!::mediaSession.isInitialized) {
             mediaSession = MediaSessionCompat(this, TAG)
             mediaSession.setFlags(

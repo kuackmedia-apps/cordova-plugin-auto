@@ -3,6 +3,12 @@ package com.kuackmedia.androidauto.models
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class PodcastEnclosure(
+  val url: String? = null,
+  val type: String? = "audio/mpeg",
+)
+
+@JsonClass(generateAdapter = true)
 data class PodcastEpisode(
   override val id: String,
   override val itemType: String = "podcast_episode",
@@ -18,4 +24,5 @@ data class PodcastEpisode(
   val image: String? = null,
   val ourImage: String? = null,
   val isPodcast: Boolean = true,
+  val enclosure: PodcastEnclosure? = null,
 ) : MediaItem()

@@ -18,6 +18,7 @@ import com.kuackmedia.androidauto.models.NavigationData
 import com.kuackmedia.androidauto.models.OfflineTrack
 import com.kuackmedia.androidauto.models.PlayListItem
 import com.kuackmedia.androidauto.models.RecentListened
+import com.kuackmedia.androidauto.models.RelatedTracksByQueueRequest
 import com.kuackmedia.androidauto.models.Tag
 import com.kuackmedia.androidauto.models.Track
 import com.kuackmedia.androidauto.utils.TextsManager
@@ -288,6 +289,56 @@ object MediaItemTree {
               }
             }
             Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] ${libraryItem.text}: parsed=$parsedCount, empty/failed=$emptyCount")
+          }
+        }
+      }
+    "AUTO_NAVIGATION_HOME" -> {
+        val listType = Types.newParameterizedType(List::class.java, AutoNavigationExplorer::class.java)
+        val adapter: JsonAdapter<List<AutoNavigationExplorer>> = moshi.adapter(listType)
+        val homeItems: List<AutoNavigationExplorer>? = adapter.fromJson(jsonArray)
+        Log.i(TAG, "[AUTO_NAVIGATION_HOME] Parsed ${homeItems?.size ?: 0} sections")
+
+        if (homeItems != null && homeItems.isNotEmpty()) {
+          homeItems.forEach { homeItem ->
+            Log.i(TAG, "[AUTO_NAVIGATION_HOME] Section: ${homeItem.text}, mediaId: ${homeItem.mediaId}, items: ${homeItem.items.size}")
+            val homeMediaItem = MediaItemFactory.createBrowsable(
+              mediaId = homeItem.mediaId,
+              title = homeItem.text,
+              iconStringPath = homeItem.icon,
+              itemStyle = "LIST",
+              context = context
+            )
+
+            val homeMediaId = homeMediaItem.mediaId ?: return@forEach
+            treeNodes[homeMediaId] = MediaItemNode(homeMediaItem)
+            treeNodes[homeMediaId]?.let { node ->
+              titleMap[homeMediaItem.description.title.toString()] = node
+            }
+            treeNodes["AUTO_NAVIGATION_HOME_MENU"]?.addChild(homeMediaId)
+
+            var parsedCount = 0
+            var emptyCount = 0
+            homeItem.items.forEach { item ->
+              try {
+                Log.d(TAG, "[AUTO_NAVIGATION_HOME] Item itemType=${item.itemType}, class=${item::class.simpleName}")
+                val categoryMediaItem = MediaItemFactory.parseMediaItems(item, "", context)
+                if (categoryMediaItem != null) {
+                  parsedCount++
+                  val categoryMediaId = categoryMediaItem.mediaId ?: return@forEach
+                  treeNodes[categoryMediaId] = MediaItemNode(categoryMediaItem)
+                  treeNodes[categoryMediaId]?.let { node ->
+                    titleMap[categoryMediaItem.description.title.toString()] = node
+                  }
+                  treeNodes[homeMediaId]?.addChild(categoryMediaId)
+                } else {
+                  emptyCount++
+                }
+              } catch (e: Exception) {
+                emptyCount++
+                Log.w(TAG, "Failed to parse home category item: ${e.message}")
+              }
+            }
+            Log.i(TAG, "[AUTO_NAVIGATION_HOME] ${homeItem.text}: parsed=$parsedCount, empty/failed=$emptyCount")
           }
         }
       }
@@ -848,12 +899,12 @@ object MediaItemTree {
       }
 
       "artist" -> {
-        result = this.musicApi.getArtistTracks(itemId).list.mapNotNull {
-          val parentData = "{" +
-            " \"id\": \"${itemId}\",\n" +
-            "  \"type\": \"ARTIST\",\n" +
-            "  \"name\": \"${parent.description.title}\"" +
-            "}"
+        val parentData = "{" +
+          " \"id\": \"${itemId}\",\n" +
+          "  \"type\": \"ARTIST\",\n" +
+          "  \"name\": \"${parent.description.title}\"" +
+          "}"
+        val tracks = this.musicApi.getArtistTracks(itemId).list.mapNotNull {
           val mediaItem = MediaItemFactory.parseMediaItems(it, parentData, context)
           if (mediaItem != null) {
             val mid = mediaItem.mediaId ?: return@mapNotNull null
@@ -861,6 +912,8 @@ object MediaItemTree {
           }
           mediaItem
         }
+        val actionItems = buildActionItems("artist", itemId, parent.description.title?.toString() ?: "")
+        result = actionItems + tracks
       }
 
       "tag" -> {
@@ -913,76 +966,120 @@ object MediaItemTree {
    * Builds a track radio queue: the selected track + related tracks.
    * Returns MediaBrowserCompat.MediaItem list ready for QueueManager.
    */
-  suspend fun getTrackRadioQueue(
-    selectedTrack: MediaBrowserCompat.MediaItem,
-    trackId: String,
-    context: Context
+  // --- Paginated fetch methods for 2+15 incremental loading ---
+
+  suspend fun getAlbumTracksPage(
+    albumId: String,
+    parentData: String,
+    context: Context,
+    limit: Int = 15,
+    offset: Int = 0
   ): List<MediaBrowserCompat.MediaItem> {
-    val result = mutableListOf(selectedTrack)
-    try {
-      val parentData = selectedTrack.description.extras?.getString("parentData") ?: ""
-      val related = this.musicApi.getRelatedTracks(trackId, 14)
-      val relatedItems = related.list.mapNotNull { track ->
-        MediaItemFactory.parseMediaItems(track, parentData, context)
+    val response = musicApi.getAlbumTracks(albumId, limit = limit, offset = offset)
+    return response.tracks.items.mapNotNull { track ->
+      val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+      if (mediaItem != null) {
+        val mid = mediaItem.mediaId ?: return@mapNotNull null
+        treeNodes[mid] = MediaItemNode(mediaItem)
       }
-      result.addAll(relatedItems)
-      Log.i(TAG, "[TRACK_RADIO] Built queue: 1 selected + ${relatedItems.size} related = ${result.size} total")
-    } catch (e: Exception) {
-      Log.e(TAG, "[TRACK_RADIO] Failed to load related tracks: ${e.message}", e)
+      mediaItem
     }
-    return result
   }
 
-  /**
-   * Builds an artist radio queue: fetch artist's popular tracks.
-   * Same as JS app: /artists/{id}/tracks?order=popularity, then caller shuffles.
-   */
-  suspend fun getArtistRadioQueue(
+  suspend fun getPlaylistTracksPage(
+    playlistId: String,
+    parentData: String,
+    context: Context,
+    limit: Int = 15,
+    offset: Int = 0
+  ): List<MediaBrowserCompat.MediaItem> {
+    val response = musicApi.getPlayListTracks(playlistId, limit = limit, offset = offset)
+    return response.tracks.items.mapNotNull { playlistTrack ->
+      val mediaItem = MediaItemFactory.parseMediaItems(playlistTrack.track, parentData, context)
+      if (mediaItem != null) {
+        val mid = mediaItem.mediaId ?: return@mapNotNull null
+        treeNodes[mid] = MediaItemNode(mediaItem)
+      }
+      mediaItem
+    }
+  }
+
+  suspend fun getArtistTracksPage(
     artistId: String,
     parentData: String,
-    context: Context
+    context: Context,
+    limit: Int = 15,
+    offset: Int = 0,
+    order: String = "popularity"
   ): List<MediaBrowserCompat.MediaItem> {
-    val result = mutableListOf<MediaBrowserCompat.MediaItem>()
-    try {
-      val response = this.musicApi.getArtistTracks(artistId, limit = 100)
-      Log.i(TAG, "[ARTIST_RADIO] API returned ${response.list.size} tracks for artist $artistId")
-      response.list.forEach { track ->
-        val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
-        if (mediaItem != null) {
-          result.add(mediaItem)
-        }
+    val response = musicApi.getArtistTracks(artistId, order = order, limit = limit, offset = offset)
+    return response.list.mapNotNull { track ->
+      val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+      if (mediaItem != null) {
+        val mid = mediaItem.mediaId ?: return@mapNotNull null
+        treeNodes[mid] = MediaItemNode(mediaItem)
       }
-      Log.i(TAG, "[ARTIST_RADIO] Built queue: ${result.size} tracks")
-    } catch (e: Exception) {
-      Log.e(TAG, "[ARTIST_RADIO] Failed to load artist tracks: ${e.message}", e)
+      mediaItem
     }
-    return result
   }
 
-  /**
-   * Builds a station/tag radio queue using the stations endpoint.
-   * Used for TAG_RADIO types from Recents.
-   */
-  suspend fun getStationRadioQueue(
+  suspend fun getStationRadioPage(
     stationId: String,
     parentData: String,
-    context: Context
+    context: Context,
+    count: Int = 15,
+    lastIdAlbumTrack: Long? = null
   ): List<MediaBrowserCompat.MediaItem> {
-    val result = mutableListOf<MediaBrowserCompat.MediaItem>()
-    try {
-      val tracks = this.musicApi.getRadioTracks(stationId, 15)
-      Log.i(TAG, "[STATION_RADIO] API returned ${tracks.size} tracks for station $stationId")
-      tracks.forEach { track ->
-        val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
-        if (mediaItem != null) {
-          result.add(mediaItem)
-        }
+    val tracks = musicApi.getRadioTracks(stationId, count, lastIdAlbumTrack)
+    return tracks.mapNotNull { track ->
+      val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+      if (mediaItem != null) {
+        val mid = mediaItem.mediaId ?: return@mapNotNull null
+        treeNodes[mid] = MediaItemNode(mediaItem)
       }
-      Log.i(TAG, "[STATION_RADIO] Built queue: ${result.size} tracks")
-    } catch (e: Exception) {
-      Log.e(TAG, "[STATION_RADIO] Failed to load station tracks: ${e.message}", e)
+      mediaItem
     }
-    return result
+  }
+
+  suspend fun getRelatedTracksPage(
+    trackId: String,
+    parentData: String,
+    context: Context,
+    limit: Int = 15
+  ): List<MediaBrowserCompat.MediaItem> {
+    val response = musicApi.getRelatedTracks(trackId, limit)
+    return response.list.mapNotNull { track ->
+      val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+      if (mediaItem != null) {
+        val mid = mediaItem.mediaId ?: return@mapNotNull null
+        treeNodes[mid] = MediaItemNode(mediaItem)
+      }
+      mediaItem
+    }
+  }
+
+  suspend fun getTrackRadioContinuation(
+    albumTrackIds: List<Long>,
+    excludeAlbumTrackIds: List<Long>,
+    seedAlbumTrackIds: List<Long>,
+    parentData: String,
+    context: Context,
+    limit: Int = 15
+  ): List<MediaBrowserCompat.MediaItem> {
+    val request = RelatedTracksByQueueRequest(
+      albumTrackIds = albumTrackIds,
+      excludeAlbumTrackIds = excludeAlbumTrackIds,
+      seedAlbumTrackIds = seedAlbumTrackIds
+    )
+    val response = musicApi.getRelatedTracksByQueue(request, limit = limit)
+    return response.list.mapNotNull { track ->
+      val mediaItem = MediaItemFactory.parseMediaItems(track, parentData, context)
+      if (mediaItem != null) {
+        val mid = mediaItem.mediaId ?: return@mapNotNull null
+        treeNodes[mid] = MediaItemNode(mediaItem)
+      }
+      mediaItem
+    }
   }
 
   /**

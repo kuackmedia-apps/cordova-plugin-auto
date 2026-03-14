@@ -35,10 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.net.URL
-import kotlin.or
-import kotlin.toString
 
 
 /**
@@ -62,6 +59,7 @@ class MediaSessionCallback(
   private var currentQueue: List<MediaSessionCompat.QueueItem>? = null
   private var currentTrack: MediaBrowserCompat.MediaItem? = null
   private var isCalledFromOnPrepare: Boolean = false
+  private var queueLoadingState: QueueLoadingState? = null
 
   init {
     // This executes when a track ends playing
@@ -88,27 +86,96 @@ class MediaSessionCallback(
   override fun onPrepare() {
     Log.d(TAG, "[ON_PREPARE] onPrepare triggered")
 
-    val prefs = this.context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
-    this.currentQueue = QueueManager.getCurrentQueue(this.context)
+    // Check PLAYLIST_DATA to determine if current session is podcast or music
+    val playlistDataRaw = CurrentMedia.readFileContent(context, PLAYLIST_DATA)
+    Log.i(TAG, "[ON_PREPARE] Raw PLAYLIST_DATA from file: $playlistDataRaw")
+    var isPodcastSession = false
+    if (playlistDataRaw != null) {
+      try {
+        val playlistDataJson = JSONObject(playlistDataRaw)
+        isPodcastSession = playlistDataJson.optString("type") == "PODCAST"
+        Log.i(TAG, "[ON_PREPARE] PLAYLIST_DATA type: ${playlistDataJson.optString("type")}, isPodcastSession=$isPodcastSession")
+      } catch (e: Exception) {
+        Log.w(TAG, "[ON_PREPARE] Failed to parse PLAYLIST_DATA: ${e.message}")
+      }
+    }
 
-    if(currentQueue !== null) {
-      Log.d(TAG, "[ON_PREPARE] Current queue size: ${currentQueue?.size}")
-      val savedTrackId = prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", "")
-      Log.i(TAG, "[ON_PREPARE] Saved track ID from prefs: $savedTrackId")
+    if (isPodcastSession) {
+      // Podcast session: read current_episode file and play it
+      val episodeRaw = CurrentMedia.readFileContent(context, "current_episode")
+      if (episodeRaw != null) {
+        try {
+          val episodeJson = JSONObject(episodeRaw)
+          val episodeId = episodeJson.optString("id", "")
+          val enclosureUrl = episodeJson.optJSONObject("enclosure")?.optString("url")
+          val episodeTitle = episodeJson.optString("title", "Episode")
+          val showTitle = episodeJson.optString("showTitle", "Podcast")
+          val imageUrl = episodeJson.optString("image", "")
+          val showId = episodeJson.optString("showId", "")
+          val durationMs = episodeJson.optLong("durationMs", 0L)
+          val duration = episodeJson.optString("duration", "0")
 
-      this.currentTrack =
-        CurrentMedia.getCurrentTrackFromQueue(
-          savedTrackId,
-          this.currentQueue
-        )
-      Log.i(TAG, "[ON_PREPARE] Current track from queue: ${this.currentTrack?.mediaId}")
+          Log.i(TAG, "[ON_PREPARE_PODCAST] episodeId=$episodeId, enclosureUrl=$enclosureUrl")
 
-      // When onPrepare is called (e.g., when Android Auto connects), we set a flag to prevent auto-play
-      // This is not an explicit user action, so the track should be loaded but not played automatically
-      Log.i(TAG, "[ON_PREPARE] Setting isCalledFromOnPrepare flag to prevent auto-play")
-      isCalledFromOnPrepare = true
+          val extras = Bundle().apply {
+            putString("id", episodeId)
+            putString("title", episodeTitle)
+            putString("artist", showTitle)
+            putString("album", showTitle)
+            putString("image", imageUrl)
+            putString("showId", showId)
+            putString("enclosure_url", enclosureUrl ?: "")
+            putString("isPodcast", "true")
+            putLong("durationMs", durationMs)
+            putString("length", duration)
+            putString("media_type", "podcast_episode")
+            putString("parentData", playlistDataRaw)
+          }
 
-      this.onPlayFromMediaId(this.currentTrack?.mediaId, this.currentTrack?.description?.extras)
+          val mediaId = "item_podcast_episode_$episodeId"
+          isCalledFromOnPrepare = true
+          this.onPlayFromMediaId(mediaId, extras)
+        } catch (e: Exception) {
+          Log.e(TAG, "[ON_PREPARE_PODCAST_ERROR] Failed to parse current_episode: ${e.message}", e)
+        }
+      } else {
+        Log.w(TAG, "[ON_PREPARE_PODCAST] No current_episode file found")
+      }
+    } else {
+      // Music session: standard queue-based prepare
+      val prefs = this.context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
+      this.currentQueue = QueueManager.getCurrentQueue(this.context)
+
+      if(currentQueue !== null) {
+        Log.d(TAG, "[ON_PREPARE] Current queue size: ${currentQueue?.size}")
+        val savedTrackId = prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", "")
+        Log.i(TAG, "[ON_PREPARE] Saved track ID from prefs: $savedTrackId")
+
+        this.currentTrack =
+          CurrentMedia.getCurrentTrackFromQueue(
+            savedTrackId,
+            this.currentQueue
+          )
+        Log.i(TAG, "[ON_PREPARE] Current track from queue: ${this.currentTrack?.mediaId}")
+
+        // When onPrepare is called (e.g., when Android Auto connects), we set a flag to prevent auto-play
+        // This is not an explicit user action, so the track should be loaded but not played automatically
+        Log.i(TAG, "[ON_PREPARE] Setting isCalledFromOnPrepare flag to prevent auto-play")
+        isCalledFromOnPrepare = true
+
+        // Enrich extras with parentData from playlist_data so the handler can build the queue title
+        val enrichedExtras = Bundle(this.currentTrack?.description?.extras ?: Bundle())
+        Log.i(TAG, "[ON_PREPARE] Track extras parentData BEFORE enrichment: ${enrichedExtras.getString("parentData")}")
+        if (playlistDataRaw != null && enrichedExtras.getString("parentData").isNullOrEmpty()) {
+          // Pass the original playlist_data directly as parentData — don't normalize.
+          // This preserves the full structure (e.g. trackData for TRACK_RADIO)
+          // and the original id type (number vs string) that the JS app wrote.
+          enrichedExtras.putString("parentData", playlistDataRaw)
+          Log.i(TAG, "[ON_PREPARE] Enriched extras with original PLAYLIST_DATA (preserved full structure)")
+        }
+
+        this.onPlayFromMediaId(this.currentTrack?.mediaId, enrichedExtras)
+      }
     }
   }
 
@@ -138,19 +205,7 @@ class MediaSessionCallback(
       }
     }
 
-    fun getDurationStringLength(length: String?, filePath: String?): Long {
-      var duration: Long = 0
-      if( !length.isNullOrEmpty()) {
-        duration = MediaUtils.parseDuration(length)
-        Log.i(TAG, "[onPlayFromMediaId] Duration esta vale $duration")
-      } else {
-        if (!filePath.isNullOrEmpty()) duration = MediaUtils.getMp3Duration(filePath);
-         else duration = 0
-
-        Log.i(TAG, "[onPlayFromMediaId] Duration esta no vale $duration")
-      }
-      return duration
-    }
+    fun getDurationStringLength(length: String?, filePath: String?): Long = getDuration(length, filePath)
 
     if (mediaSessionContext == "MEDIA_AUTOPLAY") {
       Log.d(TAG, "Blocking autoplay triggered by Android Auto")
@@ -168,50 +223,67 @@ class MediaSessionCallback(
         val actionItemId = parts[2]
         Log.i(TAG, "[ACTION_PLAY] action=${if (shouldShuffle) "shuffle" else "play_all"} type=$actionMediaType id=$actionItemId")
 
-        // Construct the original browsable mediaId to fetch children
-        val browsableMediaId = "item_${actionMediaType}_${actionItemId}"
-        CoroutineScope(Dispatchers.IO).launch {
-          try {
-            val allItems = MediaItemTree.getRemoteChildren(browsableMediaId, context)
-            // Filter out action items (play_all:/shuffle:), keep only real tracks
-            val tracks = allItems.filter { item ->
-              val mid = item.mediaId ?: ""
-              !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
-            }
-            val playTracks = if (shouldShuffle) tracks.shuffled() else tracks
-            Log.i(TAG, "[ACTION_PLAY] Fetched ${tracks.size} tracks, shuffle=$shouldShuffle")
+        val parentItem = MediaItemTree.getItem("item_${actionMediaType}_${actionItemId}")
+        val parentName = parentItem?.description?.title?.toString() ?: ""
+        val queueTitle = QueueManager.buildQueueTitle(actionMediaType, parentName)
+        val parentData = JSONObject().apply {
+          put("type", actionMediaType.uppercase())
+          put("id", actionItemId)
+          put("name", parentName)
+        }.toString()
 
-            QueueManager.buildQueue(playTracks)
-            withContext(Dispatchers.Main) {
-              QueueManager.setQueue(mediaSession)
-              playTracks.firstOrNull()?.let { first ->
-                val fe = first.description.extras!!
-                val trackIdFromId = fe.getString("id")
-                val idAlbumTrack = fe.getString("idAlbumTrack")
-                val uri = LocalStorageUtils.getTrackUri(context, trackIdFromId, idAlbumTrack)
+        if (shouldShuffle) {
+          // Shuffle: load ALL tracks, shuffle, then play. No incremental loading.
+          CoroutineScope(Dispatchers.IO).launch {
+            try {
+              val browsableMediaId = "item_${actionMediaType}_${actionItemId}"
+              val allItems = MediaItemTree.getRemoteChildren(browsableMediaId, context)
+              val tracks = allItems.filter { item ->
+                val mid = item.mediaId ?: ""
+                !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
+              }.shuffled()
+              Log.i(TAG, "[ACTION_SHUFFLE] Loaded and shuffled ${tracks.size} tracks")
 
-                mediaPlayer.setCurrentTrack(uri)
-                mediaPlayer.playCurrentTrack(context)
-                updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-                val duration = getDurationStringLength(fe.getString("length"), uri.toString())
-
-                mediaSession.setMetadata(
-                  MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
-                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                    .build()
+              withContext(Dispatchers.Main) {
+                val loadingState = QueueLoadingState(
+                  contentType = actionMediaType.uppercase(),
+                  contentId = actionItemId,
+                  contentName = parentName,
+                  parentData = parentData,
+                  currentOffset = tracks.size,
+                  hasMore = false
                 )
-                showNotification(PlaybackStateCompat.STATE_PLAYING)
-                storeLocalData(fe, idAlbumTrack)
-                Log.i(TAG, "[ACTION_PLAY] Started playback successfully")
+                startPlaybackWithInitialTracks(tracks, queueTitle, loadingState)
               }
+            } catch (e: Exception) {
+              Log.e(TAG, "[ACTION_SHUFFLE] Error: ${e.message}", e)
             }
-          } catch (e: Exception) {
-            Log.e(TAG, "[ACTION_PLAY] Error: ${e.message}", e)
+          }
+        } else {
+          // Play all: load 2 tracks, play immediately, then load more incrementally
+          CoroutineScope(Dispatchers.IO).launch {
+            try {
+              val initialTracks = when (actionMediaType.uppercase()) {
+                "ALBUM" -> MediaItemTree.getAlbumTracksPage(actionItemId, parentData, context, limit = 2, offset = 0)
+                "PLAYLIST" -> MediaItemTree.getPlaylistTracksPage(actionItemId, parentData, context, limit = 2, offset = 0)
+                "ARTIST" -> MediaItemTree.getArtistTracksPage(actionItemId, parentData, context, limit = 2, offset = 0)
+                else -> MediaItemTree.getAlbumTracksPage(actionItemId, parentData, context, limit = 2, offset = 0)
+              }
+              Log.i(TAG, "[ACTION_PLAY_ALL] Loaded ${initialTracks.size} initial tracks")
+
+              withContext(Dispatchers.Main) {
+                val loadingState = QueueLoadingState(
+                  contentType = actionMediaType.uppercase(),
+                  contentId = actionItemId,
+                  contentName = parentName,
+                  parentData = parentData,
+                  currentOffset = initialTracks.size
+                )
+                startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+              }
+            } catch (e: Exception) {
+              Log.e(TAG, "[ACTION_PLAY_ALL] Error: ${e.message}", e)
+            }
           }
         }
         return
@@ -228,137 +300,223 @@ class MediaSessionCallback(
       }
     }
 
-    // autoplay artist: queue all tracks and play first
+    // autoplay artist: load 2 tracks, play immediately, then load more
     if (mediaType == "artist" && mediaId != null) {
+      val artistItem = MediaItemTree.getItem(mediaId)
+      val artistName = artistItem?.description?.title?.toString() ?: ""
+      val artistId = mediaId.removePrefix("item_artist_")
+        .let { if (it.endsWith(".0")) it.dropLast(2) else it }
+      val parentData = JSONObject().apply {
+        put("type", "ARTIST")
+        put("id", artistId)
+        put("name", artistName)
+      }.toString()
+      val queueTitle = QueueManager.buildQueueTitle("ARTIST", artistName)
+
       CoroutineScope(Dispatchers.IO).launch {
-        val tracks = MediaItemTree.getRemoteChildren(mediaId, context)
-        QueueManager.buildQueue(tracks)
-        withContext(Dispatchers.Main) {
-          QueueManager.setQueue(mediaSession)
-          tracks.firstOrNull()?.let { first ->
-            val fe = first.description.extras!!
-            val trackId = fe.getString("idAlbumTrack")
-            val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), trackId)
-            mediaPlayer.setCurrentTrack(uri)
-            mediaPlayer.playCurrentTrack(context)
-            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-            val duration = getDurationStringLength(fe.getString("length",), uri.toString())
-            mediaSession.setMetadata(
-              MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
-                .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
-                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                .build()
+        try {
+          val initialTracks = MediaItemTree.getArtistTracksPage(artistId, parentData, context, limit = 2, offset = 0)
+          Log.i(TAG, "[ARTIST_PLAY] Loaded ${initialTracks.size} initial tracks for artist $artistId")
+          withContext(Dispatchers.Main) {
+            val loadingState = QueueLoadingState(
+              contentType = "ARTIST",
+              contentId = artistId,
+              contentName = artistName,
+              parentData = parentData,
+              currentOffset = initialTracks.size
             )
-            showNotification(PlaybackStateCompat.STATE_PLAYING)
-            storeLocalData(fe, trackId)
+            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
           }
+        } catch (e: Exception) {
+          Log.e(TAG, "[ARTIST_PLAY] Error: ${e.message}", e)
         }
       }
       return
     }
 
-    // Track radio: play selected track + load related tracks
+    // Track play: instant start with selected track + sibling buffer, then incremental loading
     if (mediaType == "track" && mediaId != null) {
-      Log.i(TAG, "[TRACK_RADIO_START] Starting track radio for mediaId: $mediaId")
+      Log.i(TAG, "[TRACK_PLAY_START] Starting track playback for mediaId: $mediaId")
       val selectedItem = MediaItemTree.getItem(mediaId)
       if (selectedItem != null) {
         val fe = selectedItem.description.extras!!
-        val trackIdForApi = fe.getString("id") ?: mediaId.split("_").lastOrNull() ?: ""
-        CoroutineScope(Dispatchers.IO).launch {
+        val idAlbumTrack = fe.getString("idAlbumTrack")
+        val idAlbumTrackLong = idAlbumTrack?.toLongOrNull()
+        val trackId = fe.getString("id") ?: ""
+
+        // Build initial queue: selected track + next sibling from cache as buffer
+        val initialQueue = mutableListOf(selectedItem)
+        val parentDataStr = fe.getString("parentData")
+        var queueTitle: String? = null
+        var pdType = ""
+        var pdId = ""
+        var pdName = ""
+
+        if (!parentDataStr.isNullOrEmpty()) {
           try {
-            val tracks = MediaItemTree.getTrackRadioQueue(selectedItem, trackIdForApi, context)
-            Log.i(TAG, "[TRACK_RADIO_TRACKS] Got ${tracks.size} tracks for radio queue")
-            QueueManager.buildQueue(tracks)
-            withContext(Dispatchers.Main) {
-              QueueManager.setQueue(mediaSession)
-              tracks.firstOrNull()?.let { first ->
-                val extras = first.description.extras!!
-                val idAlbumTrack = extras.getString("idAlbumTrack")
-                val uri = LocalStorageUtils.getTrackUri(context, extras.getString("id"), idAlbumTrack)
-                Log.i(TAG, "[TRACK_RADIO_URI] Track URI resolved: $uri")
-
-                mediaPlayer.setCurrentTrack(uri)
-                mediaPlayer.playCurrentTrack(context)
-                updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-                val duration = getDurationStringLength(extras.getString("length"), uri.toString())
-
-                mediaSession.setMetadata(
-                  MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, extras.getString("title"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras.getString("artist"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras.getString("album"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, extras.getString("image"))
-                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                    .build()
-                )
-                showNotification(PlaybackStateCompat.STATE_PLAYING)
-                storeLocalData(extras, idAlbumTrack)
-                Log.i(TAG, "[TRACK_RADIO_SUCCESS] Track radio started successfully")
+            val pd = JSONObject(parentDataStr)
+            pdType = pd.optString("type", "")
+            pdId = pd.optString("id", "")
+            pdName = pd.optString("name", "")
+            if (pdType.isNotEmpty() && pdName.isNotEmpty()) {
+              queueTitle = QueueManager.buildQueueTitle(pdType, pdName)
+            }
+            // Try to get next sibling from tree cache (no API call)
+            val browsableMediaId = when (pdType.uppercase()) {
+              "ALBUM" -> "item_album_$pdId"
+              "PLAYLIST", "MIX" -> "item_playlist_$pdId"
+              "ARTIST" -> "item_artist_$pdId"
+              else -> null
+            }
+            if (browsableMediaId != null) {
+              val cachedChildren = MediaItemTree.getChildren(browsableMediaId)
+              if (cachedChildren.isNotEmpty()) {
+                val selectedIndex = cachedChildren.indexOfFirst { it.mediaId == mediaId }
+                if (selectedIndex >= 0 && selectedIndex + 1 < cachedChildren.size) {
+                  initialQueue.add(cachedChildren[selectedIndex + 1])
+                  Log.i(TAG, "[TRACK_PLAY_BUFFER] Added next sibling as buffer track")
+                }
               }
             }
           } catch (e: Exception) {
-            Log.e(TAG, "[TRACK_RADIO_ERROR] Exception: ${e.message}", e)
+            Log.w(TAG, "[TRACK_PLAY_BUFFER] Failed to get buffer track: ${e.message}")
           }
         }
+        if (queueTitle == null) {
+          queueTitle = QueueManager.buildQueueTitle("TRACK_RADIO", fe.getString("title") ?: "")
+        }
+
+        // Determine the QueueLoadingState based on parentData type
+        // For offset-based types, we need to find the selected track's position in the container
+        val loadingState: QueueLoadingState = when (pdType.uppercase()) {
+          "ALBUM" -> {
+            // Find selected track's offset in album: count items before it in cache
+            val cachedChildren = MediaItemTree.getChildren("item_album_$pdId")
+            val selectedIndex = if (cachedChildren.isNotEmpty()) {
+              cachedChildren.indexOfFirst { it.mediaId == mediaId }.let { if (it < 0) 0 else it }
+            } else 0
+            QueueLoadingState(
+              contentType = "ALBUM", contentId = pdId, contentName = pdName,
+              parentData = parentDataStr ?: "",
+              currentOffset = selectedIndex + initialQueue.size
+            )
+          }
+          "PLAYLIST", "MIX" -> {
+            val cachedChildren = MediaItemTree.getChildren("item_playlist_$pdId")
+            val selectedIndex = if (cachedChildren.isNotEmpty()) {
+              cachedChildren.indexOfFirst { it.mediaId == mediaId }.let { if (it < 0) 0 else it }
+            } else 0
+            QueueLoadingState(
+              contentType = if (pdType.uppercase() == "MIX") "MIX" else "PLAYLIST",
+              contentId = pdId, contentName = pdName,
+              parentData = parentDataStr ?: "",
+              currentOffset = selectedIndex + initialQueue.size
+            )
+          }
+          "ARTIST" -> {
+            val cachedChildren = MediaItemTree.getChildren("item_artist_$pdId")
+            val selectedIndex = if (cachedChildren.isNotEmpty()) {
+              cachedChildren.indexOfFirst { it.mediaId == mediaId }.let { if (it < 0) 0 else it }
+            } else 0
+            QueueLoadingState(
+              contentType = "ARTIST", contentId = pdId, contentName = pdName,
+              parentData = parentDataStr ?: "",
+              currentOffset = selectedIndex + initialQueue.size
+            )
+          }
+          else -> {
+            // Fallback: track radio with related tracks
+            val trackName = fe.getString("title") ?: ""
+            val trackJsonStr = fe.getString("track") ?: "{}"
+            val trackIdLong = trackId.toLongOrNull() ?: 0L
+            val radioParentData = JSONObject().apply {
+              put("type", "TRACK_RADIO")
+              put("id", trackIdLong)
+              put("trackData", JSONObject(trackJsonStr))
+            }.toString()
+            val seedIds = mutableListOf<Long>()
+            val excludeIds = mutableListOf<Long>()
+            if (idAlbumTrackLong != null) {
+              seedIds.add(idAlbumTrackLong)
+              excludeIds.add(idAlbumTrackLong)
+            }
+            // Add sibling buffer track IDs to excludes
+            initialQueue.drop(1).forEach { track ->
+              val iat = track.description.extras?.getString("idAlbumTrack")?.toLongOrNull()
+              if (iat != null) excludeIds.add(iat)
+            }
+            QueueLoadingState(
+              contentType = "TRACK_RADIO", contentId = trackId, contentName = trackName,
+              parentData = radioParentData,
+              seedAlbumTrackIds = seedIds,
+              excludeAlbumTrackIds = excludeIds
+            )
+          }
+        }
+
+        Log.i(TAG, "[TRACK_PLAY_QUEUE] Initial queue: ${initialQueue.size} tracks, loadingState: type=${loadingState.contentType}")
+        startPlaybackWithInitialTracks(initialQueue, queueTitle!!, loadingState)
         return
       }
     }
 
-    // radio_track from Recents: same as track radio - play selected track + related tracks
+    // radio_track: play selected track + 1 related, then load more via continuation
     if (mediaType == "radio_track" && mediaId != null) {
       Log.i(TAG, "[RADIO_TRACK_START] Starting radio_track for mediaId: $mediaId")
       val selectedItem = MediaItemTree.getItem(mediaId)
       if (selectedItem != null) {
         val fe = selectedItem.description.extras!!
         val trackIdForApi = fe.getString("id") ?: mediaId.split("_").lastOrNull() ?: ""
-        Log.i(TAG, "[RADIO_TRACK_INFO] trackId=$trackIdForApi, idAlbumTrack=${fe.getString("idAlbumTrack")}")
+        val trackName = fe.getString("title") ?: ""
+        val idAlbumTrack = fe.getString("idAlbumTrack")
+        val idAlbumTrackLong = idAlbumTrack?.toLongOrNull()
+        Log.i(TAG, "[RADIO_TRACK_INFO] trackId=$trackIdForApi, idAlbumTrack=$idAlbumTrack")
+
+        // Build parentData with TRACK_RADIO type + full trackData for JS app sync
+        val trackJson = fe.getString("track") ?: "{}"
+        val trackIdLong = trackIdForApi.toLongOrNull() ?: 0L
+        val radioParentData = JSONObject().apply {
+          put("type", "TRACK_RADIO")
+          put("id", trackIdLong)
+          put("trackData", JSONObject(trackJson))
+        }.toString()
+        val queueTitle = QueueManager.buildQueueTitle("TRACK_RADIO", trackName)
+
         CoroutineScope(Dispatchers.IO).launch {
           try {
-            val tracks = MediaItemTree.getTrackRadioQueue(selectedItem, trackIdForApi, context)
-            Log.i(TAG, "[RADIO_TRACK_QUEUE] Got ${tracks.size} tracks for radio queue")
-            QueueManager.buildQueue(tracks)
+            // Load 1 related track as buffer (selected track + 1 related = 2 initial)
+            val relatedTracks = MediaItemTree.getRelatedTracksPage(trackIdForApi, radioParentData, context, limit = 1)
+            val initialTracks = mutableListOf(selectedItem)
+            initialTracks.addAll(relatedTracks)
+            Log.i(TAG, "[RADIO_TRACK_INITIAL] ${initialTracks.size} initial tracks (1 selected + ${relatedTracks.size} related)")
+
+            // Collect seed and exclude IDs for continuation
+            val seedIds = mutableListOf<Long>()
+            val excludeIds = mutableListOf<Long>()
+            if (idAlbumTrackLong != null) {
+              seedIds.add(idAlbumTrackLong)
+              excludeIds.add(idAlbumTrackLong)
+            }
+            relatedTracks.forEach { track ->
+              val iat = track.description.extras?.getString("idAlbumTrack")?.toLongOrNull()
+              if (iat != null) excludeIds.add(iat)
+            }
+
+            // Override parentData on all tracks for correct storeLocalData
+            initialTracks.forEach { track ->
+              track.description.extras?.putString("parentData", radioParentData)
+            }
+
             withContext(Dispatchers.Main) {
-              QueueManager.setQueue(mediaSession)
-              tracks.firstOrNull()?.let { first ->
-                val trackExtras = first.description.extras!!
-                val idAlbumTrack = trackExtras.getString("idAlbumTrack")
-                val uri = LocalStorageUtils.getTrackUri(context, trackExtras.getString("id"), idAlbumTrack)
-                Log.i(TAG, "[RADIO_TRACK_URI] Track URI resolved: $uri")
-
-                mediaPlayer.setCurrentTrack(uri)
-                mediaPlayer.playCurrentTrack(context)
-                updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-                val duration = getDurationStringLength(trackExtras.getString("length"), uri.toString())
-
-                mediaSession.setMetadata(
-                  MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, trackExtras.getString("title"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, trackExtras.getString("artist"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, trackExtras.getString("album"))
-                    .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, trackExtras.getString("image"))
-                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                    .build()
-                )
-                showNotification(PlaybackStateCompat.STATE_PLAYING)
-
-                // Override parentData with TRACK_RADIO type + full trackData from extras
-                val trackJson = trackExtras.getString("track") ?: "{}"
-                val radioParentData = JSONObject().apply {
-                  put("type", "TRACK_RADIO")
-                  put("id", trackIdForApi)
-                  put("trackData", JSONObject(trackJson))
-                }.toString()
-                val radioExtras = Bundle(trackExtras)
-                radioExtras.putString("parentData", radioParentData)
-                storeLocalData(radioExtras, idAlbumTrack)
-                Log.i(TAG, "[RADIO_TRACK_SUCCESS] radio_track started successfully with TRACK_RADIO parentData")
-              }
+              val loadingState = QueueLoadingState(
+                contentType = "TRACK_RADIO",
+                contentId = trackIdForApi,
+                contentName = trackName,
+                parentData = radioParentData,
+                seedAlbumTrackIds = seedIds,
+                excludeAlbumTrackIds = excludeIds
+              )
+              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
             }
           } catch (e: Exception) {
             Log.e(TAG, "[RADIO_TRACK_ERROR] Exception: ${e.message}", e)
@@ -370,10 +528,9 @@ class MediaSessionCallback(
       }
     }
 
-    // radio (tag_radio) from Recents: fetch tracks from stations endpoint
+    // radio (tag_radio): load 2 tracks, play immediately, then load more with cursor
     if (mediaType == "radio" && mediaId != null) {
       Log.i(TAG, "[TAG_RADIO_START] Starting tag radio for mediaId: $mediaId")
-      // mediaId format: item_radio_148 -> extract "148"
       val stationId = mediaId.removePrefix("item_radio_")
         .let { if (it.endsWith(".0")) it.dropLast(2) else it }
       Log.i(TAG, "[TAG_RADIO_INFO] stationId=$stationId")
@@ -385,39 +542,26 @@ class MediaSessionCallback(
         put("id", stationId)
         put("name", itemName)
       }.toString()
+      val queueTitle = QueueManager.buildQueueTitle("RADIO", itemName)
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          val tracks = MediaItemTree.getStationRadioQueue(stationId, parentData, context)
-          Log.i(TAG, "[TAG_RADIO_QUEUE] Got ${tracks.size} tracks for station $stationId")
-          if (tracks.isNotEmpty()) {
-            QueueManager.buildQueue(tracks)
+          val initialTracks = MediaItemTree.getStationRadioPage(stationId, parentData, context, count = 2)
+          Log.i(TAG, "[TAG_RADIO_INITIAL] Got ${initialTracks.size} initial tracks for station $stationId")
+          if (initialTracks.isNotEmpty()) {
+            // Get lastIdAlbumTrack for cursor-based pagination
+            val lastIAT = initialTracks.last().description.extras
+              ?.getString("idAlbumTrack")?.toLongOrNull()
+
             withContext(Dispatchers.Main) {
-              QueueManager.setQueue(mediaSession)
-              val first = tracks.first()
-              val trackExtras = first.description.extras!!
-              val idAlbumTrack = trackExtras.getString("idAlbumTrack")
-              val uri = LocalStorageUtils.getTrackUri(context, trackExtras.getString("id"), idAlbumTrack)
-              Log.i(TAG, "[TAG_RADIO_URI] Track URI resolved: $uri")
-
-              mediaPlayer.setCurrentTrack(uri)
-              mediaPlayer.playCurrentTrack(context)
-              updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-              val duration = getDurationStringLength(trackExtras.getString("length"), uri.toString())
-
-              mediaSession.setMetadata(
-                MediaMetadataCompat.Builder()
-                  .putString(MediaMetadataCompat.METADATA_KEY_TITLE, trackExtras.getString("title"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, trackExtras.getString("artist"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, trackExtras.getString("album"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, trackExtras.getString("image"))
-                  .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                  .build()
+              val loadingState = QueueLoadingState(
+                contentType = "RADIO",
+                contentId = stationId,
+                contentName = itemName,
+                parentData = parentData,
+                lastIdAlbumTrack = lastIAT
               )
-              showNotification(PlaybackStateCompat.STATE_PLAYING)
-              storeLocalData(trackExtras, idAlbumTrack)
-              Log.i(TAG, "[TAG_RADIO_SUCCESS] Tag radio started successfully")
+              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
             }
           } else {
             Log.w(TAG, "[TAG_RADIO_NO_TRACKS] No tracks returned for station $stationId")
@@ -429,10 +573,9 @@ class MediaSessionCallback(
       return
     }
 
-    // artist_radio from Recents: fetch artist tracks (shuffled), same as JS app
+    // artist_radio: load 2 tracks by popularity (no shuffle), then load more
     if (mediaType == "artist_radio" && mediaId != null) {
       Log.i(TAG, "[ARTIST_RADIO_START] Starting artist radio for mediaId: $mediaId")
-      // mediaId format: item_artist_radio_6766 -> extract "6766"
       val artistId = mediaId.removePrefix("item_artist_radio_")
         .let { if (it.endsWith(".0")) it.dropLast(2) else it }
       Log.i(TAG, "[ARTIST_RADIO_INFO] artistId=$artistId")
@@ -444,42 +587,24 @@ class MediaSessionCallback(
         put("id", artistId)
         put("name", itemName)
       }.toString()
+      val queueTitle = QueueManager.buildQueueTitle("ARTIST_STATION", itemName)
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          // Use getArtistTracks (same as JS app: /artists/{id}/tracks?order=popularity)
-          val response = MediaItemTree.getArtistRadioQueue(artistId, parentData, context)
-          Log.i(TAG, "[ARTIST_RADIO_QUEUE] Got ${response.size} tracks for artist $artistId")
-          if (response.isNotEmpty()) {
-            // Shuffle like JS app does (Fisher-Yates)
-            val shuffled = response.toMutableList().apply { shuffle() }
-            QueueManager.buildQueue(shuffled)
+          val initialTracks = MediaItemTree.getArtistTracksPage(
+            artistId, parentData, context, limit = 2, offset = 0, order = "popularity"
+          )
+          Log.i(TAG, "[ARTIST_RADIO_INITIAL] Got ${initialTracks.size} initial tracks for artist $artistId")
+          if (initialTracks.isNotEmpty()) {
             withContext(Dispatchers.Main) {
-              QueueManager.setQueue(mediaSession)
-              val first = shuffled.first()
-              val trackExtras = first.description.extras!!
-              val idAlbumTrack = trackExtras.getString("idAlbumTrack")
-              val uri = LocalStorageUtils.getTrackUri(context, trackExtras.getString("id"), idAlbumTrack)
-              Log.i(TAG, "[ARTIST_RADIO_URI] Track URI resolved: $uri")
-
-              mediaPlayer.setCurrentTrack(uri)
-              mediaPlayer.playCurrentTrack(context)
-              updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-              val duration = getDurationStringLength(trackExtras.getString("length"), uri.toString())
-
-              mediaSession.setMetadata(
-                MediaMetadataCompat.Builder()
-                  .putString(MediaMetadataCompat.METADATA_KEY_TITLE, trackExtras.getString("title"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, trackExtras.getString("artist"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, trackExtras.getString("album"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, trackExtras.getString("image"))
-                  .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                  .build()
+              val loadingState = QueueLoadingState(
+                contentType = "ARTIST_STATION",
+                contentId = artistId,
+                contentName = itemName,
+                parentData = parentData,
+                currentOffset = initialTracks.size
               )
-              showNotification(PlaybackStateCompat.STATE_PLAYING)
-              storeLocalData(trackExtras, idAlbumTrack)
-              Log.i(TAG, "[ARTIST_RADIO_SUCCESS] Artist radio started successfully")
+              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
             }
           } else {
             Log.w(TAG, "[ARTIST_RADIO_NO_TRACKS] No tracks returned for artist $artistId")
@@ -492,141 +617,136 @@ class MediaSessionCallback(
     }
 
     if (mediaType == "album" && mediaId != null) {
-      // autoplay album: fetch tracks, queue, and play first
-      Log.i(TAG, "[ALBUM_AUTOPLAY_START] Starting album autoplay for mediaId: $mediaId")
+      Log.i(TAG, "[ALBUM_PLAY] Starting album playback for mediaId: $mediaId")
+      val albumItem = MediaItemTree.getItem(mediaId)
+      val albumName = albumItem?.description?.title?.toString() ?: ""
+      val albumId = mediaId.removePrefix("item_album_")
+        .let { if (it.endsWith(".0")) it.dropLast(2) else it }
+      val parentData = JSONObject().apply {
+        put("type", "ALBUM")
+        put("id", albumId)
+        put("name", albumName)
+      }.toString()
+      val queueTitle = QueueManager.buildQueueTitle("ALBUM", albumName)
+
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          Log.d(TAG, "[ALBUM_AUTOPLAY_FETCH] Fetching tracks for album: $mediaId")
-          val allItems = MediaItemTree.getRemoteChildren(mediaId, context)
-          // Filter out action items (play_all:/shuffle:), keep only real tracks
-          val tracks = allItems.filter { item ->
-            val mid = item.mediaId ?: ""
-            !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
-          }
-          Log.i(TAG, "[ALBUM_AUTOPLAY_TRACKS_FETCHED] Fetched ${tracks.size} tracks for album")
-
-          QueueManager.buildQueue(tracks)
+          val initialTracks = MediaItemTree.getAlbumTracksPage(albumId, parentData, context, limit = 2, offset = 0)
+          Log.i(TAG, "[ALBUM_PLAY] Loaded ${initialTracks.size} initial tracks for album $albumId")
           withContext(Dispatchers.Main) {
-            QueueManager.setQueue(mediaSession)
-            tracks.firstOrNull()?.let { first ->
-              Log.d(TAG, "[ALBUM_AUTOPLAY_FIRST_TRACK] Processing first track: ${first.description.mediaId}")
-
-              val fe = first.description.extras!!
-              val trackIdFromId = fe.getString("id")
-              val idAlbumTrack = fe.getString("idAlbumTrack")
-
-              Log.i(TAG, "[ALBUM_AUTOPLAY_TRACK_INFO] Track ID: $trackIdFromId, idAlbumTrack: $idAlbumTrack")
-
-              // Check if idAlbumTrack is null or "null" string
-              if (idAlbumTrack == null || idAlbumTrack == "null") {
-                Log.w(TAG, "[ALBUM_AUTOPLAY_NULL_ALBUMTRACK] idAlbumTrack is null or 'null' string, this may cause issues")
-              }
-
-              Log.d(TAG, "[ALBUM_AUTOPLAY_GET_URI] Calling LocalStorageUtils.getTrackUri with trackId=$trackIdFromId, idAlbumTrack=$idAlbumTrack")
-              val uri = LocalStorageUtils.getTrackUri(context, trackIdFromId, idAlbumTrack)
-              Log.i(TAG, "[ALBUM_AUTOPLAY_URI_RESOLVED] Track URI resolved: $uri")
-
-              mediaPlayer.setCurrentTrack(uri)
-              mediaPlayer.playCurrentTrack(context)
-              updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-              val duration = getDurationStringLength(fe.getString("length",), uri.toString())
-              Log.d(TAG, "[ALBUM_AUTOPLAY_DURATION] Track duration: $duration ms")
-
-              mediaSession.setMetadata(
-                MediaMetadataCompat.Builder()
-                  .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
-                  .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                  .build()
-              )
-              showNotification(PlaybackStateCompat.STATE_PLAYING)
-              storeLocalData(fe, idAlbumTrack)
-              Log.i(TAG, "[ALBUM_AUTOPLAY_SUCCESS] Album autoplay started successfully")
-            } ?: run {
-              Log.w(TAG, "[ALBUM_AUTOPLAY_NO_TRACKS] No tracks found in album")
-            }
+            val loadingState = QueueLoadingState(
+              contentType = "ALBUM",
+              contentId = albumId,
+              contentName = albumName,
+              parentData = parentData,
+              currentOffset = initialTracks.size
+            )
+            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
           }
         } catch (e: Exception) {
-          Log.e(TAG, "[ALBUM_AUTOPLAY_ERROR] Exception during album autoplay: ${e.message}", e)
-          Log.e(TAG, "[ALBUM_AUTOPLAY_STACK_TRACE] ${e.stackTraceToString()}")
+          Log.e(TAG, "[ALBUM_PLAY] Error: ${e.message}", e)
         }
       }
       return
     }
 
-    // autoplay playlist: queue all tracks and play first
+    // autoplay playlist: load 2 tracks, play immediately, then load more
     if (mediaType == "playlist" && mediaId != null) {
-      Log.i(TAG, "[PLAYLIST_AUTOPLAY_START] Starting playlist autoplay for mediaId: $mediaId")
+      Log.i(TAG, "[PLAYLIST_PLAY] Starting playlist playback for mediaId: $mediaId")
+      val playlistItem = MediaItemTree.getItem(mediaId)
+      val playlistName = playlistItem?.description?.title?.toString() ?: ""
+      val playlistId = mediaId.removePrefix("item_playlist_")
+        .let { if (it.endsWith(".0")) it.dropLast(2) else it }
+      val parentData = JSONObject().apply {
+        put("type", "PLAYLIST")
+        put("id", playlistId)
+        put("name", playlistName)
+      }.toString()
+      val queueTitle = QueueManager.buildQueueTitle("PLAYLIST", playlistName)
+
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          Log.d(TAG, "[PLAYLIST_AUTOPLAY_FETCH] Fetching tracks for playlist: $mediaId")
-          val allItems = MediaItemTree.getRemoteChildren(mediaId, context)
-          // Filter out action items (play_all:/shuffle:), keep only real tracks
-          val tracks = allItems.filter { item ->
-            val mid = item.mediaId ?: ""
-            !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
-          }
-          Log.i(TAG, "[PLAYLIST_AUTOPLAY_TRACKS_FETCHED] Fetched ${tracks.size} tracks for playlist")
-
-          QueueManager.buildQueue(tracks)
+          val initialTracks = MediaItemTree.getPlaylistTracksPage(playlistId, parentData, context, limit = 2, offset = 0)
+          Log.i(TAG, "[PLAYLIST_PLAY] Loaded ${initialTracks.size} initial tracks for playlist $playlistId")
           withContext(Dispatchers.Main) {
-            QueueManager.setQueue(mediaSession)
-            tracks.firstOrNull()?.let { first ->
-              Log.d(TAG, "[PLAYLIST_AUTOPLAY_FIRST_TRACK] Processing first track: ${first.description.mediaId}")
-
-              val fe = first.description.extras!!
-              val trackIdFromId = fe.getString("id")
-              val idAlbumTrack = fe.getString("idAlbumTrack")
-
-              Log.i(TAG, "[PLAYLIST_AUTOPLAY_TRACK_INFO] Track ID: $trackIdFromId, idAlbumTrack: $idAlbumTrack")
-
-              // Check if idAlbumTrack is null or "null" string
-              if (idAlbumTrack == null || idAlbumTrack == "null") {
-                Log.w(TAG, "[PLAYLIST_AUTOPLAY_NULL_ALBUMTRACK] idAlbumTrack is null or 'null' string, this may cause issues")
-              }
-
-              Log.d(TAG, "[PLAYLIST_AUTOPLAY_GET_URI] Calling LocalStorageUtils.getTrackUri with trackId=$trackIdFromId, idAlbumTrack=$idAlbumTrack")
-              val uri = LocalStorageUtils.getTrackUri(context, trackIdFromId, idAlbumTrack)
-              Log.i(TAG, "[PLAYLIST_AUTOPLAY_URI_RESOLVED] Track URI resolved: $uri")
-
-              mediaPlayer.setCurrentTrack(uri)
-              mediaPlayer.playCurrentTrack(context)
-              updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
-              val duration: Long = getDurationStringLength(fe.getString("length",), uri.toString())
-              Log.d(TAG, "[PLAYLIST_AUTOPLAY_DURATION] Track duration: $duration ms")
-
-              mediaSession.setMetadata(
-                MediaMetadataCompat.Builder()
-                  .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
-                  .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
-                  .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
-                  .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                  .build()
-              )
-              showNotification(PlaybackStateCompat.STATE_PLAYING)
-              storeLocalData(fe, idAlbumTrack)
-              Log.i(TAG, "[PLAYLIST_AUTOPLAY_SUCCESS] Playlist autoplay started successfully")
-            } ?: run {
-              Log.w(TAG, "[PLAYLIST_AUTOPLAY_NO_TRACKS] No tracks found in playlist")
-            }
+            val loadingState = QueueLoadingState(
+              contentType = "PLAYLIST",
+              contentId = playlistId,
+              contentName = playlistName,
+              parentData = parentData,
+              currentOffset = initialTracks.size
+            )
+            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
           }
         } catch (e: Exception) {
-          Log.e(TAG, "[PLAYLIST_AUTOPLAY_ERROR] Exception during playlist autoplay: ${e.message}", e)
-          Log.e(TAG, "[PLAYLIST_AUTOPLAY_STACK_TRACE] ${e.stackTraceToString()}")
+          Log.e(TAG, "[PLAYLIST_PLAY] Error: ${e.message}", e)
         }
+      }
+      return
+    }
+
+    // Podcast episode: resolve audio from offline file or enclosure URL
+    if ((mediaType == "podcast_episode" || mediaType == "podcastEpisode") && mediaId != null) {
+      Log.i(TAG, "[PODCAST_EPISODE_PLAY] Starting podcast episode playback for mediaId: $mediaId")
+      val episodeId = extras?.getString("id") ?: mediaId.removePrefix("item_podcast_episode_").removePrefix("item_podcastEpisode_")
+      val enclosureUrl = extras?.getString("enclosure_url")
+      val showId = extras?.getString("showId") ?: ""
+      val episodeTitle = extras?.getString("title") ?: "Episode"
+      val showTitle = extras?.getString("artist") ?: "Podcast"
+      val imageUrl = extras?.getString("image") ?: ""
+      Log.i(TAG, "[PODCAST_EPISODE_PLAY] episodeId=$episodeId, enclosureUrl=$enclosureUrl, showId=$showId")
+
+      val episodeUri = LocalStorageUtils.getEpisodeUri(context, episodeId, enclosureUrl)
+      if (episodeUri != null) {
+        // Build a single-episode queue (podcast episodes play individually)
+        val selectedItem = MediaItemTree.getItem(mediaId)
+        if (selectedItem != null) {
+          QueueManager.buildQueue(listOf(selectedItem))
+        }
+
+        mediaPlayer.setCurrentTrack(episodeUri)
+        mediaPlayer.playCurrentTrack(context)
+        updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+
+        // Duration: prefer durationMs from extras, fallback to parsing duration string
+        val durationMs = extras?.getLong("durationMs", 0L) ?: 0L
+        val duration = if (durationMs > 0) durationMs else getDurationStringLength(extras?.getString("length", "0"), episodeUri.toString())
+
+        mediaSession.setMetadata(
+          MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, episodeTitle)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, showTitle)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, showTitle)
+            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, mediaId)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, imageUrl)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+            .build()
+        )
+        showNotification(PlaybackStateCompat.STATE_PLAYING)
+
+        // Store parentData for JS app sync
+        val podcastParentData = JSONObject().apply {
+          put("type", "PODCAST")
+          put("id", showId)
+          put("name", showTitle)
+        }.toString()
+        val podcastExtras = Bundle(extras ?: Bundle())
+        podcastExtras.putString("parentData", podcastParentData)
+        storePodcastLocalData(podcastExtras, episodeId)
+
+        QueueManager.setQueue(mediaSession, QueueManager.buildQueueTitle("PODCAST", showTitle))
+        Log.i(TAG, "[PODCAST_EPISODE_PLAY_SUCCESS] Podcast episode playback started")
+      } else {
+        Log.e(TAG, "[PODCAST_EPISODE_PLAY_ERROR] Could not resolve episode URI for episodeId=$episodeId")
       }
       return
     }
 
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[onPlayFromMediaId] Start $mediaId")
+      Log.i(TAG, "[onPlayFromMediaId] Start $mediaId, media_type=${extras?.getString("media_type")}")
       val trackId = extras?.getString("idAlbumTrack")
       Log.i(TAG, "[onPlayFromMediaId] trackId $trackId")
+      Log.i(TAG, "[onPlayFromMediaId] parentData received: ${extras?.getString("parentData")}")
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
@@ -634,7 +754,26 @@ class MediaSessionCallback(
             trackId)
           withContext(Dispatchers.Main) {
             Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
-            QueueManager.setQueue(mediaSession)
+            // Build queue title from parentData if available
+            val parentDataStr = extras?.getString("parentData")
+            var queueTitle: String? = null
+            if (!parentDataStr.isNullOrEmpty()) {
+              try {
+                val pd = JSONObject(parentDataStr)
+                val pdType = pd.optString("type", "")
+                var pdName = pd.optString("name", "")
+                // TRACK_RADIO stores name inside trackData, not at top level
+                if (pdName.isEmpty() && pdType.equals("TRACK_RADIO", ignoreCase = true)) {
+                  pdName = pd.optJSONObject("trackData")?.optString("name", "") ?: ""
+                }
+                if (pdType.isNotEmpty() && pdName.isNotEmpty()) {
+                  queueTitle = QueueManager.buildQueueTitle(pdType, pdName)
+                }
+              } catch (e: Exception) {
+                Log.w(TAG, "[onPlayFromMediaId] Failed to parse parentData for queue title: ${e.message}")
+              }
+            }
+            QueueManager.setQueue(mediaSession, queueTitle)
             mediaPlayer.setCurrentTrack(trackUrl)
             mediaPlayer.playCurrentTrack(context)
 
@@ -751,15 +890,11 @@ class MediaSessionCallback(
       // Reset flags and enable auto-play for the next track
       mediaPlayer.currentTrackFromApp = false
       mediaPlayer.shouldAutoPlayOnPrepare = true
-      Log.i(TAG, "[ON_SKIP_TO_NEXT] Set shouldAutoPlayOnPrepare = true for auto-play")
 
       val nextItem = QueueManager.getNextQueueItem(mediaSession)
       if (nextItem != null) {
         Log.i(TAG, "[ON_SKIP_TO_NEXT] Got next item: ${nextItem.description.mediaId}")
-        onPlayFromMediaId(
-          mediaId = nextItem.description.mediaId,
-          extras = nextItem.description.extras
-        )
+        playQueueItem(nextItem)
       } else {
         Log.w(TAG, "[ON_SKIP_TO_NEXT] No next item available (queue might be empty)")
       }
@@ -780,10 +915,7 @@ class MediaSessionCallback(
       val previousItem = QueueManager.getPreviousQueueItem(mediaSession)
       if (previousItem != null) {
         Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Got previous item: ${previousItem.description.mediaId}")
-        onPlayFromMediaId(
-          mediaId = previousItem.description.mediaId,
-          extras = previousItem.description.extras
-        )
+        playQueueItem(previousItem)
       } else {
         Log.w(TAG, "[ON_SKIP_TO_PREVIOUS] No previous item available (queue might be empty)")
       }
@@ -822,15 +954,298 @@ class MediaSessionCallback(
 
       val nextItem = QueueManager.getItem(mediaSession, id)
       if(nextItem != null) {
-        onPlayFromMediaId(
-          mediaId = nextItem.description.mediaId,
-          extras = nextItem.description.extras
-        )
+        playQueueItem(nextItem)
       }
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "skipToQueueItem"))
     }
+  }
+
+  /**
+   * Common helper: plays the first track from initialTracks, sets up metadata,
+   * stores local data, and triggers the first async batch via loadMore().
+   */
+  private fun startPlaybackWithInitialTracks(
+    initialTracks: List<MediaBrowserCompat.MediaItem>,
+    queueTitle: String,
+    loadingState: QueueLoadingState
+  ) {
+    if (initialTracks.isEmpty()) {
+      Log.w(TAG, "[START_PLAYBACK] No initial tracks to play")
+      return
+    }
+
+    this.queueLoadingState = loadingState
+    QueueManager.buildQueue(initialTracks)
+
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val first = initialTracks.first()
+        val fe = first.description.extras!!
+        val idAlbumTrack = fe.getString("idAlbumTrack")
+        val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), idAlbumTrack)
+
+        withContext(Dispatchers.Main) {
+          QueueManager.setQueue(mediaSession, queueTitle)
+          mediaPlayer.setCurrentTrack(uri)
+          mediaPlayer.playCurrentTrack(context)
+          updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+          val duration = getDuration(fe.getString("length"), uri.toString())
+
+          mediaSession.setMetadata(
+            MediaMetadataCompat.Builder()
+              .putString(MediaMetadataCompat.METADATA_KEY_TITLE, fe.getString("title"))
+              .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, fe.getString("artist"))
+              .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, fe.getString("album"))
+              .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, first.description.mediaId)
+              .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, fe.getString("image"))
+              .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+              .build()
+          )
+          showNotification(PlaybackStateCompat.STATE_PLAYING)
+          storeLocalData(fe, idAlbumTrack)
+          Log.i(TAG, "[START_PLAYBACK] Playing first track, triggering initial async load")
+          loadMore()
+
+          // Start preloading next tracks
+          TrackPreloader.preloadNextTracks(context, mediaSession)
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "[START_PLAYBACK] Error: ${e.message}", e)
+      }
+    }
+  }
+
+  /**
+   * Loads the next batch of 15 tracks based on queueLoadingState.
+   * Called after initial playback and when approaching end of queue.
+   */
+  private fun loadMore() {
+    val state = queueLoadingState ?: return
+    if (!state.hasMore || state.isLoading) {
+      Log.d(TAG, "[LOAD_MORE] Skipping: hasMore=${state.hasMore}, isLoading=${state.isLoading}")
+      return
+    }
+
+    state.isLoading = true
+    Log.i(TAG, "[LOAD_MORE] Loading more for ${state.contentType} id=${state.contentId}, offset=${state.currentOffset}")
+
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val newTracks: List<MediaBrowserCompat.MediaItem> = when (state.contentType) {
+          "ALBUM" -> {
+            MediaItemTree.getAlbumTracksPage(
+              state.contentId, state.parentData, context,
+              limit = 15, offset = state.currentOffset
+            )
+          }
+          "PLAYLIST", "MIX" -> {
+            MediaItemTree.getPlaylistTracksPage(
+              state.contentId, state.parentData, context,
+              limit = 15, offset = state.currentOffset
+            )
+          }
+          "ARTIST" -> {
+            MediaItemTree.getArtistTracksPage(
+              state.contentId, state.parentData, context,
+              limit = 15, offset = state.currentOffset
+            )
+          }
+          "ARTIST_STATION" -> {
+            MediaItemTree.getArtistTracksPage(
+              state.contentId, state.parentData, context,
+              limit = 15, offset = state.currentOffset, order = "popularity"
+            )
+          }
+          "RADIO" -> {
+            MediaItemTree.getStationRadioPage(
+              state.contentId, state.parentData, context,
+              count = 15, lastIdAlbumTrack = state.lastIdAlbumTrack
+            )
+          }
+          "TRACK_RADIO" -> {
+            val currentQueue = mediaSession.controller.queue ?: emptyList()
+            val allAlbumTrackIds = currentQueue.mapNotNull {
+              it.description.extras?.getString("idAlbumTrack")?.toLongOrNull()
+            }
+            MediaItemTree.getTrackRadioContinuation(
+              albumTrackIds = allAlbumTrackIds.takeLast(5),
+              excludeAlbumTrackIds = state.excludeAlbumTrackIds,
+              seedAlbumTrackIds = state.seedAlbumTrackIds,
+              parentData = state.parentData, context = context, limit = 15
+            )
+          }
+          else -> {
+            Log.w(TAG, "[LOAD_MORE] Unknown contentType: ${state.contentType}")
+            emptyList()
+          }
+        }
+
+        if (newTracks.isEmpty()) {
+          state.hasMore = false
+          Log.i(TAG, "[LOAD_MORE] No more tracks available for ${state.contentType}")
+        } else {
+          when (state.contentType) {
+            "RADIO" -> {
+              val lastIAT = newTracks.last().description.extras
+                ?.getString("idAlbumTrack")?.toLongOrNull()
+              state.lastIdAlbumTrack = lastIAT
+            }
+            "TRACK_RADIO" -> {
+              newTracks.forEach { track ->
+                val iat = track.description.extras
+                  ?.getString("idAlbumTrack")?.toLongOrNull()
+                if (iat != null) state.excludeAlbumTrackIds.add(iat)
+              }
+            }
+            else -> {
+              state.currentOffset += newTracks.size
+            }
+          }
+
+          withContext(Dispatchers.Main) {
+            val appended = QueueManager.appendQueue(newTracks, mediaSession)
+            Log.i(TAG, "[LOAD_MORE] Appended $appended tracks, offset now ${state.currentOffset}")
+            val currentMediaId = mediaSession.controller.metadata
+              ?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
+            val currentQueueItem = mediaSession.controller.queue?.find {
+              it.description.mediaId == currentMediaId
+            }
+            currentQueueItem?.description?.extras?.let { extras ->
+              storeLocalData(extras, extras.getString("idAlbumTrack"))
+            }
+          }
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "[LOAD_MORE] Error: ${e.message}", e)
+      } finally {
+        state.isLoading = false
+      }
+    }
+  }
+
+  private fun getDuration(length: String?, filePath: String?): Long {
+    var duration: Long = 0
+    if (!length.isNullOrEmpty()) {
+      duration = MediaUtils.parseDuration(length)
+    } else {
+      if (!filePath.isNullOrEmpty()) duration = MediaUtils.getMp3Duration(filePath)
+      else duration = 0
+    }
+    return duration
+  }
+
+  private fun playQueueItem(queueItem: MediaSessionCompat.QueueItem) {
+    val extras = queueItem.description.extras
+    if (extras == null) {
+      Log.e(TAG, "[PLAY_QUEUE_ITEM] extras is null for ${queueItem.description.mediaId}")
+      return
+    }
+    val idAlbumTrack = extras.getString("idAlbumTrack")
+
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val uri = LocalStorageUtils.getTrackUri(context, extras.getString("id"), idAlbumTrack)
+        withContext(Dispatchers.Main) {
+          mediaPlayer.setCurrentTrack(uri)
+          mediaPlayer.playCurrentTrack(context)
+          updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+          val duration = getDuration(extras.getString("length"), uri.toString())
+
+          mediaSession.setMetadata(
+            MediaMetadataCompat.Builder()
+              .putString(MediaMetadataCompat.METADATA_KEY_TITLE, extras.getString("title"))
+              .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, extras.getString("artist"))
+              .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, extras.getString("album"))
+              .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, queueItem.description.mediaId)
+              .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, extras.getString("image"))
+              .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+              .build()
+          )
+          showNotification(PlaybackStateCompat.STATE_PLAYING)
+          storeLocalData(extras, idAlbumTrack)
+          Log.i(TAG, "[PLAY_QUEUE_ITEM] Playing ${queueItem.description.mediaId} from existing queue")
+
+          // Check if we need to load more tracks
+          if (QueueManager.shouldLoadMore(3)) {
+            Log.i(TAG, "[PLAY_QUEUE_ITEM] Approaching end of queue (index=${QueueManager.getCurrentQueueIndex()}, size=${QueueManager.getQueueSize()}), triggering loadMore")
+            loadMore()
+          }
+
+          // Preload next tracks for offline availability
+          TrackPreloader.preloadNextTracks(context, mediaSession)
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "[PLAY_QUEUE_ITEM] Error: ${e.message}", e)
+      }
+    }
+  }
+
+  /**
+   * Stores podcast episode data in files that the JS app reads for podcast playback sync.
+   * Unlike storeLocalData() which writes music queue keys, this writes:
+   * - current_episode: episode JSON (read by Queue.js intFromStorage via FileSystemJSONStorage)
+   * - current_episode_playlist: episode queue array
+   * - PLAYLIST_DATA: parentData with type=PODCAST (for syncQueueFromAuto detection)
+   */
+  private fun storePodcastLocalData(extras: Bundle, episodeId: String?) {
+    val episodeJson = JSONObject().apply {
+      put("id", extras.getString("id") ?: episodeId ?: "")
+      put("title", extras.getString("title") ?: "")
+      put("showId", extras.getString("showId") ?: "")
+      put("showTitle", extras.getString("artist") ?: "")
+      put("duration", extras.getString("length") ?: "0")
+      put("durationMs", extras.getLong("durationMs", 0))
+      put("image", extras.getString("image") ?: "")
+      put("isPodcast", true)
+      val enclosureUrl = extras.getString("enclosure_url")
+      if (!enclosureUrl.isNullOrEmpty() && enclosureUrl != "null") {
+        put("enclosure", JSONObject().apply {
+          put("url", enclosureUrl)
+          put("type", "audio/mpeg")
+        })
+      }
+    }
+
+    // Write current episode
+    LocalStorageUtils.storeInFile(context, "current_episode", episodeJson.toString())
+
+    // Write episode playlist from queue
+    val queue = mediaSession.controller.queue
+    if (queue != null) {
+      val episodeList = queue.mapNotNull { item ->
+        val itemExtras = item.description.extras ?: return@mapNotNull null
+        val itemType = itemExtras.getString("media_type") ?: ""
+        if (itemType == "podcast_episode" || itemType == "podcastEpisode") {
+          JSONObject().apply {
+            put("id", itemExtras.getString("id") ?: "")
+            put("title", itemExtras.getString("title") ?: "")
+            put("showId", itemExtras.getString("showId") ?: "")
+            put("showTitle", itemExtras.getString("artist") ?: "")
+            put("duration", itemExtras.getString("length") ?: "0")
+            put("durationMs", itemExtras.getLong("durationMs", 0))
+            put("image", itemExtras.getString("image") ?: "")
+            put("isPodcast", true)
+            val url = itemExtras.getString("enclosure_url")
+            if (!url.isNullOrEmpty() && url != "null") {
+              put("enclosure", JSONObject().apply {
+                put("url", url)
+                put("type", "audio/mpeg")
+              })
+            }
+          }
+        } else null
+      }
+      LocalStorageUtils.storeInFile(context, "current_episode_playlist",
+        org.json.JSONArray(episodeList).toString())
+    }
+
+    // Write PLAYLIST_DATA so syncQueueFromAuto can detect podcast type
+    val playlistData = extras.getString("parentData")
+    LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
+
+    CordovaEventBridge.sendEvent(CordovaEvents.ON_MEDIA_UPDATE)
   }
 
   private fun storeLocalData(extras: Bundle, trackId: String?) {
@@ -839,6 +1254,8 @@ class MediaSessionCallback(
         "{ \"data\":" + it.description.extras?.getString("track") + " }"
       }
       val playlistData = extras.getString("parentData")
+      Log.i(TAG, "[STORE_LOCAL_DATA] Writing PLAYLIST_DATA: $playlistData")
+      Log.i(TAG, "[STORE_LOCAL_DATA] Writing CURRENT_TRACK_KEY: $trackId, queue size: ${stringQueue.size}")
       LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
       LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
       LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, trackId.toString())
@@ -866,6 +1283,9 @@ class MediaSessionCallback(
       .setState(state, position, 1f)
       .build()
     mediaSession.setPlaybackState(pb)
+
+    // Notify preloader about buffering state changes
+    TrackPreloader.onPlaybackStateChanged(state == PlaybackStateCompat.STATE_BUFFERING)
   }
 
   private fun handlePrepare() {
