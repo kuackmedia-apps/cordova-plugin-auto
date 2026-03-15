@@ -8,6 +8,11 @@ protocol MusicApi {
     func getRadioTracks(stationId: String, count: Int, lastIdAlbumTrack: Int64?, completion: @escaping (Result<[Track], Error>) -> Void)
     func getTagPlaylists(tagId: String, completion: @escaping (Result<[[String: Any]], Error>) -> Void)
     func search(text: String, limit: Int, completion: @escaping (Result<SearchResponse, Error>) -> Void)
+    func searchTracks(text: String, limit: Int, completion: @escaping (Result<TrackResult, Error>) -> Void)
+    func searchArtists(text: String, limit: Int, completion: @escaping (Result<ArtistResult, Error>) -> Void)
+    func searchAlbums(text: String, limit: Int, completion: @escaping (Result<AlbumResult, Error>) -> Void)
+    func searchPlaylists(text: String, limit: Int, completion: @escaping (Result<PlaylistResult, Error>) -> Void)
+    func searchTags(text: String, limit: Int, completion: @escaping (Result<TagResult, Error>) -> Void)
     func getArtistAlbums(artistId: String, limit: Int, offset: Int, completion: @escaping (Result<ArtistAlbumsResponse, Error>) -> Void)
     func getArtistPlaylists(artistId: String, limit: Int, offset: Int, completion: @escaping (Result<ArtistPlaylistsResponse, Error>) -> Void)
     func getRelatedArtists(artistId: String, limit: Int, completion: @escaping (Result<RelatedArtistsResponse, Error>) -> Void)
@@ -162,6 +167,47 @@ class MusicApiImpl: MusicApi {
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         dataTask(request: request, completion: completion)
+    }
+
+    // MARK: - Type-specific search endpoints
+
+    private func searchByType<T: Decodable>(type: String, text: String, limit: Int, completion: @escaping (Result<T, Error>) -> Void) {
+        let pathURL = baseURL.appendingPathComponent("search").appendingPathComponent(type)
+        guard var components = URLComponents(url: pathURL, resolvingAgainstBaseURL: false) else {
+            completion(.failure(NSError(domain: "MusicApi", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid search URL"])))
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "q", value: text),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = components.url else {
+            completion(.failure(NSError(domain: "MusicApi", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        dataTask(request: request, completion: completion)
+    }
+
+    func searchTracks(text: String, limit: Int = 10, completion: @escaping (Result<TrackResult, Error>) -> Void) {
+        searchByType(type: "tracks", text: text, limit: limit, completion: completion)
+    }
+
+    func searchArtists(text: String, limit: Int = 10, completion: @escaping (Result<ArtistResult, Error>) -> Void) {
+        searchByType(type: "artists", text: text, limit: limit, completion: completion)
+    }
+
+    func searchAlbums(text: String, limit: Int = 10, completion: @escaping (Result<AlbumResult, Error>) -> Void) {
+        searchByType(type: "albums", text: text, limit: limit, completion: completion)
+    }
+
+    func searchPlaylists(text: String, limit: Int = 10, completion: @escaping (Result<PlaylistResult, Error>) -> Void) {
+        searchByType(type: "playlists", text: text, limit: limit, completion: completion)
+    }
+
+    func searchTags(text: String, limit: Int = 10, completion: @escaping (Result<TagResult, Error>) -> Void) {
+        searchByType(type: "tag", text: text, limit: limit, completion: completion)
     }
 
     // MARK: - New endpoints (Fase 1)

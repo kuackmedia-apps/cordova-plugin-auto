@@ -213,6 +213,11 @@ class CDVMusicPlayer: NSObject {
             })
         }
 
+        // Stop the old track immediately so it doesn't briefly resume
+        // when we call play() after loading the new track
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+
         // ALWAYS reload queue from disk when playCurrentTrack is called
         // This ensures we have the latest queue from the app
         print("[CDVMusicPlayer] syncToTrackIdAndPlay: reloading queue from disk")

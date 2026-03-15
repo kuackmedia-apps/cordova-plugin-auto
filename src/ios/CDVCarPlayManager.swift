@@ -595,48 +595,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
 
                 print("[CarPlay] makeListItems local tracks loaded for id=\(id) count=\(tracks.count)")
-                let normalizedLocal = normalizeQueueItems(tracks)
-
-                // 2) If empty, attempt remote by mediaType
-                if normalizedLocal.isEmpty, !mediaType.lowercased().isEmpty, !id.isEmpty {
-                    let mediaLower = mediaType.lowercased()
-                    let parentContext = self.buildParentContext(mediaType: mediaLower, itemId: id, parentTitle: name)
-                    self.fetchTracksRemote(mediaType: mediaLower, itemId: id, parentContext: parentContext) { remote in
-                        if !remote.isEmpty {
-                            // Persist playback context (Phase 1: PLAYLIST_DATA)
-                            self.musicPlayer.setCurrentParentContext([
-                                "id": parentContext.id,
-                                "type": parentContext.type,
-                                "name": parentContext.name
-                            ])
-                            // Reset shown flag before kicking off playback so Now Playing can be presented again
-                            self.isNowPlayingShown = false
-                            // Extract ID from nested data structure
-                            let firstData = remote.first?["data"] as? [String: Any]
-                            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                            // persist: true to sync queue with mobile app
-                            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true)
-                            self.musicPlayer.play()
-                        }
-                    }
-                } else if !tracks.isEmpty {
-                    // Persist playback context for local tracks (Phase 1: PLAYLIST_DATA)
-                    let mediaLower = mediaType.lowercased()
-                    let parentContext = self.buildParentContext(mediaType: mediaLower, itemId: id, parentTitle: name)
-                    self.musicPlayer.setCurrentParentContext([
-                        "id": parentContext.id,
-                        "type": parentContext.type,
-                        "name": parentContext.name
-                    ])
-                    // Reset shown flag before kicking off playback so Now Playing can be presented again
-                    self.isNowPlayingShown = false
-                    // Extract ID from nested data structure
-                    let firstData = normalizedLocal.first?["data"] as? [String: Any]
-                    let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                    // persist: true to sync queue with mobile app
-                    self.musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: true)
-                    self.musicPlayer.play()
-                }
+                self.playMediaByType(mediaType: mediaType, itemId: id, itemName: name)
                 completion()
             }
             cpItems.append(li)
@@ -724,48 +683,31 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }.resume()
     }
 
-    /// Handle tap on a single TRACK item - fetch signed URL and play
-    private func handleTrackTap(trackId: String, trackName: String) {
-        let api: MusicApi = MusicApiImpl()
-        let req = TrackRequest(
-            idAlbumTrack: trackId,
-            idTrack: trackId,
-            forceDevice: false,
-            useCloudFront: true,
-            forcePreview: false,
-            extraLife: true
-        )
-        api.getTrackUrl(trackRequest: req) { [weak self] result in
-            guard let self = self else { return }
-            switch result {
-            case .success(let signed):
-                let parentContext = QueueParentContext(id: "0", type: "TRACK", name: trackName)
-                let entry: [String: Any] = [
-                    "data": [
-                        "id": trackId,
-                        "idAlbumTrack": trackId,
-                        "name": trackName,
-                        "source": signed.signedUrl,
-                        "indice": 0,
-                        "context": [
-                            "id": parentContext.id,
-                            "type": parentContext.type,
-                            "name": parentContext.name
-                        ]
-                    ] as [String: Any]
-                ]
-                DispatchQueue.main.async {
-                    self.musicPlayer.setCurrentParentContext([
-                        "id": parentContext.id, "type": parentContext.type, "name": parentContext.name
-                    ])
-                    self.isNowPlayingShown = false
-                    self.musicPlayer.updateQueue([entry], selectedTrackId: trackId, persist: true)
-                    self.musicPlayer.play()
-                }
-            case .failure(let error):
-                print("[CarPlay] handleTrackTap: failed to get track URL: \(error.localizedDescription)")
-            }
+    /// Handle tap on a single TRACK item - launches track radio (track + related)
+    private func handleTrackTap(track: Track) {
+        var trackDict: [String: Any] = [
+            "id": track.id,
+            "name": track.name
+        ]
+        if let idAlbumTrack = track.idAlbumTrack {
+            trackDict["idAlbumTrack"] = String(idAlbumTrack)
         }
+        if !track.artists.isEmpty {
+            trackDict["artists"] = track.artists.map { ["id": $0.id, "name": $0.name] }
+        }
+        if let album = track.album {
+            var albumDict: [String: Any] = ["id": album.id, "title": album.title]
+            if let images = album.images, !images.isEmpty {
+                albumDict["images"] = images.map { img -> [String: Any] in
+                    var d: [String: Any] = [:]
+                    if let url = img.url { d["url"] = url }
+                    if let size = img.size { d["size"] = size }
+                    return d
+                }
+            }
+            trackDict["album"] = albumDict
+        }
+        handleTrackRadio(trackId: track.id, trackName: track.name, trackDict: trackDict)
     }
 
     /// Handle tap on a PODCAST item - show episodes list (browsable)
@@ -844,6 +786,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             "showTitle": showName,
             "duration": episode.duration ?? "",
             "image": episode.image ?? episode.ourImage ?? "",
+            "isPodcast": true,
             "enclosure": ["url": audioUrl, "type": "audio/mpeg"]
         ])
         isNowPlayingShown = false
@@ -1843,10 +1786,69 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
 
+    // MARK: - Unified Playback by Media Type
+
+    /// Unified method to load and play tracks by media type.
+    /// Used by both CarPlay UI taps and Siri search results.
+    /// Handles: local tracks lookup, remote fetch, parentContext persistence, and queue update.
+    private func playMediaByType(mediaType: String, itemId: String, itemName: String, fromNative: Bool = false) {
+        let mediaLower = mediaType.lowercased()
+        let parentContext = buildParentContext(mediaType: mediaLower, itemId: itemId, parentTitle: itemName)
+        let contextDict: [String: Any] = ["id": parentContext.id, "type": parentContext.type, "name": parentContext.name]
+
+        // Try local tracks first
+        let localTracks = itemId.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: itemId)
+        let normalizedLocal = normalizeQueueItems(localTracks)
+
+        if !normalizedLocal.isEmpty {
+            musicPlayer.setCurrentParentContext(contextDict)
+            isNowPlayingShown = false
+            let firstData = normalizedLocal.first?["data"] as? [String: Any]
+            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+            musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: true, fromNative: fromNative)
+            musicPlayer.play()
+            return
+        }
+
+        // Remote fetch
+        guard !mediaLower.isEmpty, !itemId.isEmpty else { return }
+        fetchTracksRemote(mediaType: mediaLower, itemId: itemId, parentContext: parentContext) { [weak self] remote in
+            guard let self = self, !remote.isEmpty else { return }
+            self.musicPlayer.setCurrentParentContext(contextDict)
+            self.isNowPlayingShown = false
+            let firstData = remote.first?["data"] as? [String: Any]
+            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true, fromNative: fromNative)
+            self.musicPlayer.play()
+        }
+    }
+
     // MARK: - Siri Search
-    
+
+    /// Play a media item that was already resolved by Siri in resolveMediaItems.
+    /// Called from CDVSiriIntentHandler.handle() with the pre-resolved type/id/name.
+    @objc func playSiriResolvedMedia(mediaType: String, itemId: String, itemName: String, idAlbumTrack: String? = nil) {
+        print("🎤 [CarPlay][Siri] playSiriResolvedMedia type=\(mediaType) id=\(itemId) idAlbumTrack=\(idAlbumTrack ?? "nil") name=\(itemName)")
+        musicPlayer.activateForCarPlay()
+        musicPlayer.clearInitialSetupFlag()
+
+        if mediaType == "track" {
+            fetchSingleTrackAndPlay(trackId: itemId, trackName: itemName, idAlbumTrack: idAlbumTrack)
+        } else {
+            playMediaByType(mediaType: mediaType, itemId: itemId, itemName: itemName, fromNative: true)
+        }
+    }
+
+    /// Play a Siri-resolved track using the full Track object (with album, images, artists)
+    func playSiriResolvedTrack(_ track: Track) {
+        print("🎤 [CarPlay][Siri] playSiriResolvedTrack: \(track.name) id=\(track.id)")
+        musicPlayer.activateForCarPlay()
+        musicPlayer.clearInitialSetupFlag()
+        handleTrackTap(track: track)
+    }
+
     /// Handle Siri search intent - performs API search and starts playback
-    /// Called from CDVSiriIntentHandler when user says "Hey Siri, play X on AppName"
+    /// Called as fallback when resolveMediaItems couldn't resolve (offline/error)
     @objc func handleSiriSearch(searchParams: [String: Any]) {
         let mediaName = searchParams["mediaName"] as? String ?? ""
         let artistName = searchParams["artistName"] as? String
@@ -1909,65 +1911,57 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         print("🎵 [CarPlay][Siri] tracks=\(response.tracks?.list?.count ?? 0) artists=\(response.artists?.list?.count ?? 0) albums=\(response.albums?.list?.count ?? 0) playlists=\(response.playlists?.list?.count ?? 0)")
         
         // Strategy: Prioritize based on what was found
-        // 1. If tracks found, play tracks directly
-        // 2. If artist found matching the query, fetch artist tracks
-        // 3. If album found, fetch album tracks
-        // 4. If playlist found, fetch playlist tracks
-        
+        // 1. Playlists
+        // 2. Artists
+        // 3. Albums
+        // 4. Tracks
+
         let queryLower = originalQuery.lowercased()
-        
-        // Check for "best" result first (from Android logic)
-        if let best = response.best {
-            print("🌟 [CarPlay][Siri] Found best result: \(best.name ?? "unknown") (type=\(best.itemType ?? "unknown"), id=\(best.id))")
-            playBestResult(best: best)
-            return
-        }
-        
-        // Check for tracks first - if we have tracks, play them
-        if let tracks = response.tracks?.list, !tracks.isEmpty {
-            print("🎵 [CarPlay][Siri] Found \(tracks.count) tracks, building queue...")
-            buildQueueFromTracks(tracks: tracks, contextName: "Siri Search: \(originalQuery)")
-            return
-        }
-        
-        // Check for matching artist
-        if let artists = response.artists?.list, !artists.isEmpty {
-            // Find best matching artist
-            let matchingArtist = artists.first { artist in
-                artist.name.lowercased().contains(queryLower) || queryLower.contains(artist.name.lowercased())
-            } ?? artists.first
-            
-            if let artist = matchingArtist {
-                print("🎤 [CarPlay][Siri] Found artist: \(artist.name) (id=\(artist.id)), fetching tracks...")
-                fetchArtistTracksAndPlay(artistId: artist.id, artistName: artist.name)
-                return
-            }
-        }
-        
-        // Check for matching album
-        if let albums = response.albums?.list, !albums.isEmpty {
-            let matchingAlbum = albums.first { album in
-                album.title.lowercased().contains(queryLower) || queryLower.contains(album.title.lowercased())
-            } ?? albums.first
-            
-            if let album = matchingAlbum {
-                print("💿 [CarPlay][Siri] Found album: \(album.title) (id=\(album.id)), fetching tracks...")
-                fetchAlbumTracksAndPlay(albumId: album.id, albumName: album.title)
-                return
-            }
-        }
-        
+
         // Check for matching playlist
         if let playlists = response.playlists?.list, !playlists.isEmpty {
             let matchingPlaylist = playlists.first { playlist in
                 playlist.name.lowercased().contains(queryLower) || queryLower.contains(playlist.name.lowercased())
             } ?? playlists.first
-            
+
             if let playlist = matchingPlaylist {
                 print("📋 [CarPlay][Siri] Found playlist: \(playlist.name) (id=\(playlist.id)), fetching tracks...")
-                fetchPlaylistTracksAndPlay(playlistId: playlist.id, playlistName: playlist.name)
+                playMediaByType(mediaType: "playlist", itemId: playlist.id, itemName: playlist.name, fromNative: true)
                 return
             }
+        }
+
+        // Check for matching artist
+        if let artists = response.artists?.list, !artists.isEmpty {
+            let matchingArtist = artists.first { artist in
+                artist.name.lowercased().contains(queryLower) || queryLower.contains(artist.name.lowercased())
+            } ?? artists.first
+
+            if let artist = matchingArtist {
+                print("🎤 [CarPlay][Siri] Found artist: \(artist.name) (id=\(artist.id)), fetching tracks...")
+                playMediaByType(mediaType: "artist", itemId: artist.id, itemName: artist.name, fromNative: true)
+                return
+            }
+        }
+
+        // Check for matching album
+        if let albums = response.albums?.list, !albums.isEmpty {
+            let matchingAlbum = albums.first { album in
+                album.title.lowercased().contains(queryLower) || queryLower.contains(album.title.lowercased())
+            } ?? albums.first
+
+            if let album = matchingAlbum {
+                print("💿 [CarPlay][Siri] Found album: \(album.title) (id=\(album.id)), fetching tracks...")
+                playMediaByType(mediaType: "album", itemId: album.id, itemName: album.title, fromNative: true)
+                return
+            }
+        }
+
+        // Check for tracks
+        if let tracks = response.tracks?.list, !tracks.isEmpty {
+            print("🎵 [CarPlay][Siri] Found \(tracks.count) tracks, building queue...")
+            buildQueueFromTracks(tracks: tracks, contextName: "Siri Search: \(originalQuery)")
+            return
         }
         
         print("[CarPlay][Siri] No suitable results found for '\(originalQuery)'")
@@ -1981,24 +1975,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         var sections: [CPListSection] = []
         let maxPerSection = 4
 
-        // Best Result
-        if let best = response.best {
-            let bestItem = CPListItem(text: best.name ?? "...", detailText: best.itemType ?? "")
-            bestItem.handler = { [weak self] _, completion in
-                guard let self = self else { completion(); return }
-                self.playBestResult(best: best)
-                completion()
-            }
-            sections.append(CPListSection(items: [bestItem], header: "Mejor resultado", sectionIndexTitle: nil))
-        }
-
         // Artists
         if let artists = response.artists?.list?.prefix(maxPerSection), !artists.isEmpty {
             let items = artists.map { artist -> CPListItem in
                 let li = CPListItem(text: artist.name, detailText: "Artista")
                 li.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
-                    self.fetchArtistTracksAndPlay(artistId: artist.id, artistName: artist.name)
+                    self.playMediaByType(mediaType: "artist", itemId: artist.id, itemName: artist.name)
                     completion()
                 }
                 return li
@@ -2013,7 +1996,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let li = CPListItem(text: album.title, detailText: artistName)
                 li.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
-                    self.fetchAlbumTracksAndPlay(albumId: album.id, albumName: album.title)
+                    self.playMediaByType(mediaType: "album", itemId: album.id, itemName: album.title)
                     completion()
                 }
                 return li
@@ -2027,7 +2010,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let li = CPListItem(text: playlist.name, detailText: "Playlist")
                 li.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
-                    self.fetchPlaylistTracksAndPlay(playlistId: playlist.id, playlistName: playlist.name)
+                    self.playMediaByType(mediaType: "playlist", itemId: playlist.id, itemName: playlist.name)
                     completion()
                 }
                 return li
@@ -2041,19 +2024,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let li = CPListItem(text: tag.name, detailText: "Tag")
                 li.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
-                    let parentContext = QueueParentContext(id: tag.id, type: "TAG", name: tag.name)
-                    self.fetchTracksRemote(mediaType: "tag", itemId: tag.id, parentContext: parentContext) { remote in
-                        if !remote.isEmpty {
-                            self.musicPlayer.setCurrentParentContext([
-                                "id": parentContext.id, "type": parentContext.type, "name": parentContext.name
-                            ])
-                            self.isNowPlayingShown = false
-                            let firstData = remote.first?["data"] as? [String: Any]
-                            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true)
-                            self.musicPlayer.play()
-                        }
-                    }
+                    self.playMediaByType(mediaType: "tag", itemId: tag.id, itemName: tag.name)
                     completion()
                 }
                 return li
@@ -2068,7 +2039,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let li = CPListItem(text: track.name, detailText: artistName)
                 li.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
-                    self.handleTrackTap(trackId: track.id, trackName: track.name)
+                    self.handleTrackTap(track: track)
                     completion()
                 }
                 return li
@@ -2145,6 +2116,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             }
             
             print("✅ [CarPlay][Siri] Queue built with \(validItems.count) tracks, starting playback...")
+            self.musicPlayer.setCurrentParentContext([
+                "id": parentContext.id, "type": parentContext.type, "name": parentContext.name
+            ])
             self.isNowPlayingShown = false
             let firstData = validItems.first?["data"] as? [String: Any]
             let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
@@ -2153,113 +2127,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
     
-    /// Fetch artist tracks and start playback
-    private func fetchArtistTracksAndPlay(artistId: String, artistName: String) {
-        let parentContext = QueueParentContext(id: artistId, type: "ARTIST", name: artistName)
-        fetchTracksRemote(mediaType: "artist", itemId: artistId, parentContext: parentContext) { [weak self] queueItems in
-            guard let self = self, !queueItems.isEmpty else {
-                print("⚠️ [CarPlay][Siri] No tracks found for artist \(artistName)")
-                return
-            }
-            print("✅ [CarPlay][Siri] Loaded \(queueItems.count) tracks for artist \(artistName)")
-            self.isNowPlayingShown = false
-            let firstData = queueItems.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true, fromNative: true)
-            self.musicPlayer.play()
-        }
-    }
-    
-    /// Fetch album tracks and start playback
-    private func fetchAlbumTracksAndPlay(albumId: String, albumName: String) {
-        let parentContext = QueueParentContext(id: albumId, type: "ALBUM", name: albumName)
-        fetchTracksRemote(mediaType: "album", itemId: albumId, parentContext: parentContext) { [weak self] queueItems in
-            guard let self = self, !queueItems.isEmpty else {
-                print("⚠️ [CarPlay][Siri] No tracks found for album \(albumName)")
-                return
-            }
-            print("✅ [CarPlay][Siri] Loaded \(queueItems.count) tracks for album \(albumName)")
-            self.isNowPlayingShown = false
-            let firstData = queueItems.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true, fromNative: true)
-            self.musicPlayer.play()
-        }
-    }
-    
-    /// Play the "best" result from search (can be artist, album, playlist, track, or tag)
-    private func playBestResult(best: AnyMediaItem) {
-        let itemType = best.itemType ?? ""
-        let itemId = best.id
-        let itemName = best.name ?? "Unknown"
-        
-        print("🌟 [CarPlay][Siri] Playing best result: type=\(itemType) id=\(itemId) name=\(itemName)")
-        
-        switch itemType.lowercased() {
-        case "artist":
-            fetchArtistTracksAndPlay(artistId: itemId, artistName: itemName)
-        case "album":
-            fetchAlbumTracksAndPlay(albumId: itemId, albumName: itemName)
-        case "playlist":
-            fetchPlaylistTracksAndPlay(playlistId: itemId, playlistName: itemName)
-        case "track":
-            // For a single track, we need to fetch it and play
-            fetchSingleTrackAndPlay(trackId: itemId, trackName: itemName)
-        case "tag":
-            // For tags, fetch playlists from the tag
-            fetchTagPlaylistsAndPlay(tagId: itemId, tagName: itemName)
-        default:
-            print("⚠️ [CarPlay][Siri] Unknown best result type: \(itemType)")
-        }
-    }
-    
-    /// Fetch a single track and play it
-    private func fetchSingleTrackAndPlay(trackId: String, trackName: String) {
-        print("🎵 [CarPlay][Siri] Fetching single track: \(trackName) (id=\(trackId))")
-        
-        let api: MusicApi = MusicApiImpl()
-        let req = TrackRequest(
-            idAlbumTrack: trackId,
-            idTrack: trackId,
-            forceDevice: false,
-            useCloudFront: true,
-            forcePreview: false,
-            extraLife: true
-        )
-        
-        api.getTrackUrl(trackRequest: req) { [weak self] result in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let signed):
-                print("✅ [CarPlay][Siri] Got signed URL for track")
-                // Create a simple queue entry for the single track
-                let parentContext = QueueParentContext(id: "0", type: "SEARCH", name: "Siri: \(trackName)")
-                let entry: [String: Any] = [
-                    "data": [
-                        "id": trackId,
-                        "idAlbumTrack": trackId,
-                        "name": trackName,
-                        "signedUrl": signed.signedUrl,
-                        "indice": 0,
-                        "context": [
-                            "id": parentContext.id,
-                            "type": parentContext.type,
-                            "name": parentContext.name
-                        ]
-                    ] as [String : Any]
-                ]
-                
-                DispatchQueue.main.async {
-                    self.isNowPlayingShown = false
-                    self.musicPlayer.updateQueue([entry], selectedTrackId: trackId, persist: true, fromNative: true)
-                    self.musicPlayer.play()
-                }
-                
-            case .failure(let error):
-                print("❌ [CarPlay][Siri] Failed to get track URL: \(error.localizedDescription)")
-            }
-        }
+    /// Fetch a single track and play it — delegates to track radio (track + related)
+    private func fetchSingleTrackAndPlay(trackId: String, trackName: String, idAlbumTrack: String? = nil) {
+        let effectiveIdAlbumTrack = idAlbumTrack ?? trackId
+        print("🎵 [CarPlay][Siri] Launching track radio: \(trackName) (id=\(trackId) idAlbumTrack=\(effectiveIdAlbumTrack))")
+
+        let trackDict: [String: Any] = [
+            "id": trackId,
+            "name": trackName,
+            "idAlbumTrack": effectiveIdAlbumTrack
+        ]
+        handleTrackRadio(trackId: trackId, trackName: trackName, trackDict: trackDict)
     }
     
     /// Fetch playlists from a tag and play the first one
@@ -2276,30 +2154,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                    let playlistId = firstPlaylist["id"] as? String ?? (firstPlaylist["id"] as? Int).map({ String($0) }),
                    let playlistName = firstPlaylist["name"] as? String {
                     print("✅ [CarPlay][Siri] Found \(playlists.count) playlists for tag, playing first: \(playlistName)")
-                    self.fetchPlaylistTracksAndPlay(playlistId: playlistId, playlistName: playlistName)
+                    self.playMediaByType(mediaType: "playlist", itemId: playlistId, itemName: playlistName, fromNative: true)
                 } else {
                     print("⚠️ [CarPlay][Siri] No playlists found for tag \(tagName)")
                 }
             case .failure(let error):
                 print("❌ [CarPlay][Siri] Failed to get tag playlists: \(error.localizedDescription)")
             }
-        }
-    }
-    
-    /// Fetch playlist tracks and start playback
-    private func fetchPlaylistTracksAndPlay(playlistId: String, playlistName: String) {
-        let parentContext = QueueParentContext(id: playlistId, type: "PLAYLIST", name: playlistName)
-        fetchTracksRemote(mediaType: "playlist", itemId: playlistId, parentContext: parentContext) { [weak self] queueItems in
-            guard let self = self, !queueItems.isEmpty else {
-                print("⚠️ [CarPlay][Siri] No tracks found for playlist \(playlistName)")
-                return
-            }
-            print("✅ [CarPlay][Siri] Loaded \(queueItems.count) tracks for playlist \(playlistName)")
-            self.isNowPlayingShown = false
-            let firstData = queueItems.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(queueItems, selectedTrackId: selectedId, persist: true, fromNative: true)
-            self.musicPlayer.play()
         }
     }
     

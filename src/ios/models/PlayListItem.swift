@@ -13,10 +13,11 @@ struct PlayListItem: MediaItem, Codable {
     let createDate: Int64?
     let tags: [Tag]?
     let images: [CoverImage]?
+    let score: Double?
     let imageColorInfo: ImageColorInfo?
-    
+
     private enum CodingKeys: String, CodingKey {
-        case id, itemType, itemStyle, name, followers, active, curator, user, updateDate, createDate, tags, images, imageColorInfo
+        case id, itemType, itemStyle, name, followers, active, curator, user, updateDate, createDate, tags, images, score, imageColorInfo
     }
     
     init(from decoder: Decoder) throws {
@@ -38,10 +39,24 @@ struct PlayListItem: MediaItem, Codable {
         active = try container.decodeIfPresent(Bool.self, forKey: .active)
         curator = try container.decodeIfPresent(Curator.self, forKey: .curator)
         user = try container.decodeIfPresent(User.self, forKey: .user)
-        updateDate = try container.decodeIfPresent(Int64.self, forKey: .updateDate)
-        createDate = try container.decodeIfPresent(Int64.self, forKey: .createDate)
+        // updateDate/createDate can arrive as Int64 or String
+        if let v = try? container.decode(Int64.self, forKey: .updateDate) {
+            updateDate = v
+        } else if let s = try? container.decode(String.self, forKey: .updateDate), let v = Int64(s) {
+            updateDate = v
+        } else {
+            updateDate = nil
+        }
+        if let v = try? container.decode(Int64.self, forKey: .createDate) {
+            createDate = v
+        } else if let s = try? container.decode(String.self, forKey: .createDate), let v = Int64(s) {
+            createDate = v
+        } else {
+            createDate = nil
+        }
         tags = try container.decodeIfPresent([Tag].self, forKey: .tags)
         images = try container.decodeIfPresent([CoverImage].self, forKey: .images)
+        score = try container.decodeIfPresent(Double.self, forKey: .score)
         imageColorInfo = try container.decodeIfPresent(ImageColorInfo.self, forKey: .imageColorInfo)
     }
 }
