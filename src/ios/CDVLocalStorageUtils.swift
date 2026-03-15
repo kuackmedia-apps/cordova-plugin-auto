@@ -175,6 +175,7 @@ class CDVLocalStorageUtils: NSObject {
         for (folder, filename) in candidates {
             let path = (documentsPath as NSString).appendingPathComponent("\(folder)/\(filename)")
             if FileManager.default.fileExists(atPath: path) {
+                print("\(TAG) Image found documentPath: type=\(itemType) id=\(itemId)")
                 return path
             }
         }
@@ -183,6 +184,7 @@ class CDVLocalStorageUtils: NSObject {
         for (folder, filename) in candidates {
             let path = (noCloudPath as NSString).appendingPathComponent("\(folder)/\(filename)")
             if FileManager.default.fileExists(atPath: path) {
+                print("\(TAG) Image found cloudPath: type=\(itemType) id=\(itemId)")
                 return path
             }
         }
