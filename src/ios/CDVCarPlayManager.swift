@@ -44,9 +44,34 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         CDVNetworkUtils.shared.onNetworkStatusChanged = { [weak self] isAvailable in
             print("[CarPlay] Network status changed: \(isAvailable ? "ONLINE" : "OFFLINE")")
             guard let self = self, self.connected, let controller = self.interfaceController else { return }
-            // Refresh templates when network state changes
-            DispatchQueue.main.async {
-                self.setupTemplates(controller)
+
+            if isAvailable {
+                // Network recovered: refresh templates to show online navigation
+                print("[CarPlay] Network recovered — refreshing templates to online mode")
+                DispatchQueue.main.async {
+                    self.setupTemplates(controller)
+                    // Resume dynamic queue loading and preloader if needed
+                    if self.musicPlayer.isDynamicQueue && self.musicPlayer.shouldLoadMore() {
+                        print("[CarPlay] Network recovered — triggering loadMore for dynamic queue")
+                        self.musicPlayer.loadMore()
+                    }
+                    CDVTrackPreloader.shared.preloadNextTracks(queue: self.musicPlayer.queue, currentIndex: self.musicPlayer.currentIndex)
+                }
+            } else {
+                // Network lost: switch navigation to offline items
+                if self.musicPlayer.isPlaying {
+                    // Player active: update tabs without replacing root template (preserves NowPlaying + playback)
+                    print("[CarPlay] Network lost, player ACTIVE — switching tabs to offline without resetting root")
+                    DispatchQueue.main.async {
+                        self.switchTabsToOffline()
+                    }
+                } else {
+                    // Player idle: full offline template setup (safe to replace root)
+                    print("[CarPlay] Network lost, player IDLE — full offline template setup")
+                    DispatchQueue.main.async {
+                        self.setupTemplates(controller)
+                    }
+                }
             }
         }
 
@@ -103,7 +128,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
 
-    private struct QueueParentContext {
+    struct QueueParentContext {
         let id: String
         let type: String
         let name: String
@@ -125,7 +150,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
 
-    private func buildParentContext(mediaType: String, itemId: String, parentTitle: String) -> QueueParentContext {
+    func buildParentContext(mediaType: String, itemId: String, parentTitle: String) -> QueueParentContext {
         let type: String
         switch mediaType {
         case "playlist", "mix": type = mediaType.uppercased()
@@ -151,7 +176,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     }
 
     // Build a queue entry in the mobile app's structure: { "data": { ...track... } }
-    private func queueEntry(from track: Track, signedUrl: String, parent: QueueParentContext, index: Int) -> [String: Any] {
+    func queueEntry(from track: Track, signedUrl: String, parent: QueueParentContext, index: Int) -> [String: Any] {
         let albumTitle = track.album?.title ?? parent.name
         
         // Build the track data object
@@ -623,31 +648,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             return
         }
 
-        // Default: playlist/mix/album/artist — try local queue then remote
+        // Default: playlist/mix/album/artist — delegate to playMediaByType (handles dynamic queue)
         guard !id.isEmpty else { return }
-        let mediaLower = mediaType.lowercased()
-        let parentContext = buildParentContext(mediaType: mediaLower, itemId: id, parentTitle: name)
-        let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: id)
-        let normalizedLocal = normalizeQueueItems(tracks)
-
-        if normalizedLocal.isEmpty {
-            fetchTracksRemote(mediaType: mediaLower, itemId: id, parentContext: parentContext) { [weak self] remote in
-                guard let self = self, !remote.isEmpty else { return }
-                self.musicPlayer.setCurrentParentContext(["id": parentContext.id, "type": parentContext.type, "name": parentContext.name])
-                self.isNowPlayingShown = false
-                let firstData = remote.first?["data"] as? [String: Any]
-                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true)
-                self.musicPlayer.play()
-            }
-        } else {
-            musicPlayer.setCurrentParentContext(["id": parentContext.id, "type": parentContext.type, "name": parentContext.name])
-            isNowPlayingShown = false
-            let firstData = normalizedLocal.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: true)
-            musicPlayer.play()
-        }
+        playMediaByType(mediaType: mediaType, itemId: id, itemName: name, fromNative: true)
     }
 
     /// Load an image from URL (file://, cache, or remote download)
@@ -813,9 +816,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Track radio: play the selected track + related tracks
     private func handleTrackRadio(trackId: String, trackName: String, trackDict: [String: Any]) {
+        print("[DQ] 📻 handleTrackRadio: trackId=\(trackId) name=\(trackName)")
         let api: MusicApi = MusicApiImpl()
         // Use idAlbumTrack for the parent context id (JS expects idAlbumTrack, not id)
         let idAlbumTrack = String(describing: trackDict["idAlbumTrack"] ?? trackId)
+        let idAlbumTrackInt64 = Int64(idAlbumTrack) ?? 0
         let parentContext = QueueParentContext(id: idAlbumTrack, type: "TRACK_RADIO", name: trackName)
 
         // First get the signed URL for the selected track
@@ -839,13 +844,33 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 return ["data": data]
             }()
 
-            // Then fetch related tracks
-            api.getRelatedTracks(trackId: trackId, limit: 14) { [weak self] relatedResult in
+            // Fetch initial related tracks for buffer (dynamic queue will load more via loadMore)
+            // Use getRelatedTracksByQueue when we have a valid idAlbumTrack, fallback to getRelatedTracks otherwise
+            let fetchRelated: (@escaping (Result<ArtistTracks, Error>) -> Void) -> Void
+            if idAlbumTrackInt64 != 0 {
+                print("[DQ] Track radio: using getRelatedTracksByQueue (idAlbumTrack=\(idAlbumTrackInt64))")
+                fetchRelated = { completion in
+                    let request = RelatedTracksByQueueRequest(
+                        albumTrackIds: [idAlbumTrackInt64],
+                        excludeAlbumTrackIds: [idAlbumTrackInt64],
+                        seedAlbumTrackIds: [idAlbumTrackInt64]
+                    )
+                    api.getRelatedTracksByQueue(request: request, limit: 5, completion: completion)
+                }
+            } else {
+                print("[DQ] Track radio: idAlbumTrack=0 — fallback to getRelatedTracks(trackId)")
+                fetchRelated = { completion in
+                    api.getRelatedTracks(trackId: trackId, limit: 5, completion: completion)
+                }
+            }
+
+            fetchRelated { [weak self] relatedResult in
                 guard let self = self else { return }
                 switch relatedResult {
                 case .success(let relatedTracks):
-                    let tracks = relatedTracks.list
-                    print("[CarPlay] Track radio: \(tracks.count) related tracks found")
+                    // Filter out duplicates (API may return the same track we're playing)
+                    let tracks = relatedTracks.list.filter { $0.id != trackId && $0.idAlbumTrack != idAlbumTrackInt64 }
+                    print("[DQ] Track radio: \(tracks.count) initial related tracks (filtered from \(relatedTracks.list.count))")
                     // Resolve signed URLs for related tracks
                     let group = DispatchGroup()
                     var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
@@ -867,29 +892,66 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         if let selected = selectedEntry { queue.append(selected) }
                         queue.append(contentsOf: results.compactMap { $0 })
                         guard !queue.isEmpty else {
-                            print("[CarPlay] Track radio: no tracks to play")
+                            print("[DQ] Track radio: no tracks to play")
                             return
                         }
+
+                        // Configure TRACK_RADIO dynamic queue loading state
+                        let relatedIds = tracks.compactMap { $0.idAlbumTrack }
+                        var loadingState = CDVQueueLoadingState(
+                            contentType: "TRACK_RADIO",
+                            contentId: trackId,
+                            contentName: trackName
+                        )
+                        loadingState.seedAlbumTrackIds = idAlbumTrackInt64 != 0 ? [idAlbumTrackInt64] : []
+                        loadingState.excludeAlbumTrackIds = (idAlbumTrackInt64 != 0 ? [idAlbumTrackInt64] : []) + relatedIds
+
+                        self.musicPlayer.isDynamicQueue = true
+                        self.musicPlayer.queueLoadingState = loadingState
+
                         self.musicPlayer.setCurrentParentContext([
                             "id": parentContext.id, "type": parentContext.type, "name": parentContext.name,
                             "trackData": trackDict
                         ])
                         self.isNowPlayingShown = false
-                        self.musicPlayer.updateQueue(queue, selectedTrackId: trackId, persist: true)
+                        self.musicPlayer.updateQueue(queue, selectedTrackId: trackId, persist: false, fromNative: true)
                         self.musicPlayer.play()
+
+                        print("[DQ] ✅ handleTrackRadio: started — initial=\(queue.count) seeds=\(loadingState.seedAlbumTrackIds) excludes=\(loadingState.excludeAlbumTrackIds.count) hasMore=\(loadingState.hasMore)")
+
+                        // Trigger loadMore to prefetch next batch
+                        if self.musicPlayer.shouldLoadMore() {
+                            self.musicPlayer.loadMore()
+                        }
                     }
                 case .failure(let error):
-                    print("[CarPlay] Track radio: related tracks failed: \(error.localizedDescription)")
-                    // Fallback: play just the selected track
+                    print("[DQ] ⚠️ handleTrackRadio: related tracks failed: \(error.localizedDescription) — fallback to single track")
+                    // Fallback: play just the selected track with dynamic queue
                     if let selected = selectedEntry {
                         DispatchQueue.main.async {
+                            var loadingState = CDVQueueLoadingState(
+                                contentType: "TRACK_RADIO",
+                                contentId: trackId,
+                                contentName: trackName
+                            )
+                            loadingState.seedAlbumTrackIds = idAlbumTrackInt64 != 0 ? [idAlbumTrackInt64] : []
+                            loadingState.excludeAlbumTrackIds = idAlbumTrackInt64 != 0 ? [idAlbumTrackInt64] : []
+
+                            self.musicPlayer.isDynamicQueue = true
+                            self.musicPlayer.queueLoadingState = loadingState
+
                             self.musicPlayer.setCurrentParentContext([
                                 "id": parentContext.id, "type": parentContext.type, "name": parentContext.name,
                                 "trackData": trackDict
                             ])
                             self.isNowPlayingShown = false
-                            self.musicPlayer.updateQueue([selected], selectedTrackId: trackId, persist: true)
+                            self.musicPlayer.updateQueue([selected], selectedTrackId: trackId, persist: false, fromNative: true)
                             self.musicPlayer.play()
+
+                            // Trigger loadMore immediately
+                            if self.musicPlayer.shouldLoadMore() {
+                                self.musicPlayer.loadMore()
+                            }
                         }
                     }
                 }
@@ -897,21 +959,22 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
 
-    /// Station radio: fetch tracks from station endpoint
+    /// Station radio: fetch tracks from station endpoint with dynamic queue loading
     private func handleStationRadio(stationId: String, stationName: String, stationDict: [String: Any]) {
+        print("[DQ] 📻 handleStationRadio: stationId=\(stationId) name=\(stationName)")
         let api: MusicApi = MusicApiImpl()
         let parentContext = QueueParentContext(id: stationId, type: "RADIO", name: stationName)
+        let initialCount = 2
 
-        api.getRadioTracks(stationId: stationId, count: 15, lastIdAlbumTrack: nil) { [weak self] result in
+        api.getRadioTracks(stationId: stationId, count: initialCount, lastIdAlbumTrack: nil) { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .success(let tracks):
-                print("[CarPlay] Station radio: \(tracks.count) tracks fetched")
-                let shuffled = tracks.shuffled()
+                print("[DQ] Station radio: \(tracks.count) initial tracks fetched")
                 // Resolve signed URLs
                 let group = DispatchGroup()
-                var results: [[String: Any]?] = Array(repeating: nil, count: shuffled.count)
-                for (index, t) in shuffled.enumerated() {
+                var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
+                for (index, t) in tracks.enumerated() {
                     group.enter()
                     let req = TrackRequest(
                         idAlbumTrack: String(t.idAlbumTrack ?? 0),
@@ -927,9 +990,22 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 group.notify(queue: .main) {
                     let queue = results.compactMap { $0 }
                     guard !queue.isEmpty else {
-                        print("[CarPlay] Station radio: no tracks to play")
+                        print("[DQ] Station radio: no tracks to play")
                         return
                     }
+
+                    // Configure RADIO dynamic queue loading state
+                    let lastTrack = tracks.last
+                    var loadingState = CDVQueueLoadingState(
+                        contentType: "RADIO",
+                        contentId: stationId,
+                        contentName: stationName
+                    )
+                    loadingState.lastIdAlbumTrack = lastTrack?.idAlbumTrack.map { String($0) }
+
+                    self.musicPlayer.isDynamicQueue = true
+                    self.musicPlayer.queueLoadingState = loadingState
+
                     self.musicPlayer.setCurrentParentContext([
                         "id": parentContext.id, "type": parentContext.type, "name": parentContext.name,
                         "tagData": stationDict
@@ -937,40 +1013,34 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     self.isNowPlayingShown = false
                     let firstData = queue.first?["data"] as? [String: Any]
                     let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-                    self.musicPlayer.updateQueue(queue, selectedTrackId: selectedId, persist: true)
+                    self.musicPlayer.updateQueue(queue, selectedTrackId: selectedId, persist: false, fromNative: true)
                     self.musicPlayer.play()
+
+                    print("[DQ] ✅ handleStationRadio: started — initial=\(queue.count) cursor=\(loadingState.lastIdAlbumTrack ?? "nil") hasMore=\(loadingState.hasMore)")
+
+                    // Trigger loadMore to prefetch next batch
+                    if self.musicPlayer.shouldLoadMore() {
+                        self.musicPlayer.loadMore()
+                    }
                 }
             case .failure(let error):
-                print("[CarPlay] Station radio: failed: \(error.localizedDescription)")
+                print("[DQ] ❌ Station radio failed: \(error.localizedDescription)")
             }
         }
     }
 
-    /// Artist radio: top tracks of artist, shuffled
+    /// Artist radio: top tracks of artist, shuffled — uses dynamic queue loading
     private func handleArtistRadio(artistId: String, artistName: String) {
-        let parentContext = QueueParentContext(id: artistId, type: "ARTIST_STATION", name: artistName)
-        fetchTracksRemote(mediaType: "artist", itemId: artistId, parentContext: parentContext) { [weak self] queueItems in
-            guard let self = self, !queueItems.isEmpty else {
-                print("[CarPlay] Artist radio: no tracks found for artist \(artistName)")
-                return
-            }
-            let shuffled = queueItems.shuffled()
-            self.musicPlayer.setCurrentParentContext([
-                "id": parentContext.id, "type": parentContext.type, "name": parentContext.name
-            ])
-            self.isNowPlayingShown = false
-            let firstData = shuffled.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(shuffled, selectedTrackId: selectedId, persist: true)
-            self.musicPlayer.play()
-        }
+        // Delegate to playMediaByType which handles dynamic queue loading
+        playMediaByType(mediaType: "artist", itemId: artistId, itemName: artistName, fromNative: true)
     }
 
     // MARK: - Action Items (Phase 7: Play All / Shuffle)
 
     /// Build "Play All" and "Shuffle" action items for drill-down lists (mirrors Android buildActionItems)
     private func buildActionItems(mediaType: String, itemId: String, parentTitle: String) -> [CPListItem] {
-        let playItem = CPListItem(text: "\u{25B6} Play", detailText: parentTitle)
+        let playText = CDVTextsManager.shared.getText("play", fallback: "Play")
+        let playItem = CPListItem(text: "\u{25B6} \(playText)", detailText: parentTitle)
         if #available(iOS 14.0, *) {
             playItem.setImage(UIImage(systemName: "play.fill"))
         }
@@ -981,7 +1051,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             completion()
         }
 
-        let shuffleItem = CPListItem(text: "\u{21C6} Shuffle", detailText: parentTitle)
+        let shuffleText = CDVTextsManager.shared.getText("shuffle", fallback: "Shuffle")
+        let shuffleItem = CPListItem(text: "\u{21C6} \(shuffleText)", detailText: parentTitle)
         if #available(iOS 14.0, *) {
             shuffleItem.setImage(UIImage(systemName: "shuffle"))
         }
@@ -997,13 +1068,21 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Fetch all tracks and start playback (with optional shuffle)
     private func fetchAndPlayAll(mediaType: String, itemId: String, parentTitle: String, shuffle: Bool) {
+        if !shuffle {
+            // Play All: use dynamic queue loading (10 initial + loadMore batches + TRACK_RADIO continuation)
+            playMediaByType(mediaType: mediaType, itemId: itemId, itemName: parentTitle, fromNative: true)
+            return
+        }
+        // Shuffle: need all tracks upfront to properly shuffle — keep full fetch
         let parentContext = buildParentContext(mediaType: mediaType, itemId: itemId, parentTitle: parentTitle)
         fetchTracksRemote(mediaType: mediaType, itemId: itemId, parentContext: parentContext) { [weak self] remote in
             guard let self = self, !remote.isEmpty else {
                 print("[CarPlay] fetchAndPlayAll: no tracks found")
                 return
             }
-            let queue = shuffle ? remote.shuffled() : remote
+            let queue = remote.shuffled()
+            self.musicPlayer.isDynamicQueue = false
+            self.musicPlayer.queueLoadingState = nil
             self.musicPlayer.setCurrentParentContext([
                 "id": parentContext.id, "type": parentContext.type, "name": parentContext.name
             ])
@@ -1144,15 +1223,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     private func setupLoginRequiredTemplate(_ controller: CPInterfaceController) {
         print("[CarPlay] setupLoginRequiredTemplate: showing login required message")
         let loginItem = CPListItem(
-            text: "Inicia sesión en la app",
-            detailText: "Para usar CarPlay, abre la app e inicia sesión"
+            text: CDVTextsManager.shared.getText("no_credential_message", fallback: "Log in to see your music"),
+            detailText: CDVTextsManager.shared.getText("login_required_hint", fallback: "Open the app and log in to use CarPlay")
         )
         if #available(iOS 15.0, *) {
             loginItem.isEnabled = false
         }
         let section = CPListSection(items: [loginItem])
-        let loginList = CPListTemplate(title: "Sesión requerida", sections: [section])
-        loginList.tabTitle = "Inicio"
+        let loginList = CPListTemplate(title: CDVTextsManager.shared.getText("session_required", fallback: "Session required"), sections: [section])
+        loginList.tabTitle = CDVTextsManager.shared.getText("home", fallback: "Home")
         if #available(iOS 13.0, *) {
             loginList.tabImage = UIImage(systemName: "person.crop.circle.badge.exclamationmark")
         }
@@ -1223,13 +1302,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     // MARK: - Templates
     private func presentLoadingPlaceholder(_ controller: CPInterfaceController, completion: @escaping () -> Void) {
-        let loadingItem = CPListItem(text: "Initializing…", detailText: nil)
+        let loadingItem = CPListItem(text: CDVTextsManager.shared.getText("initializing", fallback: "Initializing…"), detailText: nil)
         if #available(iOS 15.0, *) {
             loadingItem.isEnabled = false
         }
         let section = CPListSection(items: [loadingItem])
-        let loadingList = CPListTemplate(title: "Loading", sections: [section])
-        loadingList.tabTitle = "Loading"
+        let loadingList = CPListTemplate(title: CDVTextsManager.shared.getText("loading", fallback: "Loading"), sections: [section])
+        loadingList.tabTitle = CDVTextsManager.shared.getText("loading", fallback: "Loading")
         let placeholder = CPTabBarTemplate(templates: [loadingList])
         DispatchQueue.main.async { [weak self] in
             controller.setRootTemplate(placeholder, animated: false, completion: { [weak self] success, error in
@@ -1590,10 +1669,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             navTemplates.append(list)
         }
 
-        // Add Search tab
+        // Add Search tab (Siri assistant cell)
         let searchTab = buildSearchTab()
         navTemplates.append(searchTab)
-        
+
         // Log navigation tabs before composing final tab bar
         let titles = navTemplates.compactMap { ($0 as? CPListTemplate)?.tabTitle ?? "(unknown)" }
         print("[CarPlay] Nav tabs (pre-compose) count=\(navTemplates.count) titles=\(titles)")
@@ -1635,70 +1714,63 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         print("[CarPlay] setupTemplates: end")
     }
 
-    // MARK: - Search Tab
-    /// Build a search tab with Siri assistant cell (like Spotify)
+    // MARK: - Search Tab (Siri)
+    /// Build a search tab with Siri assistant cell
     /// Uses CPAssistantCellConfiguration (iOS 15+) to trigger Siri when tapped
     private func buildSearchTab() -> CPListTemplate {
-        print("[CarPlay] buildSearchTab: creating search tab")
-        
-        // Empty section - the assistant cell is added via CPAssistantCellConfiguration
         let emptySection = CPListSection(items: [])
-        
+
         var searchTemplate: CPListTemplate
-        
-        // Use CPAssistantCellConfiguration to add Siri button (iOS 15+)
+
+        let searchTitle = CDVTextsManager.shared.getText("search", fallback: "Search")
+
         if #available(iOS 15.0, *) {
-            // Configure assistant cell - this triggers Siri when tapped (like Spotify)
             let assistantConfig = CPAssistantCellConfiguration(
                 position: .top,
                 visibility: .always,
                 assistantAction: .playMedia
             )
-            
             searchTemplate = CPListTemplate(
-                title: "Buscar",
+                title: searchTitle,
                 sections: [emptySection],
                 assistantCellConfiguration: assistantConfig
             )
-            print("[CarPlay] buildSearchTab: using CPAssistantCellConfiguration for Siri button")
         } else {
-            // Fallback for iOS 14 - just show instructions
             let siriSearchItem = CPListItem(
-                text: "Pídele a Siri",
-                detailText: "reproducir audio"
+                text: CDVTextsManager.shared.getText("ask_siri", fallback: "Ask Siri"),
+                detailText: CDVTextsManager.shared.getText("play_audio", fallback: "play audio")
             )
             let siriSection = CPListSection(items: [siriSearchItem])
-            searchTemplate = CPListTemplate(title: "Buscar", sections: [siriSection])
-            print("[CarPlay] buildSearchTab: iOS 14 fallback - showing instructions only")
+            searchTemplate = CPListTemplate(title: searchTitle, sections: [siriSection])
         }
-        
-        searchTemplate.tabTitle = "Buscar"
+
+        searchTemplate.tabTitle = searchTitle
         if #available(iOS 13.0, *) {
             searchTemplate.tabImage = UIImage(systemName: "magnifyingglass")
         }
-        
+
         return searchTemplate
     }
-    
-    // MARK: - Offline Mode Templates
-    /// Setup templates for offline mode - shows downloaded albums and playlists
-    private func setupOfflineTemplates(_ controller: CPInterfaceController) {
-        print("[CarPlay] setupOfflineTemplates: begin")
 
+    // MARK: - Offline Mode Templates
+
+    /// Build the offline tab template (reusable for both full setup and tab update)
+    private func buildOfflineTab() -> CPListTemplate {
         let offlineItems = CDVPlaylistProvider.loadOfflineLibrary()
-        print("[CarPlay] setupOfflineTemplates: loaded \(offlineItems.count) offline items")
+        print("[CarPlay] buildOfflineTab: loaded \(offlineItems.count) offline items")
 
         var listItems: [CPListItem] = []
 
         if offlineItems.isEmpty {
-            // No offline content available - show a message
-            let emptyItem = CPListItem(text: "No hay contenido offline", detailText: "Descarga música para escuchar sin conexión")
+            let emptyItem = CPListItem(
+                text: CDVTextsManager.shared.getText("no_offline_content", fallback: "No offline content"),
+                detailText: CDVTextsManager.shared.getText("download_music_offline", fallback: "Download music to listen offline")
+            )
             if #available(iOS 15.0, *) {
                 emptyItem.isEnabled = false
             }
             listItems.append(emptyItem)
         } else {
-            // Build list items for each offline album/playlist
             for item in offlineItems {
                 let title = CDVPlaylistProvider.getOfflineItemTitle(item)
                 let subtitle = CDVPlaylistProvider.getOfflineItemSubtitle(item)
@@ -1706,19 +1778,14 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let itemType = CDVPlaylistProvider.getOfflineItemType(item)
                 let imageUrl = CDVPlaylistProvider.getOfflineItemImageUrl(item)
 
-                print("[CarPlay] setupOfflineTemplates: adding item type=\(itemType) id=\(itemId) title=\(title)")
+                print("[CarPlay] buildOfflineTab: adding item type=\(itemType) id=\(itemId) title=\(title)")
 
                 let listItem = CPListItem(text: title, detailText: subtitle)
-
-                // Set image - try local first, then remote
                 setListItemImage(listItem, from: imageUrl, itemType: itemType, itemId: itemId, itemDict: item)
 
-                // Handler to load and play tracks from this album/playlist
                 listItem.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
                     print("[CarPlay] Offline item selected: type=\(itemType) id=\(itemId) title=\(title)")
-
-                    // Load tracks for this item from local storage
                     self.loadOfflineTracksAndPlay(itemType: itemType, itemId: itemId, itemDict: item)
                     completion()
                 }
@@ -1727,15 +1794,22 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             }
         }
 
-        // Create the offline library section
-        let section = CPListSection(items: listItems, header: "Biblioteca Offline", sectionIndexTitle: nil)
-        let offlineList = CPListTemplate(title: "Sin conexión", sections: [section])
-        offlineList.tabTitle = "Offline"
+        let section = CPListSection(items: listItems, header: CDVTextsManager.shared.getText("offline_library", fallback: "Offline Library"), sectionIndexTitle: nil)
+        let offlineList = CPListTemplate(title: CDVTextsManager.shared.getText("offline_mode", fallback: "Offline"), sections: [section])
+        offlineList.tabTitle = CDVTextsManager.shared.getText("offline_mode", fallback: "Offline")
 
-        // Try to set an offline icon
         if #available(iOS 13.0, *) {
             offlineList.tabImage = UIImage(systemName: "arrow.down.circle.fill")
         }
+
+        return offlineList
+    }
+
+    /// Setup templates for offline mode - shows downloaded albums and playlists
+    private func setupOfflineTemplates(_ controller: CPInterfaceController) {
+        print("[CarPlay] setupOfflineTemplates: begin")
+
+        let offlineList = buildOfflineTab()
 
         // Configure Now Playing template
         let now = CPNowPlayingTemplate.shared
@@ -1758,6 +1832,23 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         NotificationCenter.default.removeObserver(self, name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(showNowPlayingTemplate), name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
         print("[CarPlay] setupOfflineTemplates: end")
+    }
+
+    /// Update existing tab bar to show offline content WITHOUT replacing root template.
+    /// This preserves NowPlaying and active playback when network drops during playback.
+    private func switchTabsToOffline() {
+        guard let controller = interfaceController,
+              let tabBar = controller.rootTemplate as? CPTabBarTemplate else {
+            print("[CarPlay] switchTabsToOffline: no tab bar found, falling back to full setup")
+            if let controller = interfaceController {
+                setupOfflineTemplates(controller)
+            }
+            return
+        }
+
+        let offlineTab = buildOfflineTab()
+        print("[CarPlay] switchTabsToOffline: updating tabs to offline (preserving NowPlaying)")
+        tabBar.updateTemplates([offlineTab])
     }
 
     /// Load tracks for an offline album or playlist and start playback
@@ -1792,6 +1883,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Used by both CarPlay UI taps and Siri search results.
     /// Handles: local tracks lookup, remote fetch, parentContext persistence, and queue update.
     private func playMediaByType(mediaType: String, itemId: String, itemName: String, fromNative: Bool = false) {
+        print("[DQ] 🎬 playMediaByType: type=\(mediaType) id=\(itemId) name=\(itemName) fromNative=\(fromNative)")
         let mediaLower = mediaType.lowercased()
         let parentContext = buildParentContext(mediaType: mediaLower, itemId: itemId, parentTitle: itemName)
         let contextDict: [String: Any] = ["id": parentContext.id, "type": parentContext.type, "name": parentContext.name]
@@ -1801,6 +1893,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let normalizedLocal = normalizeQueueItems(localTracks)
 
         if !normalizedLocal.isEmpty {
+            // Offline tracks: no dynamic loading needed (all tracks are already available)
+            print("[DQ] 📦 playMediaByType: using OFFLINE tracks (\(normalizedLocal.count)), no dynamic queue")
+            musicPlayer.isDynamicQueue = false
+            musicPlayer.queueLoadingState = nil
             musicPlayer.setCurrentParentContext(contextDict)
             isNowPlayingShown = false
             let firstData = normalizedLocal.first?["data"] as? [String: Any]
@@ -1810,16 +1906,126 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             return
         }
 
-        // Remote fetch
+        // Remote fetch with dynamic queue loading (2 initial tracks)
         guard !mediaLower.isEmpty, !itemId.isEmpty else { return }
-        fetchTracksRemote(mediaType: mediaLower, itemId: itemId, parentContext: parentContext) { [weak self] remote in
-            guard let self = self, !remote.isEmpty else { return }
-            self.musicPlayer.setCurrentParentContext(contextDict)
-            self.isNowPlayingShown = false
-            let firstData = remote.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
-            self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true, fromNative: fromNative)
-            self.musicPlayer.play()
+        fetchTracksRemoteDynamic(mediaType: mediaLower, itemId: itemId, itemName: itemName, parentContext: parentContext, fromNative: fromNative)
+    }
+
+    /// Fetch only 2 initial tracks from API and configure dynamic queue loading for the rest
+    private func fetchTracksRemoteDynamic(mediaType: String, itemId: String, itemName: String, parentContext: QueueParentContext, fromNative: Bool) {
+        print("[DQ] 🚀 fetchTracksRemoteDynamic: type=\(mediaType) id=\(itemId) name=\(itemName)")
+        let api: MusicApi = MusicApiImpl()
+        let initialLimit = 10
+
+        // Helper to resolve signed URLs for initial tracks and start dynamic playback
+        func startDynamicPlayback(tracks: [Track], contentType: String, totalExpected: Int?) {
+            print("[DQ] 🔧 startDynamicPlayback: contentType=\(contentType) tracksCount=\(tracks.count) totalExpected=\(totalExpected ?? -1)")
+            let group = DispatchGroup()
+            var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
+            for (index, t) in tracks.enumerated() {
+                group.enter()
+                let req = TrackRequest(
+                    idAlbumTrack: String(t.idAlbumTrack ?? 0),
+                    idTrack: t.id,
+                    forceDevice: false, useCloudFront: true, forcePreview: false, extraLife: true
+                )
+                api.getTrackUrl(trackRequest: req) { res in
+                    defer { group.leave() }
+                    guard let signed = try? res.get() else { return }
+                    results[index] = self.queueEntry(from: t, signedUrl: signed.signedUrl, parent: parentContext, index: index)
+                }
+            }
+            group.notify(queue: .main) { [weak self] in
+                guard let self = self else { return }
+                let validItems = results.compactMap { $0 }
+                guard !validItems.isEmpty else {
+                    print("[DQ] No valid initial tracks resolved")
+                    return
+                }
+
+                // Configure dynamic queue loading state
+                var loadingState = CDVQueueLoadingState(
+                    contentType: contentType,
+                    contentId: itemId,
+                    contentName: itemName
+                )
+                loadingState.currentOffset = tracks.count
+                loadingState.totalExpected = totalExpected
+                if let total = totalExpected {
+                    loadingState.hasMore = tracks.count < total
+                }
+
+                self.musicPlayer.isDynamicQueue = true
+                self.musicPlayer.queueLoadingState = loadingState
+
+                let contextDict: [String: Any] = ["id": parentContext.id, "type": parentContext.type, "name": parentContext.name]
+                self.musicPlayer.setCurrentParentContext(contextDict)
+                self.isNowPlayingShown = false
+                let firstData = validItems.first?["data"] as? [String: Any]
+                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                self.musicPlayer.updateQueue(validItems, selectedTrackId: selectedId, persist: false, fromNative: true)
+                self.musicPlayer.play()
+
+                print("[DQ] ✅ startDynamicPlayback: type=\(contentType) initial=\(validItems.count) total=\(totalExpected ?? -1) offset=\(loadingState.currentOffset) hasMore=\(loadingState.hasMore)")
+
+                // Trigger loadMore immediately to prefetch the next batch
+                if self.musicPlayer.shouldLoadMore() {
+                    self.musicPlayer.loadMore()
+                } else if !loadingState.hasMore {
+                    // All content fits in initial batch — transition to related tracks
+                    self.musicPlayer.transitionToTrackRadioIfNeeded()
+                }
+            }
+        }
+
+        switch mediaType {
+        case "playlist", "mix":
+            api.getPlayListTracks(playListId: itemId, limit: initialLimit, offset: 0) { result in
+                guard let container = try? result.get() else { return }
+                let tracks = container.tracks.items.map { $0.track }
+                print("[DQ] playlist id=\(itemId) initialTracks=\(tracks.count) total=\(container.tracks.total)")
+                startDynamicPlayback(tracks: tracks, contentType: parentContext.type, totalExpected: container.tracks.total)
+            }
+        case "album":
+            api.getAlbumTracks(albumId: itemId, limit: initialLimit, offset: 0) { result in
+                guard let album = try? result.get() else { return }
+                print("[DQ] album id=\(itemId) initialTracks=\(album.tracks.items.count) total=\(album.tracks.total)")
+                startDynamicPlayback(tracks: album.tracks.items, contentType: "ALBUM", totalExpected: album.tracks.total)
+            }
+        case "artist":
+            api.getArtistTracks(artistId: itemId, order: "popularity", limit: initialLimit, offset: 0) { result in
+                guard let artistTracks = try? result.get() else { return }
+                print("[DQ] artist id=\(itemId) initialTracks=\(artistTracks.list.count) total=\(artistTracks.total)")
+                startDynamicPlayback(tracks: artistTracks.list, contentType: "ARTIST", totalExpected: artistTracks.total)
+            }
+        case "tag":
+            // Tags show playlists as browsable items, not direct playback — fallback to full fetch
+            fetchTracksRemote(mediaType: mediaType, itemId: itemId, parentContext: parentContext) { [weak self] remote in
+                guard let self = self, !remote.isEmpty else { return }
+                self.musicPlayer.isDynamicQueue = false
+                self.musicPlayer.queueLoadingState = nil
+                let contextDict: [String: Any] = ["id": parentContext.id, "type": parentContext.type, "name": parentContext.name]
+                self.musicPlayer.setCurrentParentContext(contextDict)
+                self.isNowPlayingShown = false
+                let firstData = remote.first?["data"] as? [String: Any]
+                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true, fromNative: true)
+                self.musicPlayer.play()
+            }
+        default:
+            print("[DQ] unknown mediaType=\(mediaType), falling back to full fetch")
+            fetchTracksRemote(mediaType: mediaType, itemId: itemId, parentContext: parentContext) { [weak self] remote in
+                guard let self = self, !remote.isEmpty else { return }
+                self.musicPlayer.isDynamicQueue = false
+                self.musicPlayer.queueLoadingState = nil
+                let contextDict: [String: Any] = ["id": parentContext.id, "type": parentContext.type, "name": parentContext.name]
+                self.musicPlayer.setCurrentParentContext(contextDict)
+                self.isNowPlayingShown = false
+                let firstData = remote.first?["data"] as? [String: Any]
+                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true, fromNative: true)
+                self.musicPlayer.play()
+            }
         }
     }
 
@@ -1829,6 +2035,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Called from CDVSiriIntentHandler.handle() with the pre-resolved type/id/name.
     @objc func playSiriResolvedMedia(mediaType: String, itemId: String, itemName: String, idAlbumTrack: String? = nil) {
         print("🎤 [CarPlay][Siri] playSiriResolvedMedia type=\(mediaType) id=\(itemId) idAlbumTrack=\(idAlbumTrack ?? "nil") name=\(itemName)")
+        // Safety: only activate native player if CarPlay is actually connected
+        guard connected else {
+            print("⚠️ [CarPlay][Siri] playSiriResolvedMedia: CarPlay NOT connected, skipping native playback (JS will handle)")
+            return
+        }
         musicPlayer.activateForCarPlay()
         musicPlayer.clearInitialSetupFlag()
 
@@ -1842,6 +2053,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Play a Siri-resolved track using the full Track object (with album, images, artists)
     func playSiriResolvedTrack(_ track: Track) {
         print("🎤 [CarPlay][Siri] playSiriResolvedTrack: \(track.name) id=\(track.id)")
+        // Safety: only activate native player if CarPlay is actually connected
+        guard connected else {
+            print("⚠️ [CarPlay][Siri] playSiriResolvedTrack: CarPlay NOT connected, skipping native playback (JS will handle)")
+            return
+        }
         musicPlayer.activateForCarPlay()
         musicPlayer.clearInitialSetupFlag()
         handleTrackTap(track: track)
@@ -1858,8 +2074,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         print("🎤 [CarPlay][Siri] handleSiriSearch called")
         print("🎤 [CarPlay][Siri] mediaName='\(mediaName)' artistName='\(artistName ?? "nil")' albumName='\(albumName ?? "nil")' mediaType=\(mediaType)")
         
-        // Ensure remote command center is set up for Siri-initiated playback
-        // This is important because Siri can trigger playback before CarPlay UI fully connects
+        // Safety: only activate native player if CarPlay is actually connected
+        guard connected else {
+            print("⚠️ [CarPlay][Siri] handleSiriSearch: CarPlay NOT connected, skipping native playback (JS will handle)")
+            return
+        }
         musicPlayer.activateForCarPlay()
         // Clear initial setup flag immediately since this is direct Siri playback
         musicPlayer.clearInitialSetupFlag()

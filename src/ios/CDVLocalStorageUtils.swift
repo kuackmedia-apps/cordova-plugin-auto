@@ -135,7 +135,7 @@ class CDVLocalStorageUtils: NSObject {
         let candidates: [(folder: String, filename: String)]
 
         switch itemType.lowercased() {
-        case "track", "album", "cover":
+        case "track", "album", "cover", "radio_track":
             // Albums/tracks use cover images with various sizes
             candidates = [
                 ("img/cover", "\(itemId)_640.jpg"),
@@ -151,13 +151,13 @@ class CDVLocalStorageUtils: NSObject {
                 ("img/playlist", "\(itemId).png"),
                 ("img/playlist", "\(itemId)_640.png")
             ]
-        case "tag":
+        case "tag", "radio", "tag_radio":
             // Tags use PNG images
             candidates = [
                 ("img/tag", "\(itemId)_180.png"),
                 ("img/tag", "\(itemId).png")
             ]
-        case "artist", "artists":
+        case "artist", "artists", "artist_radio":
             // Artists typically not stored locally, but check anyway
             candidates = [
                 ("img/artists", "\(itemId)_180.png"),

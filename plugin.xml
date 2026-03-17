@@ -90,6 +90,8 @@
     <source-file src="src/android/com/kuackmedia/androidauto/media/CurrentMedia.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/QueueManager.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
     <source-file src="src/android/com/kuackmedia/androidauto/media/MediaControlBridge.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
+    <source-file src="src/android/com/kuackmedia/androidauto/media/QueueLoadingState.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
+    <source-file src="src/android/com/kuackmedia/androidauto/media/TrackPreloader.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/media" />
 
     <source-file src="src/android/com/kuackmedia/androidauto/api/LocalAssetInterceptor.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
     <source-file src="src/android/com/kuackmedia/androidauto/api/MusicApi.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/api" />
@@ -132,6 +134,13 @@
     <source-file src="src/android/com/kuackmedia/androidauto/models/TagTracksResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
     <source-file src="src/android/com/kuackmedia/androidauto/models/OfflineTrack.kt"
                  target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/ArtistAlbumsResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/ArtistPlaylistsResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/PodcastEpisode.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/PodcastShow.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/PodcastShowResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/RelatedArtistsResponse.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
+    <source-file src="src/android/com/kuackmedia/androidauto/models/RelatedTracksByQueueRequest.kt" target-dir="app/src/main/kotlin/com/kuackmedia/androidauto/models" />
 
   </platform>
 
@@ -269,7 +278,11 @@
     <source-file src="src/ios/CDVPlaylistProvider.swift" />
     <source-file src="src/ios/CDVLocalStorageUtils.swift" />
     <source-file src="src/ios/CDVNetworkUtils.swift" />
+    <source-file src="src/ios/CDVQueueLoadingState.swift" />
+    <source-file src="src/ios/CDVTextsManager.swift" />
+    <source-file src="src/ios/CDVTrackPreloader.swift" />
     <source-file src="src/ios/SceneDelegate.swift" />
+    <source-file src="src/ios/Extensions/Bundle+Auto.swift" />
 
 
     <!-- Swift API files -->
@@ -282,6 +295,8 @@
     <source-file src="src/ios/models/AlbumSummary.swift" />
     <source-file src="src/ios/models/AlbumTracks.swift" />
     <source-file src="src/ios/models/Artist.swift" />
+    <source-file src="src/ios/models/ArtistAlbumsResponse.swift" />
+    <source-file src="src/ios/models/ArtistPlaylistsResponse.swift" />
     <source-file src="src/ios/models/ArtistTracks.swift" />
     <source-file src="src/ios/models/AutoNavigationExplorer.swift" />
     <source-file src="src/ios/models/CoverImage.swift" />
@@ -294,14 +309,25 @@
     <source-file src="src/ios/models/PingResponse.swift" />
     <source-file src="src/ios/models/PlayListItem.swift" />
     <source-file src="src/ios/models/PlaylistTracks.swift" />
+    <source-file src="src/ios/models/PodcastEpisode.swift" />
+    <source-file src="src/ios/models/PodcastShow.swift" />
+    <source-file src="src/ios/models/PodcastShowResponse.swift" />
     <source-file src="src/ios/models/QueueItem.swift" />
     <source-file src="src/ios/models/RecentListened.swift" />
+    <source-file src="src/ios/models/RelatedArtistsResponse.swift" />
+    <source-file src="src/ios/models/RelatedTracksByQueueRequest.swift" />
     <source-file src="src/ios/models/SearchResponse.swift" />
     <source-file src="src/ios/models/Tag.swift" />
     <source-file src="src/ios/models/Track.swift" />
     <source-file src="src/ios/models/TrackAPIModels.swift" />
     <source-file src="src/ios/models/TracksContainer.swift" />
     <source-file src="src/ios/models/User.swift" />
+
+    <resource-file src="src/ios/en.lproj/AppIntentVocabulary.plist" target="en.lproj/AppIntentVocabulary.plist" />
+    <resource-file src="src/ios/es.lproj/AppIntentVocabulary.plist" target="es.lproj/AppIntentVocabulary.plist" />
+    <resource-file src="src/ios/pt-BR.lproj/AppIntentVocabulary.plist" target="pt-BR.lproj/AppIntentVocabulary.plist" />
+    <resource-file src="src/ios/fr.lproj/AppIntentVocabulary.plist" target="fr.lproj/AppIntentVocabulary.plist" />
+    <resource-file src="src/ios/sw.lproj/AppIntentVocabulary.plist" target="sw.lproj/AppIntentVocabulary.plist" />
 
     <framework src="MediaPlayer.framework" />
     <framework src="CarPlay.framework" weak="true" />

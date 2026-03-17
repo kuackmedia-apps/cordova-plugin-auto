@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IntentPhrases</key>
+	<array>
+		<dict>
+			<key>IntentName</key>
+			<string>INPlayMediaIntent</string>
+			<key>IntentExamples</key>
+			<array>
+				<string>Pon música en ${applicationName}</string>
+				<string>Reproduce Shakira en ${applicationName}</string>
+				<string>Pon mis favoritos en ${applicationName}</string>
+			</array>
+		</dict>
+		<dict>
+			<key>IntentName</key>
+			<string>INSearchForMediaIntent</string>
+			<key>IntentExamples</key>
+			<array>
+				<string>Busca Shakira en ${applicationName}</string>
+				<string>Encuentra música rock en ${applicationName}</string>
+				<string>Busca listas de reproducción en ${applicationName}</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -460,16 +460,8 @@ object MediaItemTree {
     // Get localized text with fallback (AUTO_TEXTS may not exist if user never logged in)
     var loginMessage = TextsManager.getText("no_credential_message")
     if (loginMessage.isEmpty()) {
-      // Fallback based on device language
-      val locale = java.util.Locale.getDefault().language
-      loginMessage = when (locale) {
-        "es" -> "Inicia sesión para ver tu música"
-        "pt" -> "Faça login para ver sua música"
-        "fr" -> "Connectez-vous pour voir votre musique"
-        "sw" -> "Ingia ili kuona muziki wako"
-        else -> "Log in to see your music"
-      }
-      Log.w(TAG, "[getLoginRequiredMediaItem] no_credential_message not found, using fallback for locale=$locale")
+      loginMessage = "Log in to see your music"
+      Log.w(TAG, "[getLoginRequiredMediaItem] no_credential_message not found, using fallback")
     }
     Log.i(TAG, "[getLoginRequiredMediaItem] loginMessage='$loginMessage'")
 
@@ -591,10 +583,10 @@ object MediaItemTree {
         }
       }
       val result = this.musicApi.search(query)
-      // Mejor Resultado
+      // Best Result
       result.best?.let { bestItem ->
         val header = MediaItemFactory.buildMediaItem(
-          title = "Mejor Resultado",
+          title = TextsManager.getText("best_result").ifEmpty { "Best Result" },
           subtitle = "",
           mediaId = "header_best",
           flags = 0

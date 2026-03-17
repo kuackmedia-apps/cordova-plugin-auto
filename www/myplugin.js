@@ -472,7 +472,7 @@ var exec = require('cordova/exec');
      */
     searchAndPlay: function(searchParams, callback, errorCb) {
       console.log('[auto] searchAndPlay called', searchParams);
-      
+
       var params = {
         mediaName: searchParams.query || searchParams.mediaName || '',
         artistName: searchParams.artistName || null,
@@ -492,6 +492,41 @@ var exec = require('cordova/exec');
         },
         SERVICE,
         'searchAndPlay',
+        [params]
+      );
+    },
+
+    onShuffleRepeatChange: function (callback) {
+      console.log('[auto] onShuffleRepeatChange called');
+      AutoPlugin.onShuffleRepeatChangeCallback = callback;
+
+      exec(
+        function (data) {
+          if (typeof AutoPlugin.onShuffleRepeatChangeCallback === 'function') {
+            AutoPlugin.onShuffleRepeatChangeCallback(data);
+          }
+        },
+        function (err) {
+          console.error('AutoPlugin onShuffleRepeatChange error:', err);
+        },
+        SERVICE,
+        'registerEvents',
+        ['onShuffleRepeatChange']
+      );
+    },
+
+    setShuffleRepeat: function (params, callback, errorCb) {
+      console.log('[auto] setShuffleRepeat called', params);
+      exec(
+        function (result) {
+          if (typeof callback === 'function') callback(result);
+        },
+        function (err) {
+          console.error('[auto] setShuffleRepeat error:', err);
+          if (typeof errorCb === 'function') errorCb(err);
+        },
+        SERVICE,
+        'setShuffleRepeat',
         [params]
       );
     },

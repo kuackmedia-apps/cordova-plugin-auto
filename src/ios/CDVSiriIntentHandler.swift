@@ -62,12 +62,14 @@ class CDVSiriIntentHandler: NSObject, INPlayMediaIntentHandling {
                 self.lastResolvedTrack = nil
 
                 DispatchQueue.main.async {
-                    // Notify JS about the Siri search
+                    // Notify JS about the Siri search (JS handles playback when CarPlay is NOT connected)
                     if let plugin = CDVAutoMusicPlugin.sharedInstance() {
                         plugin.handleSiriSearchFromIntent(searchParams: searchParams)
                     }
-                    // Play the resolved item directly
-                    if let carPlayManager = CDVAutoMusicPlugin.sharedInstance()?.carPlayManager {
+                    // Only play via native CarPlay player when CarPlay is actually connected.
+                    // When CarPlay is NOT connected, JS will handle playback through its normal
+                    // player + MusicControls2 flow via the handleSiriSearchFromIntent callback.
+                    if isCarPlayConnected, let carPlayManager = CDVAutoMusicPlugin.sharedInstance()?.carPlayManager {
                         if mediaType == "track", let track = resolvedTrack {
                             carPlayManager.playSiriResolvedTrack(track)
                         } else {
@@ -87,9 +89,11 @@ class CDVSiriIntentHandler: NSObject, INPlayMediaIntentHandling {
 
         DispatchQueue.main.async {
             if let plugin = CDVAutoMusicPlugin.sharedInstance() {
+                // Always notify JS (JS handles playback when CarPlay is NOT connected)
                 plugin.handleSiriSearchFromIntent(searchParams: searchParams)
 
-                if let carPlayManager = plugin.carPlayManager {
+                // Only perform native search+playback when CarPlay is connected
+                if isCarPlayConnected, let carPlayManager = plugin.carPlayManager {
                     carPlayManager.handleSiriSearch(searchParams: searchParams)
                 }
             } else {

@@ -16,6 +16,7 @@ class CDVAutoMusicPlugin: CDVPlugin {
     private var seekCallbackId: String?
     private var customActionCallbackId: String?
     private var siriIntentCallbackId: String?
+    private var shuffleRepeatCallbackId: String?
 
     override func pluginInitialize() {
         super.pluginInitialize()
@@ -27,6 +28,8 @@ class CDVAutoMusicPlugin: CDVPlugin {
         NotificationCenter.default.addObserver(self, selector: #selector(playbackStateChanged(_:)), name: Notification.Name("CDVPlaybackStateChanged"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(nativeQueueUpdated(_:)), name: Notification.Name("CDVNativeQueueUpdated"), object: nil)
         
+        NotificationCenter.default.addObserver(self, selector: #selector(shuffleRepeatChanged(_:)), name: Notification.Name("CDVShuffleRepeatChanged"), object: nil)
+
         // Listen for pending Siri intents that arrived before plugin was ready
         NotificationCenter.default.addObserver(self, selector: #selector(handlePendingSiriIntent(_:)), name: Notification.Name("CDVPendingSiriIntent"), object: nil)
         
@@ -100,6 +103,8 @@ class CDVAutoMusicPlugin: CDVPlugin {
             playbackStateCallbackId = command.callbackId
         case "onNativeQueueUpdate":
             queueUpdateCallbackId = command.callbackId
+        case "onShuffleRepeatChange":
+            shuffleRepeatCallbackId = command.callbackId
         default:
             let err = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Unknown event: \(event)")
             commandDelegate.send(err, callbackId: command.callbackId)
@@ -163,8 +168,10 @@ class CDVAutoMusicPlugin: CDVPlugin {
 
     @objc(seekTo:)
     func seekTo(command: CDVInvokedUrlCommand) {
-        let position = (command.argument(at: 0) as? NSNumber)?.doubleValue ?? 0
-        print("[AutoMusicPlugin] seekTo called position=\(position)")
+        let rawArg = command.argument(at: 0)
+        let position = (rawArg as? NSNumber)?.doubleValue ?? 0
+        let hasPlayer = carPlayManager?.musicPlayer != nil
+        print("[DQ] AutoMusicPlugin.seekTo: position=\(position)ms rawArg=\(String(describing: rawArg)) rawType=\(type(of: rawArg)) hasPlayer=\(hasPlayer)")
         carPlayManager?.musicPlayer?.seekToPosition(position)
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
@@ -437,6 +444,44 @@ class CDVAutoMusicPlugin: CDVPlugin {
         }
     }
     
+    // MARK: - Shuffle & Repeat
+
+    @objc private func shuffleRepeatChanged(_ note: Notification) {
+        guard let cb = shuffleRepeatCallbackId,
+              let info = note.userInfo else { return }
+        let payload: [String: Any] = [
+            "shuffle": info["shuffle"] as? Bool ?? false,
+            "repeat": info["repeat"] as? Int ?? 0
+        ]
+        print("[AutoMusicPlugin] shuffleRepeatChanged: shuffle=\(payload["shuffle"] ?? false) repeat=\(payload["repeat"] ?? 0)")
+        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: payload)
+        result?.setKeepCallbackAs(true)
+        commandDelegate.send(result, callbackId: cb)
+    }
+
+    /// Called from JavaScript when user toggles shuffle/repeat in the app UI
+    @objc(setShuffleRepeat:)
+    func setShuffleRepeat(command: CDVInvokedUrlCommand) {
+        guard let params = command.argument(at: 0) as? [String: Any] else {
+            let err = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Invalid params")
+            commandDelegate.send(err, callbackId: command.callbackId)
+            return
+        }
+        print("[AutoMusicPlugin] setShuffleRepeat: \(params)")
+
+        if let shuffle = params["shuffle"] as? Bool {
+            carPlayManager?.musicPlayer?.setShuffleEnabled(shuffle)
+        }
+        if let repeatVal = params["repeat"] as? Int {
+            // JS repeat: 0=off, 1=all, 2=one → iOS: 0=off, 1=one, 2=all
+            let iosRepeat = repeatVal == 1 ? 2 : (repeatVal == 2 ? 1 : 0)
+            carPlayManager?.musicPlayer?.setRepeatMode(iosRepeat)
+        }
+
+        let result = CDVPluginResult(status: CDVCommandStatus_OK)
+        commandDelegate.send(result, callbackId: command.callbackId)
+    }
+
     // MARK: - Siri Intent Handling
     
     /// Register the Siri intent handler with the system
@@ -616,19 +661,28 @@ class CDVAutoMusicPlugin: CDVPlugin {
     @objc(playSiriSearchResults:)
     func playSiriSearchResults(command: CDVInvokedUrlCommand) {
         print("🎤 [AutoMusicPlugin] playSiriSearchResults called")
-        
+
+        // Only trigger native playback if CarPlay is connected.
+        // When CarPlay is NOT connected, JS handles playback via MusicControls2.
+        guard carPlayManager?.isConnected() == true else {
+            print("⚠️ [AutoMusicPlugin] playSiriSearchResults: CarPlay NOT connected, skipping native playback")
+            let result = CDVPluginResult(status: CDVCommandStatus_OK)
+            commandDelegate.send(result, callbackId: command.callbackId)
+            return
+        }
+
         // JavaScript should have already updated the queue via updateQueue()
         // and set the current track via notifyCurrentTrackUpdated()
         // Now we just need to trigger playback
-        
+
         // Reload queue from storage to ensure CarPlay has latest data
         carPlayManager?.musicPlayer?.reloadQueue()
-        
+
         // Start playback
         carPlayManager?.musicPlayer?.play()
-        
+
         print("✅ [AutoMusicPlugin] Siri search results playback started")
-        
+
         let result = CDVPluginResult(status: CDVCommandStatus_OK)
         commandDelegate.send(result, callbackId: command.callbackId)
     }
