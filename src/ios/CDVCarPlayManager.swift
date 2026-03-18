@@ -20,6 +20,27 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     // Flag to track if root template has been set - prevents crash when pushing templates
     private var isRootTemplateSet: Bool = false
 
+    /// Safely convert Any? (String, NSNumber, Int, Int64, etc.) to String
+    private func safeStringValue(_ value: Any?) -> String? {
+        if let s = value as? String {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let n = value as? NSNumber { return n.stringValue }
+        if let c = value as? CustomStringConvertible {
+            let desc = c.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            return desc.isEmpty ? nil : desc
+        }
+        return nil
+    }
+
+    /// Extract the best identifier (idAlbumTrack preferred) from a queue entry's data dict
+    private func extractSelectedId(from queueItem: [String: Any]?) -> String? {
+        guard let item = queueItem else { return nil }
+        let data = (item["data"] as? [String: Any]) ?? item
+        return safeStringValue(data["idAlbumTrack"]) ?? safeStringValue(data["id"])
+    }
+
     @objc init(plugin: CDVAutoMusicPlugin) {
         self.plugin = plugin
         super.init()
@@ -914,7 +935,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                             "trackData": trackDict
                         ])
                         self.isNowPlayingShown = false
-                        self.musicPlayer.updateQueue(queue, selectedTrackId: trackId, persist: false, fromNative: true)
+                        self.musicPlayer.updateQueue(queue, selectedTrackId: idAlbumTrack, persist: false, fromNative: true)
                         self.musicPlayer.play()
 
                         print("[DQ] ✅ handleTrackRadio: started — initial=\(queue.count) seeds=\(loadingState.seedAlbumTrackIds) excludes=\(loadingState.excludeAlbumTrackIds.count) hasMore=\(loadingState.hasMore)")
@@ -945,7 +966,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                 "trackData": trackDict
                             ])
                             self.isNowPlayingShown = false
-                            self.musicPlayer.updateQueue([selected], selectedTrackId: trackId, persist: false, fromNative: true)
+                            self.musicPlayer.updateQueue([selected], selectedTrackId: idAlbumTrack, persist: false, fromNative: true)
                             self.musicPlayer.play()
 
                             // Trigger loadMore immediately
@@ -1012,7 +1033,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     ])
                     self.isNowPlayingShown = false
                     let firstData = queue.first?["data"] as? [String: Any]
-                    let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                    let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
                     self.musicPlayer.updateQueue(queue, selectedTrackId: selectedId, persist: false, fromNative: true)
                     self.musicPlayer.play()
 
@@ -1088,7 +1109,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             ])
             self.isNowPlayingShown = false
             let firstData = queue.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+            let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
             self.musicPlayer.updateQueue(queue, selectedTrackId: selectedId, persist: true)
             self.musicPlayer.play()
         }
@@ -1428,7 +1449,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                             if sidx == 0 {
                                 // First section (Quick Access): image row with thumbnails
                                 let maxGrid = Int(CPMaximumNumberOfGridImages)
-                                let previewItems = Array(subItems.prefix(min(4, maxGrid)))
+                                let previewItems = Array(subItems.prefix(min(6, maxGrid)))
                                 let placeholder = UIImage(systemName: "music.note") ?? UIImage()
 
                                 // Load images synchronously (file://, local offline, cache)
@@ -1584,7 +1605,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         let normalized = self.normalizeQueueItems(tracks)
                         // Reset shown flag before starting playback
                         self.isNowPlayingShown = false
-                        let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
+                        let selectedId = self.extractSelectedId(from: normalized.first)
                         self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId)
                         self.musicPlayer.play()
                         completion()
@@ -1627,7 +1648,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                 if !normalized.isEmpty {
                                     // Reset shown flag before starting playback
                                     self.isNowPlayingShown = false
-                                    let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
+                                    let selectedId = self.extractSelectedId(from: normalized.first)
                                     self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId)
                                     self.musicPlayer.play()
                                 }
@@ -1871,7 +1892,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
         if !normalized.isEmpty {
             self.isNowPlayingShown = false
-            let selectedId = normalized.first?["idAlbumTrack"] as? String ?? normalized.first?["id"] as? String
+            let selectedId = self.extractSelectedId(from: normalized.first)
             self.musicPlayer.updateQueue(normalized, selectedTrackId: selectedId, persist: true, fromNative: fromSiri)
             self.musicPlayer.play()
         }
@@ -1900,7 +1921,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             musicPlayer.setCurrentParentContext(contextDict)
             isNowPlayingShown = false
             let firstData = normalizedLocal.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+            let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
             musicPlayer.updateQueue(normalizedLocal, selectedTrackId: selectedId, persist: true, fromNative: fromNative)
             musicPlayer.play()
             return
@@ -1962,7 +1983,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 self.musicPlayer.setCurrentParentContext(contextDict)
                 self.isNowPlayingShown = false
                 let firstData = validItems.first?["data"] as? [String: Any]
-                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
                 self.musicPlayer.updateQueue(validItems, selectedTrackId: selectedId, persist: false, fromNative: true)
                 self.musicPlayer.play()
 
@@ -2008,7 +2029,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 self.musicPlayer.setCurrentParentContext(contextDict)
                 self.isNowPlayingShown = false
                 let firstData = remote.first?["data"] as? [String: Any]
-                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
                 self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true, fromNative: true)
                 self.musicPlayer.play()
             }
@@ -2022,7 +2043,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 self.musicPlayer.setCurrentParentContext(contextDict)
                 self.isNowPlayingShown = false
                 let firstData = remote.first?["data"] as? [String: Any]
-                let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+                let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
                 self.musicPlayer.updateQueue(remote, selectedTrackId: selectedId, persist: true, fromNative: true)
                 self.musicPlayer.play()
             }
@@ -2340,7 +2361,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             ])
             self.isNowPlayingShown = false
             let firstData = validItems.first?["data"] as? [String: Any]
-            let selectedId = firstData?["idAlbumTrack"] as? String ?? firstData?["id"] as? String
+            let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
             self.musicPlayer.updateQueue(validItems, selectedTrackId: selectedId, persist: true, fromNative: true)
             self.musicPlayer.play()
         }
