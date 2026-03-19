@@ -24,7 +24,7 @@ cordova plugin add cordova-plugin-auto
 Or install directly from GitHub:
 
 ```bash
-cordova plugin add https://github.com/fmaceachen/cordova-plugin-auto.git
+cordova plugin add https://github.com/kuackmedia-apps/cordova-plugin-auto.git
 ```
 
 ## Platform Requirements
@@ -181,4 +181,4 @@ MIT
 
 ## Support
 
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/fmaceachen/cordova-plugin-auto/issues).
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/kuackmedia-apps/cordova-plugin-auto/issues).
