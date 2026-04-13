@@ -21,7 +21,7 @@ data class Track(
   val isrc: String?,
   val name: String,
   val version: String? = null,
-  val length: String,
+  val length: String? = null,
   val explicit: Boolean?,
   val active: Boolean?,
   val album: AlbumSummary?,

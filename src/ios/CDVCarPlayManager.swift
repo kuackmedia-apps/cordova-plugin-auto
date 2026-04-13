@@ -104,7 +104,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     @objc private func handleSceneActivation(_ notification: Notification) {
         if notification.object is CPTemplateApplicationScene {
-            print("[CarPlay] Scene activated: CarPlay scene detected")
             if !connected {
                 connected = true
                 NotificationCenter.default.post(
@@ -118,7 +117,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     @objc private func handleSceneDisconnection(_ notification: Notification) {
         if notification.object is CPTemplateApplicationScene {
-            print("[CarPlay] Scene disconnected: CarPlay scene removed")
             if connected {
                 connected = false
                 isRootTemplateSet = false
@@ -138,7 +136,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let carPlayConnected = UIApplication.shared.connectedScenes.contains { scene in
             scene is CPTemplateApplicationScene
         }
-        print("[CarPlay] checkCarPlayConnection: carPlayConnected=\(carPlayConnected), current connected=\(connected)")
         if carPlayConnected && !connected {
             connected = true
             NotificationCenter.default.post(
@@ -346,7 +343,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if let title = sectionTitle?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
            let symbolName = Self.sfSymbolMapping[title],
            let symbol = UIImage(systemName: symbolName) {
-            print("[CarPlay][ICON] Using SF Symbol '\(symbolName)' for title '\(sectionTitle ?? "")'")
             return symbol.applyingSymbolConfiguration(config) ?? symbol
         }
 
@@ -354,20 +350,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if let file = fileName?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
            let symbolName = Self.sfSymbolMapping[file],
            let symbol = UIImage(systemName: symbolName) {
-            print("[CarPlay][ICON] Using SF Symbol '\(symbolName)' for fileName '\(fileName ?? "")'")
             return symbol.applyingSymbolConfiguration(config) ?? symbol
         }
 
         // 3. Try to use apiValue directly as SF Symbol name (if it's already a valid SF Symbol)
         if let raw = (apiValue as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
             if let symbol = UIImage(systemName: raw) {
-                print("[CarPlay][ICON] Using SF Symbol '\(raw)' from API value")
                 return symbol.applyingSymbolConfiguration(config) ?? symbol
             }
         }
 
         // 4. Fallback to default icon
-        print("[CarPlay][ICON] Using fallback icon for title='\(sectionTitle ?? "")' fileName='\(fileName ?? "")'")
         return fallback
     }
 
@@ -379,13 +372,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
         if let symbolName = Self.sfSymbolMapping[lowercased],
            let symbol = UIImage(systemName: symbolName) {
-            print("[CarPlay][ICON] Library subsection '\(title)' -> SF Symbol '\(symbolName)'")
             return symbol.applyingSymbolConfiguration(config) ?? symbol
         }
 
         // Default for unknown subsections
         let fallback = UIImage(systemName: "folder.fill")?.applyingSymbolConfiguration(config)
-        print("[CarPlay][ICON] Library subsection '\(title)' -> fallback folder icon")
         return fallback
     }
 
@@ -417,7 +408,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect template: CPTemplate) {
         // If user taps the "Now Playing" tab, open the CarPlay Now Playing template immediately
         if let nowList = nowPlayingListTab, template === nowList {
-            print("[CarPlay][TAB] Now Playing tab selected -> showNowPlayingTemplate()")
             // Reset flag to allow presentation if previously shown from another selection
             self.isNowPlayingShown = false
             showNowPlayingTemplate()
@@ -438,13 +428,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                    let albumId = albumDict["id"] {
                     lookupId = String(describing: albumId)
                     lookupType = "album" // Use album type for cover lookup
-                    print("[CarPlay][IMG] Track -> using album cover: albumId=\(lookupId)")
                 }
             }
 
             if !lookupId.isEmpty {
                 if let localImage = CDVLocalStorageUtils.getLocalImage(itemType: lookupType, itemId: lookupId) {
-                    print("[CarPlay][IMG] Using LOCAL image for \(lookupType)/\(lookupId) size=\(Int(localImage.size.width))x\(Int(localImage.size.height))")
                     li.setImage(localImage)
                     return
                 }
@@ -452,17 +440,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
 
         guard let s = urlString, !s.isEmpty else {
-            print("[CarPlay][IMG] no image URL present for list item")
             return
         }
 
         // PRIORITY 2: Handle file:// URLs (e.g., mix covers stored in Documents/)
         if let url = URL(string: s), url.isFileURL {
             if let img = UIImage(contentsOfFile: url.path) {
-                print("[CarPlay][IMG] loaded file URL image: \(url.path) size=\(Int(img.size.width))x\(Int(img.size.height)))")
                 li.setImage(img)
-            } else {
-                print("[CarPlay][IMG][WARN] file URL image not found: \(url.path)")
             }
             return
         }
@@ -471,20 +455,17 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if let url = URL(string: s), url.scheme != nil {
             let nsurl = url as NSURL
             if let cached = listImageCache.object(forKey: nsurl) {
-                print("[CarPlay][IMG] cache hit for list image: \(s) size=\(Int(cached.size.width))x\(Int(cached.size.height)))")
                 li.setImage(cached)
                 return
             }
 
             // PRIORITY 4: Download from remote URL
-            print("[CarPlay][IMG] cache miss, downloading list item image: \(s)")
             URLSession.shared.dataTask(with: url) { [weak self] data, resp, err in
                 if let err = err { print("[CarPlay][IMG][ERROR] download failed for: \(s) error=\(err.localizedDescription)"); return }
                 guard let self = self, let data = data, let img = UIImage(data: data) else {
                     print("[CarPlay][IMG][ERROR] invalid image data for: \(s)")
                     return
                 }
-                print("[CarPlay][IMG] download success bytes=\(data.count) size=\(Int(img.size.width))x\(Int(img.size.height))) url=\(s)")
                 self.listImageCache.setObject(img, forKey: nsurl)
                 DispatchQueue.main.async {
                     li.setImage(img)
@@ -505,19 +486,16 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         ]
         for candidate in candidates {
             if let img = UIImage(named: candidate) {
-                print("[CarPlay][IMG] loaded bundled image: \(candidate) size=\(Int(img.size.width))x\(Int(img.size.height)))")
                 li.setImage(img)
                 return
             }
             // App container Library/NoCloud
             let noCloud = (NSSearchPathForDirectoriesInDomains(.libraryDirectory, .userDomainMask, true).first ?? "") + "/NoCloud/" + candidate
             if FileManager.default.fileExists(atPath: noCloud), let img = UIImage(contentsOfFile: noCloud) {
-                print("[CarPlay][IMG] loaded app-container image: \(candidate) size=\(Int(img.size.width))x\(Int(img.size.height)))")
                 li.setImage(img)
                 return
             }
         }
-        print("[CarPlay][IMG][WARN] unable to resolve image reference: \(s)")
     }
     private func makeListItems(from dicts: [[String: Any]], parentTitle: String) -> [CPListItem] {
         var cpItems: [CPListItem] = []
@@ -533,24 +511,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
             // Validar que el mediaType exista y sea permitido
             guard let mediaType = mediaType, allowedMediaTypes.contains(mediaType.uppercased()) else {
-                print("[CarPlay] Skipping item with missing or unsupported mediaType: \(mediaType ?? "nil")")
                 continue
             }
 
             let li = CPListItem(text: name, detailText: subtitle)
             // Try to attach image if available on item (supports artwork/image/icon or images array)
             let imageUrl = extractImageURL(from: d)
-            if let imageUrl, !imageUrl.isEmpty { print("[CarPlay][IMG] list item has image URL: \(imageUrl)") }
-            else { print("[CarPlay][IMG] list item without image URL. keys=\(Array(d.keys)) name=\(name)") }
             setListItemImage(li, from: imageUrl, itemType: mediaType, itemId: id, itemDict: d)
             li.handler = { [weak self] _, completion in
                 guard let self else { completion(); return }
-                print("[CarPlay] select item name=\(name) id=\(id) mediaType=\(mediaType ?? "-") fileName=\(childFileName ?? "<nil>") in parent=\(parentTitle)")
 
                 // Drill-down navigation takes precedence if a child file or inline items exist
                 if let file = childFileName, !file.isEmpty, let controller = self.interfaceController {
                     let children = CDVPlaylistProvider.loadNavigationChildren(fileName: file)
-                    print("[CarPlay][NAV] drill-down file=\(file) children=\(children.count)")
                     let nextItems = self.makeListItems(from: children, parentTitle: name)
                     // Add Play All / Shuffle action items for playable parent types (Phase 7)
                     let playableTypes = ["PLAYLIST", "ALBUM", "ARTIST", "MIX"]
@@ -569,7 +542,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     return
                 }
                 if let items = inlineItems, !items.isEmpty, let controller = self.interfaceController {
-                    print("[CarPlay][NAV] drill-down inline items=\(items.count)")
                     let nextItems = self.makeListItems(from: items, parentTitle: name)
                     // Add Play All / Shuffle action items for playable parent types (Phase 7)
                     let playableTypes = ["PLAYLIST", "ALBUM", "ARTIST", "MIX"]
@@ -590,12 +562,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
                 // Special handling for tags - show playlists as browsable items
                 if mediaType.lowercased() == "tag", !id.isEmpty, let controller = self.interfaceController {
-                    print("[CarPlay] Tag selected, fetching playlists for tag id=\(id)")
                     let api: MusicApi = MusicApiImpl()
                     api.getTagPlaylists(tagId: id) { result in
                         switch result {
                         case .success(let playlists):
-                            print("[CarPlay] Tag playlists fetched: \(playlists.count)")
                             let playlistItems = self.makeListItems(from: playlists, parentTitle: name)
                             let section = CPListSection(items: playlistItems)
                             let next = CPListTemplate(title: name, sections: [section])
@@ -614,7 +584,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
                 // Handle single track playback as track radio (TRACK type)
                 if mediaType.uppercased() == "TRACK", !id.isEmpty {
-                    print("[CarPlay] Single track selected as track radio, id=\(id)")
                     self.handleTrackRadio(trackId: id, trackName: name, trackDict: d)
                     completion()
                     return
@@ -622,7 +591,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
                 // Handle podcast (browsable - shows episodes)
                 if mediaType.uppercased() == "PODCAST", !id.isEmpty, let controller = self.interfaceController {
-                    print("[CarPlay] Podcast selected, fetching episodes for show id=\(id)")
                     self.handlePodcastTap(showId: id, showName: name, controller: controller, completion: completion)
                     return
                 }
@@ -630,17 +598,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 // Handle radio types (RADIO_TRACK, RADIO, ARTIST_RADIO, ARTIST_STATION)
                 let radioTypes = ["RADIO_TRACK", "RADIO", "ARTIST_RADIO", "ARTIST_STATION"]
                 if radioTypes.contains(mediaType.uppercased()), !id.isEmpty {
-                    print("[CarPlay] Radio type \(mediaType) selected, id=\(id)")
                     self.handleRadioTap(radioType: mediaType.uppercased(), itemId: id, itemName: name, itemDict: d)
                     completion()
                     return
                 }
 
-                print("[CarPlay] makeListItems Try local queue file first")
-                // 1) Try local queue file first
-                var tracks = id.isEmpty ? [] : CDVPlaylistProvider.loadTracks(forPlaylist: id)
-
-                print("[CarPlay] makeListItems local tracks loaded for id=\(id) count=\(tracks.count)")
                 self.playMediaByType(mediaType: mediaType, itemId: id, itemName: name)
                 completion()
             }
@@ -742,7 +704,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             switch result {
             case .success(let showResponse):
                 let episodes = showResponse.episodes
-                print("[CarPlay] Podcast episodes fetched: \(episodes.count)")
                 var episodeItems: [CPListItem] = []
                 for episode in episodes {
                     let epTitle = episode.title
@@ -754,7 +715,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     }
                     li.handler = { [weak self] _, epCompletion in
                         guard let self = self else { epCompletion(); return }
-                        print("[CarPlay] Podcast episode selected: \(epTitle) id=\(episode.id)")
                         self.handlePodcastEpisodePlay(episode: episode, showName: showName)
                         epCompletion()
                     }
@@ -831,13 +791,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             // Artist radio: top tracks shuffled
             handleArtistRadio(artistId: itemId, artistName: itemName)
         default:
-            print("[CarPlay] handleRadioTap: unknown radio type \(radioType)")
+            break
         }
     }
 
     /// Track radio: play the selected track + related tracks
     private func handleTrackRadio(trackId: String, trackName: String, trackDict: [String: Any]) {
-        print("[DQ] 📻 handleTrackRadio: trackId=\(trackId) name=\(trackName)")
         let api: MusicApi = MusicApiImpl()
         // Use idAlbumTrack for the parent context id (JS expects idAlbumTrack, not id)
         let idAlbumTrack = String(describing: trackDict["idAlbumTrack"] ?? trackId)
@@ -869,7 +828,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             // Use getRelatedTracksByQueue when we have a valid idAlbumTrack, fallback to getRelatedTracks otherwise
             let fetchRelated: (@escaping (Result<ArtistTracks, Error>) -> Void) -> Void
             if idAlbumTrackInt64 != 0 {
-                print("[DQ] Track radio: using getRelatedTracksByQueue (idAlbumTrack=\(idAlbumTrackInt64))")
                 fetchRelated = { completion in
                     let request = RelatedTracksByQueueRequest(
                         albumTrackIds: [idAlbumTrackInt64],
@@ -879,7 +837,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     api.getRelatedTracksByQueue(request: request, limit: 5, completion: completion)
                 }
             } else {
-                print("[DQ] Track radio: idAlbumTrack=0 — fallback to getRelatedTracks(trackId)")
                 fetchRelated = { completion in
                     api.getRelatedTracks(trackId: trackId, limit: 5, completion: completion)
                 }
@@ -891,7 +848,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 case .success(let relatedTracks):
                     // Filter out duplicates (API may return the same track we're playing)
                     let tracks = relatedTracks.list.filter { $0.id != trackId && $0.idAlbumTrack != idAlbumTrackInt64 }
-                    print("[DQ] Track radio: \(tracks.count) initial related tracks (filtered from \(relatedTracks.list.count))")
                     // Resolve signed URLs for related tracks
                     let group = DispatchGroup()
                     var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
@@ -913,7 +869,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         if let selected = selectedEntry { queue.append(selected) }
                         queue.append(contentsOf: results.compactMap { $0 })
                         guard !queue.isEmpty else {
-                            print("[DQ] Track radio: no tracks to play")
                             return
                         }
 
@@ -937,8 +892,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         self.isNowPlayingShown = false
                         self.musicPlayer.updateQueue(queue, selectedTrackId: idAlbumTrack, persist: false, fromNative: true)
                         self.musicPlayer.play()
-
-                        print("[DQ] ✅ handleTrackRadio: started — initial=\(queue.count) seeds=\(loadingState.seedAlbumTrackIds) excludes=\(loadingState.excludeAlbumTrackIds.count) hasMore=\(loadingState.hasMore)")
 
                         // Trigger loadMore to prefetch next batch
                         if self.musicPlayer.shouldLoadMore() {
@@ -982,7 +935,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Station radio: fetch tracks from station endpoint with dynamic queue loading
     private func handleStationRadio(stationId: String, stationName: String, stationDict: [String: Any]) {
-        print("[DQ] 📻 handleStationRadio: stationId=\(stationId) name=\(stationName)")
         let api: MusicApi = MusicApiImpl()
         let parentContext = QueueParentContext(id: stationId, type: "RADIO", name: stationName)
         let initialCount = 2
@@ -991,7 +943,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             guard let self = self else { return }
             switch result {
             case .success(let tracks):
-                print("[DQ] Station radio: \(tracks.count) initial tracks fetched")
                 // Resolve signed URLs
                 let group = DispatchGroup()
                 var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
@@ -1011,7 +962,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 group.notify(queue: .main) {
                     let queue = results.compactMap { $0 }
                     guard !queue.isEmpty else {
-                        print("[DQ] Station radio: no tracks to play")
                         return
                     }
 
@@ -1036,8 +986,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     let selectedId = self.safeStringValue(firstData?["idAlbumTrack"]) ?? self.safeStringValue(firstData?["id"])
                     self.musicPlayer.updateQueue(queue, selectedTrackId: selectedId, persist: false, fromNative: true)
                     self.musicPlayer.play()
-
-                    print("[DQ] ✅ handleStationRadio: started — initial=\(queue.count) cursor=\(loadingState.lastIdAlbumTrack ?? "nil") hasMore=\(loadingState.hasMore)")
 
                     // Trigger loadMore to prefetch next batch
                     if self.musicPlayer.shouldLoadMore() {
@@ -1067,7 +1015,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
         playItem.handler = { [weak self] _, completion in
             guard let self = self else { completion(); return }
-            print("[CarPlay] Action: Play All mediaType=\(mediaType) id=\(itemId)")
             self.fetchAndPlayAll(mediaType: mediaType, itemId: itemId, parentTitle: parentTitle, shuffle: false)
             completion()
         }
@@ -1079,7 +1026,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
         shuffleItem.handler = { [weak self] _, completion in
             guard let self = self else { completion(); return }
-            print("[CarPlay] Action: Shuffle mediaType=\(mediaType) id=\(itemId)")
             self.fetchAndPlayAll(mediaType: mediaType, itemId: itemId, parentTitle: parentTitle, shuffle: true)
             completion()
         }
@@ -1098,7 +1044,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let parentContext = buildParentContext(mediaType: mediaType, itemId: itemId, parentTitle: parentTitle)
         fetchTracksRemote(mediaType: mediaType, itemId: itemId, parentContext: parentContext) { [weak self] remote in
             guard let self = self, !remote.isEmpty else {
-                print("[CarPlay] fetchAndPlayAll: no tracks found")
                 return
             }
             let queue = remote.shuffled()
@@ -1147,27 +1092,23 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             api.getPlayListTracks(playListId: itemId, limit: 50, offset: 0) { result in
                 guard let container = try? result.get() else { DispatchQueue.main.async { completion([]) }; return }
                 let tracks = container.tracks.items.map { $0.track }
-                print("[CarPlay][remote] playlist id=\(itemId) rawTracks=\(tracks.count)")
                 resolveSignedUrls(from: tracks, parent: parentContext, completion: completion)
             }
         case "album":
             api.getAlbumTracks(albumId: itemId, limit: 50, offset: 0) { result in
                 guard let album = try? result.get() else { DispatchQueue.main.async { completion([]) }; return }
-                print("[CarPlay][remote] album id=\(itemId) rawTracks=\(album.tracks.items.count)")
                 resolveSignedUrls(from: album.tracks.items, parent: parentContext, completion: completion)
             }
         case "artist":
             api.getArtistTracks(artistId: itemId, order: "popularity", limit: 50, offset: 0) { result in
                 guard let artistTracks = try? result.get() else { DispatchQueue.main.async { completion([]) }; return }
-                print("[CarPlay][remote] artist id=\(itemId) rawTracks=\(artistTracks.list.count)")
                 resolveSignedUrls(from: artistTracks.list, parent: parentContext, completion: completion)
             }
         case "tag":
             // Match Android: fetch playlists with this tag and show them as browsable items
             api.getTagPlaylists(tagId: itemId) { result in
                 switch result {
-                case .success(let playlists):
-                    print("[CarPlay][remote] tag id=\(itemId) playlists=\(playlists.count)")
+                case .success(_):
                     // Return empty array - tags should show playlists as browsable items, not play tracks
                     DispatchQueue.main.async { completion([]) }
                 case .failure(let e):
@@ -1176,7 +1117,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 }
             }
         default:
-            print("[CarPlay][remote] unknown mediaType=\(mediaType)")
             DispatchQueue.main.async { completion([]) }
         }
     }
@@ -1196,10 +1136,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     // Called when the queue has been reloaded and CarPlay UI needs to refresh
     @objc func refreshQueueUI() {
         guard let controller = interfaceController else {
-            print("[CarPlay] refreshQueueUI: No interface controller available")
             return
         }
-        print("[CarPlay] refreshQueueUI: Rebuilding templates with new queue")
         setupTemplates(controller)
     }
 
@@ -1207,20 +1145,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// This reloads navigation data from JSON files and rebuilds the CarPlay templates.
     /// Equivalent to Android's MusicLibraryService.refreshNavigation()
     @objc func refreshNavigation() {
-        print("[CarPlay] refreshNavigation: Starting navigation refresh")
         guard let controller = interfaceController else {
-            print("[CarPlay] refreshNavigation: No interface controller available")
             return
         }
         guard connected else {
-            print("[CarPlay] refreshNavigation: CarPlay not connected, skipping refresh")
             return
         }
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            print("[CarPlay] refreshNavigation: Rebuilding templates with updated data")
             self.setupTemplates(controller)
-            print("[CarPlay] refreshNavigation: Navigation refresh completed")
         }
     }
 
@@ -1233,16 +1166,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if let refreshToken = UserDefaults.standard.string(forKey: "REFRESH_TOKEN_KEY") {
             let cleaned = refreshToken.replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             let isLoggedIn = !cleaned.isEmpty && cleaned != "null"
-            print("[CarPlay] isUserLoggedIn: refreshToken=\(isLoggedIn ? "present" : "null/empty"), isLoggedIn=\(isLoggedIn)")
             return isLoggedIn
         }
-        print("[CarPlay] isUserLoggedIn: no REFRESH_TOKEN_KEY found, isLoggedIn=false")
         return false
     }
 
     /// Show a "login required" template when user is not authenticated
     private func setupLoginRequiredTemplate(_ controller: CPInterfaceController) {
-        print("[CarPlay] setupLoginRequiredTemplate: showing login required message")
         let loginItem = CPListItem(
             text: CDVTextsManager.shared.getText("no_credential_message", fallback: "Log in to see your music"),
             detailText: CDVTextsManager.shared.getText("login_required_hint", fallback: "Open the app and log in to use CarPlay")
@@ -1262,7 +1192,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         DispatchQueue.main.async {
             controller.setRootTemplate(tabBar, animated: true, completion: { success, error in
                 if let error = error { print("[CarPlay] setRootTemplate(Login) error: \(error)") }
-                else { print("[CarPlay] setRootTemplate(Login) success: \(success)") }
             })
         }
     }
@@ -1278,35 +1207,28 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // This ensures root template is set before any push operations
         presentLoadingPlaceholder(interfaceController) { [weak self] in
             guard let self = self else { return }
-            print("[CarPlay] didConnect: STEP 1 complete - root template set")
 
             // STEP 2: Activate the music player for CarPlay (registers remote command handlers)
             // This captures the existing playback state but does NOT auto-play
             self.musicPlayer.activateForCarPlay()
-            print("[CarPlay] didConnect: STEP 2 complete - CarPlay activated")
 
             // STEP 3: Notify JS BEFORE loading queue
             // This gives the JS side a chance to pause the app's player
-            print("[CarPlay] didConnect: STEP 3 - notifying JS of connection")
             NotificationCenter.default.post(name: Notification.Name("CDVCarPlayConnectionChanged"), object: nil, userInfo: ["connected": true])
 
             // STEP 4: Wait 0.2s for JS to process and pause app's player
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 guard let self = self else { return }
-                print("[CarPlay] didConnect: STEP 4 - delay complete, proceeding with queue load")
 
                 // STEP 5: Reload queue from storage (without auto-play due to isInitialCarPlaySetup flag)
                 self.musicPlayer.reloadQueueForced()
-                print("[CarPlay] didConnect: STEP 5 complete - queue reloaded")
 
                 // STEP 6: Build and set the real templates
                 self.setupTemplates(interfaceController)
-                print("[CarPlay] didConnect: STEP 6 complete - templates set up")
 
                 // STEP 7: Complete initial setup - this enables normal playback behavior
                 // and applies the captured playback state (seek + resume if was playing)
                 self.musicPlayer.completeInitialSetup()
-                print("[CarPlay] didConnect: STEP 7 complete - initial setup finished")
             }
         }
     }
@@ -1336,7 +1258,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 if let error = error {
                     print("[CarPlay] setRootTemplate(Loading) error: \(error)")
                 } else {
-                    print("[CarPlay] setRootTemplate(Loading) success: \(success)")
                     self?.isRootTemplateSet = true
                 }
                 completion()
@@ -1344,14 +1265,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
     private func setupTemplates(_ controller: CPInterfaceController) {
-      print("[CarPlay] setupTemplates: begin")
-
       // Check network availability - if offline, show offline library
       let isOnline = CDVNetworkUtils.shared.isNetworkAvailable
-      print("[CarPlay] setupTemplates: network available = \(isOnline)")
 
       if !isOnline {
-          print("[CarPlay] setupTemplates: OFFLINE MODE - showing offline library")
           setupOfflineTemplates(controller)
           return
       }
@@ -1360,30 +1277,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
       if !isUserLoggedIn() {
           let autoNavigation = CDVPlaylistProvider.loadNavigationFromJSON()
           if autoNavigation.isEmpty {
-              print("[CarPlay] setupTemplates: NOT LOGGED IN and no navigation data - showing login template")
               setupLoginRequiredTemplate(controller)
               return
           }
           // If navigation data exists (e.g. from a previous session), proceed normally
-          print("[CarPlay] setupTemplates: NOT LOGGED IN but navigation data exists, proceeding")
       }
 
       let autoNavigation = CDVPlaylistProvider.loadNavigationFromJSON()
-      // Pretty-print full AUTO_NAVIGATION for diagnostics
-      if let data = try? JSONSerialization.data(withJSONObject: autoNavigation, options: [.prettyPrinted]),
-         let pretty = String(data: data, encoding: .utf8) {
-          print("[CarPlay][NAV][FULL] AUTO_NAVIGATION=\n\(pretty)")
-      } else {
-          print("[CarPlay][NAV][FULL][WARN] could not serialize AUTO_NAVIGATION to JSON")
-      }
-      print("[CarPlay] setupTemplates: AUTO_NAVIGATION sections count=\(autoNavigation.count)")
-      if let first = autoNavigation.first {
-          print("[CarPlay] setupTemplates: first section keys=\(Array(first.keys))")
-          if let text = first["text"] as? String { print("[CarPlay] setupTemplates: first section text=\(text)") }
-          if let items = first["items"] as? [[String: Any]] { print("[CarPlay] setupTemplates: first section items count=\(items.count)") }
-      } else {
-          print("[CarPlay] setupTemplates: AUTO_NAVIGATION is empty")
-      }
 
         // Build list templates from AUTO_NAVIGATION sections (collect all; we'll trim/compose later)
         var navTemplates: [CPTemplate] = []
@@ -1392,19 +1292,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let fileName = (sectionDict["fileName"] as? String) ?? ""
             let explicitItems = sectionDict["items"] as? [[String: Any]]
             let sectionIcon = sectionDict["icon"]
-            if let iconStr = sectionIcon as? String, !iconStr.isEmpty {
-                print("[CarPlay][TAB] section icon value=\(iconStr) for title=\(sectionTitle)")
-            } else {
-                print("[CarPlay][TAB] no icon for title=\(sectionTitle); will use fallback")
-            }
 
             var cpSections: [CPListSection] = []
 
             if !fileName.isEmpty {
                 // Load children from referenced file (e.g., RECENT_LISTENED, AUTO_NAVIGATION_LIBRARY, AUTO_NAVIGATION_EXPLORER)
                 let children = CDVPlaylistProvider.loadNavigationChildren(fileName: fileName)
-                print("[CarPlay] [NAV] fileName=\(fileName) childrenCount=\(children.count)")
-                if children.isEmpty { print("[CarPlay][TAB][EMPTY] fileName=\(fileName) produced 0 children") }
 
                 // If children are sections (have "items" key), build browsable subsections (applies to LIBRARY, HOME, etc.)
                 let isSectionBased = children.first?["items"] != nil
@@ -1423,7 +1316,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                             }
                             li.handler = { [weak self] _, completion in
                                 guard let self, let controller = self.interfaceController else { completion(); return }
-                                print("[CarPlay] [NAV][LIB] open subsection title=\(subTitle) items=\(subItems.count)")
                                 let leafItems = self.makeListItems(from: subItems, parentTitle: subTitle)
                                 let section = CPListSection(items: leafItems)
                                 let next = CPListTemplate(title: subTitle, sections: [section])
@@ -1480,7 +1372,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                 // Title tap -> navigate to full section list
                                 imageRow.handler = { [weak self] _, completion in
                                     guard let self, let controller = self.interfaceController else { completion(); return }
-                                    print("[CarPlay] [NAV][HOME] open section title=\(subTitle) items=\(subItems.count)")
                                     let leafItems = self.makeListItems(from: subItems, parentTitle: subTitle)
                                     let section = CPListSection(items: leafItems)
                                     let next = CPListTemplate(title: subTitle, sections: [section])
@@ -1498,7 +1389,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                     let id = String(describing: itemDict["id"] ?? "")
                                     let mediaType = (itemDict["itemType"] as? String) ?? (itemDict["type"] as? String) ?? ""
                                     let name = (itemDict["name"] as? String) ?? (itemDict["title"] as? String) ?? "Item"
-                                    print("[CarPlay] [NAV][HOME] image tapped index=\(index) id=\(id) type=\(mediaType) name=\(name)")
                                     self.handleHomeItemTap(id: id, mediaType: mediaType, name: name, itemDict: itemDict)
                                     completion()
                                 }
@@ -1510,7 +1400,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                 li.accessoryType = .disclosureIndicator
                                 li.handler = { [weak self] _, completion in
                                     guard let self, let controller = self.interfaceController else { completion(); return }
-                                    print("[CarPlay] [NAV][HOME] open section title=\(subTitle) items=\(subItems.count)")
                                     let leafItems = self.makeListItems(from: subItems, parentTitle: subTitle)
                                     let section = CPListSection(items: leafItems)
                                     let next = CPListTemplate(title: subTitle, sections: [section])
@@ -1526,7 +1415,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         if !sectionListItems.isEmpty {
                             cpSections.append(CPListSection(items: sectionListItems))
                         }
-                        print("[CarPlay] [NAV] section-based file=\(fileName) produced \(sectionListItems.count) tappable sections")
                     } else {
                         // Fallback for iOS < 14: simple list items
                         var topItems: [CPListItem] = []
@@ -1555,12 +1443,10 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 } else {
                     // Generic flat list
                     let items = makeListItems(from: children, parentTitle: sectionTitle)
-                    if items.isEmpty { print("[CarPlay][TAB][EMPTY] section=\(sectionTitle) (file=\(fileName)) returned 0 list items") }
                     cpSections.append(CPListSection(items: items))
                 }
             } else if let sectionItems = explicitItems {
                 let items = makeListItems(from: sectionItems, parentTitle: sectionTitle)
-                if items.isEmpty { print("[CarPlay][TAB][EMPTY] explicit items section=\(sectionTitle) returned 0 list items") }
                 cpSections.append(CPListSection(items: items))
             }
 
@@ -1569,9 +1455,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let cpList = CPListTemplate(title: safeTitle, sections: cpSections)
             cpList.tabTitle = safeTitle
             if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: sectionIcon, sectionTitle: sectionTitle, fileName: fileName) }
-            let totalItems = cpSections.reduce(0) { $0 + $1.items.count }
-            print("[CarPlay] [NAV] building tab title=\(safeTitle) sections=\(cpSections.count) totalItems=\(totalItems)")
-            if totalItems == 0 { print("[CarPlay][TAB][EMPTY] tab title=\(safeTitle) has no items") }
             // Ensure sections are applied on main thread for reliability
             DispatchQueue.main.async {
                 cpList.updateSections(cpSections)
@@ -1586,11 +1469,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Fallback: if no AUTO_NAVIGATION sections, mirror Android by using AUTO_NAVIGATION_LIBRARY sections
         if navTemplates.isEmpty {
             let librarySections = CDVPlaylistProvider.loadLibrarySectionsFromJSON()
-            print("[CarPlay] setupTemplates: library sections loaded count=\(librarySections.count)")
             if librarySections.isEmpty {
                 // As a last resort, build a single Playlists tab from extracted items
                 let playlists = CDVPlaylistProvider.loadPlaylistsFromJSON()
-                print("[CarPlay] setupTemplates: playlists loaded count=\(playlists.count)")
                 var items: [CPListItem] = []
                 for dict in playlists {
                     let title = (dict["title"] as? String) ?? (dict["name"] as? String) ?? "Playlist"
@@ -1599,9 +1480,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                     let item = CPListItem(text: title, detailText: subtitle)
                     item.handler = { [weak self] _, completion in
                         guard let self else { completion(); return }
-                        print("[CarPlay] list item selected: pid=\(pid) title=\(title)")
                         let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: pid)
-                        print("[CarPlay] tracks loaded for pid=\(pid) count=\(tracks.count)")
                         let normalized = self.normalizeQueueItems(tracks)
                         // Reset shown flag before starting playback
                         self.isNowPlayingShown = false
@@ -1624,26 +1503,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 for (idx, sectionDict) in librarySections.enumerated() {
                     let title = (sectionDict["text"] as? String) ?? "Section \(idx+1)"
                     let sectionItems = sectionDict["items"] as? [[String: Any]] ?? []
-                    print("[CarPlay] [LIB] section idx=\(idx) title=\(title) rawKeys=\(Array(sectionDict.keys)) items=\(sectionItems.count)")
                     var cpItems: [CPListItem] = []
                     for itemDict in sectionItems {
                         let name = (itemDict["name"] as? String) ?? (itemDict["title"] as? String) ?? "Item"
                         let subtitle = itemDict["description"] as? String
                         let pid = String(describing: itemDict["id"] ?? "")
                         let itemType = (itemDict["itemType"] as? String) ?? (itemDict["type"] as? String)
-                        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            print("[CarPlay] [LIB][WARN] item with empty name. keys=\(Array(itemDict.keys))")
-                        }
                         let listItem = CPListItem(text: name, detailText: subtitle)
                         let itemImage = (itemDict["artwork"] as? String) ?? (itemDict["image"] as? String) ?? (itemDict["icon"] as? String)
-                        if let itemImage, !itemImage.isEmpty { print("[CarPlay][IMG] library item image URL: \(itemImage)") }
                         setListItemImage(listItem, from: itemImage, itemType: itemType, itemId: pid, itemDict: itemDict)
                         listItem.handler = { [weak self] _, completion in
                             guard let self else { completion(); return }
-                            print("[CarPlay] [LIB] list item selected in section=\(title) id=\(pid) name=\(name)")
                             if !pid.isEmpty {
                                 let tracks = CDVPlaylistProvider.loadTracks(forPlaylist: pid)
-                                print("[CarPlay] [LIB] tracks loaded for id=\(pid) count=\(tracks.count)")
                                 let normalized = self.normalizeQueueItems(tracks)
                                 if !normalized.isEmpty {
                                     // Reset shown flag before starting playback
@@ -1658,8 +1530,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                         cpItems.append(listItem)
                     }
                     let safeTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Section \(idx+1)" : title
-                    print("[CarPlay] [LIB] building section title=\(safeTitle) items=\(cpItems.count)")
-                    if cpItems.isEmpty { print("[CarPlay][TAB][EMPTY] library section title=\(safeTitle) has 0 items") }
                     let cpSection = CPListSection(items: cpItems)
                     let cpList = CPListTemplate(title: safeTitle, sections: [cpSection])
                     cpList.tabTitle = safeTitle
@@ -1677,7 +1547,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
         // If after all attempts titles are empty or templates invalid, add a static Browse tab as a fail-safe
         if navTemplates.isEmpty {
-            print("[CarPlay][FALLBACK] No valid templates found. Adding static Browse tab.")
             let placeholders = [
                 CPListItem(text: "Playlists", detailText: nil),
                 CPListItem(text: "Favorites", detailText: nil),
@@ -1694,17 +1563,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let searchTab = buildSearchTab()
         navTemplates.append(searchTab)
 
-        // Log navigation tabs before composing final tab bar
-        let titles = navTemplates.compactMap { ($0 as? CPListTemplate)?.tabTitle ?? "(unknown)" }
-        print("[CarPlay] Nav tabs (pre-compose) count=\(navTemplates.count) titles=\(titles)")
-        for t in navTemplates {
-            if let l = t as? CPListTemplate {
-                let title = l.tabTitle ?? l.title ?? "(untitled)"
-                let count = l.sections.reduce(0) { $0 + $1.items.count }
-                if count == 0 { print("[CarPlay][TAB][EMPTY] presenting empty tab: \(title)") }
-            }
-        }
-
         // Configure Now Playing template (cannot be part of TabBar templates)
         let now = CPNowPlayingTemplate.shared
         musicPlayer.setNowPlayingTemplate(now)
@@ -1713,18 +1571,13 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Do not add a dedicated "Now Playing" tab; rely on CarPlay's default Now Playing button.
         // CPTabBarTemplate allows a maximum of 4 tabs — truncate if needed.
         let tabTemplates: [CPTemplate] = Array(navTemplates.prefix(4))
-        if navTemplates.count > 4 {
-            print("[CarPlay][WARN] Truncated \(navTemplates.count) tabs to 4 (CarPlay max)")
-        }
 
         // Set Tab Bar as root
         let tabBar = CPTabBarTemplate(templates: tabTemplates)
         tabBar.delegate = self
-        print("[CarPlay] setupTemplates: presenting TabBar with \(tabTemplates.count) tabs")
         DispatchQueue.main.async {
             controller.setRootTemplate(tabBar, animated: true, completion: { success, error in
                 if let error = error { print("[CarPlay] setRootTemplate(TabBar) error: \(error)") }
-                else { print("[CarPlay] setRootTemplate(TabBar) success: \(success)") }
             })
             self.isNowPlayingShown = false
         }
@@ -1732,7 +1585,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Remove previous observer before adding to prevent duplicates on reconnect
         NotificationCenter.default.removeObserver(self, name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(showNowPlayingTemplate), name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
-        print("[CarPlay] setupTemplates: end")
     }
 
     // MARK: - Search Tab (Siri)
@@ -1778,7 +1630,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Build the offline tab template (reusable for both full setup and tab update)
     private func buildOfflineTab() -> CPListTemplate {
         let offlineItems = CDVPlaylistProvider.loadOfflineLibrary()
-        print("[CarPlay] buildOfflineTab: loaded \(offlineItems.count) offline items")
 
         var listItems: [CPListItem] = []
 
@@ -1799,14 +1650,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 let itemType = CDVPlaylistProvider.getOfflineItemType(item)
                 let imageUrl = CDVPlaylistProvider.getOfflineItemImageUrl(item)
 
-                print("[CarPlay] buildOfflineTab: adding item type=\(itemType) id=\(itemId) title=\(title)")
-
                 let listItem = CPListItem(text: title, detailText: subtitle)
                 setListItemImage(listItem, from: imageUrl, itemType: itemType, itemId: itemId, itemDict: item)
 
                 listItem.handler = { [weak self] _, completion in
                     guard let self = self else { completion(); return }
-                    print("[CarPlay] Offline item selected: type=\(itemType) id=\(itemId) title=\(title)")
                     self.loadOfflineTracksAndPlay(itemType: itemType, itemId: itemId, itemDict: item)
                     completion()
                 }
@@ -1828,8 +1676,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Setup templates for offline mode - shows downloaded albums and playlists
     private func setupOfflineTemplates(_ controller: CPInterfaceController) {
-        print("[CarPlay] setupOfflineTemplates: begin")
-
         let offlineList = buildOfflineTab()
 
         // Configure Now Playing template
@@ -1840,11 +1686,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let tabBar = CPTabBarTemplate(templates: [offlineList])
         tabBar.delegate = self
 
-        print("[CarPlay] setupOfflineTemplates: presenting TabBar with offline library")
         DispatchQueue.main.async {
             controller.setRootTemplate(tabBar, animated: true, completion: { success, error in
                 if let error = error { print("[CarPlay] setRootTemplate(Offline) error: \(error)") }
-                else { print("[CarPlay] setRootTemplate(Offline) success: \(success)") }
             })
             self.isNowPlayingShown = false
         }
@@ -1852,7 +1696,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Remove previous observer before adding to prevent duplicates on reconnect
         NotificationCenter.default.removeObserver(self, name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(showNowPlayingTemplate), name: Notification.Name("CDVShowNowPlayingTemplate"), object: nil)
-        print("[CarPlay] setupOfflineTemplates: end")
     }
 
     /// Update existing tab bar to show offline content WITHOUT replacing root template.
@@ -1860,7 +1703,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     private func switchTabsToOffline() {
         guard let controller = interfaceController,
               let tabBar = controller.rootTemplate as? CPTabBarTemplate else {
-            print("[CarPlay] switchTabsToOffline: no tab bar found, falling back to full setup")
             if let controller = interfaceController {
                 setupOfflineTemplates(controller)
             }
@@ -1868,27 +1710,21 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
 
         let offlineTab = buildOfflineTab()
-        print("[CarPlay] switchTabsToOffline: updating tabs to offline (preserving NowPlaying)")
         tabBar.updateTemplates([offlineTab])
     }
 
     /// Load tracks for an offline album or playlist and start playback
     private func loadOfflineTracksAndPlay(itemType: String, itemId: String, itemDict: [String: Any], fromSiri: Bool = false) {
-        print("[CarPlay] loadOfflineTracksAndPlay: type=\(itemType) id=\(itemId) fromSiri=\(fromSiri)")
-
         // Load tracks from OFFLINE_TRACKS file filtered by album/playlist ID
         // This mirrors the Android implementation in MediaItemTree.loadOfflineTracksByMediaTypeMediaId
         var tracks = CDVPlaylistProvider.loadOfflineTracks(itemType: itemType, itemId: itemId)
-        print("[CarPlay] loadOfflineTracksAndPlay: loaded \(tracks.count) tracks from OFFLINE_TRACKS")
 
         guard !tracks.isEmpty else {
-            print("[CarPlay] loadOfflineTracksAndPlay: no tracks found for \(itemType) \(itemId)")
             return
         }
 
         // Normalize and play
         let normalized = normalizeQueueItems(tracks)
-        print("[CarPlay] loadOfflineTracksAndPlay: normalized \(normalized.count) tracks")
 
         if !normalized.isEmpty {
             self.isNowPlayingShown = false
@@ -1904,7 +1740,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Used by both CarPlay UI taps and Siri search results.
     /// Handles: local tracks lookup, remote fetch, parentContext persistence, and queue update.
     private func playMediaByType(mediaType: String, itemId: String, itemName: String, fromNative: Bool = false) {
-        print("[DQ] 🎬 playMediaByType: type=\(mediaType) id=\(itemId) name=\(itemName) fromNative=\(fromNative)")
         let mediaLower = mediaType.lowercased()
         let parentContext = buildParentContext(mediaType: mediaLower, itemId: itemId, parentTitle: itemName)
         let contextDict: [String: Any] = ["id": parentContext.id, "type": parentContext.type, "name": parentContext.name]
@@ -1915,7 +1750,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
         if !normalizedLocal.isEmpty {
             // Offline tracks: no dynamic loading needed (all tracks are already available)
-            print("[DQ] 📦 playMediaByType: using OFFLINE tracks (\(normalizedLocal.count)), no dynamic queue")
             musicPlayer.isDynamicQueue = false
             musicPlayer.queueLoadingState = nil
             musicPlayer.setCurrentParentContext(contextDict)
@@ -1934,13 +1768,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Fetch only 2 initial tracks from API and configure dynamic queue loading for the rest
     private func fetchTracksRemoteDynamic(mediaType: String, itemId: String, itemName: String, parentContext: QueueParentContext, fromNative: Bool) {
-        print("[DQ] 🚀 fetchTracksRemoteDynamic: type=\(mediaType) id=\(itemId) name=\(itemName)")
         let api: MusicApi = MusicApiImpl()
         let initialLimit = 10
 
         // Helper to resolve signed URLs for initial tracks and start dynamic playback
         func startDynamicPlayback(tracks: [Track], contentType: String, totalExpected: Int?) {
-            print("[DQ] 🔧 startDynamicPlayback: contentType=\(contentType) tracksCount=\(tracks.count) totalExpected=\(totalExpected ?? -1)")
             let group = DispatchGroup()
             var results: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
             for (index, t) in tracks.enumerated() {
@@ -1960,7 +1792,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 guard let self = self else { return }
                 let validItems = results.compactMap { $0 }
                 guard !validItems.isEmpty else {
-                    print("[DQ] No valid initial tracks resolved")
                     return
                 }
 
@@ -1987,8 +1818,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 self.musicPlayer.updateQueue(validItems, selectedTrackId: selectedId, persist: false, fromNative: true)
                 self.musicPlayer.play()
 
-                print("[DQ] ✅ startDynamicPlayback: type=\(contentType) initial=\(validItems.count) total=\(totalExpected ?? -1) offset=\(loadingState.currentOffset) hasMore=\(loadingState.hasMore)")
-
                 // Trigger loadMore immediately to prefetch the next batch
                 if self.musicPlayer.shouldLoadMore() {
                     self.musicPlayer.loadMore()
@@ -2004,19 +1833,16 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             api.getPlayListTracks(playListId: itemId, limit: initialLimit, offset: 0) { result in
                 guard let container = try? result.get() else { return }
                 let tracks = container.tracks.items.map { $0.track }
-                print("[DQ] playlist id=\(itemId) initialTracks=\(tracks.count) total=\(container.tracks.total)")
                 startDynamicPlayback(tracks: tracks, contentType: parentContext.type, totalExpected: container.tracks.total)
             }
         case "album":
             api.getAlbumTracks(albumId: itemId, limit: initialLimit, offset: 0) { result in
                 guard let album = try? result.get() else { return }
-                print("[DQ] album id=\(itemId) initialTracks=\(album.tracks.items.count) total=\(album.tracks.total)")
                 startDynamicPlayback(tracks: album.tracks.items, contentType: "ALBUM", totalExpected: album.tracks.total)
             }
         case "artist":
             api.getArtistTracks(artistId: itemId, order: "popularity", limit: initialLimit, offset: 0) { result in
                 guard let artistTracks = try? result.get() else { return }
-                print("[DQ] artist id=\(itemId) initialTracks=\(artistTracks.list.count) total=\(artistTracks.total)")
                 startDynamicPlayback(tracks: artistTracks.list, contentType: "ARTIST", totalExpected: artistTracks.total)
             }
         case "tag":
@@ -2034,7 +1860,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 self.musicPlayer.play()
             }
         default:
-            print("[DQ] unknown mediaType=\(mediaType), falling back to full fetch")
             fetchTracksRemote(mediaType: mediaType, itemId: itemId, parentContext: parentContext) { [weak self] remote in
                 guard let self = self, !remote.isEmpty else { return }
                 self.musicPlayer.isDynamicQueue = false
@@ -2055,7 +1880,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Play a media item that was already resolved by Siri in resolveMediaItems.
     /// Called from CDVSiriIntentHandler.handle() with the pre-resolved type/id/name.
     @objc func playSiriResolvedMedia(mediaType: String, itemId: String, itemName: String, idAlbumTrack: String? = nil) {
-        print("🎤 [CarPlay][Siri] playSiriResolvedMedia type=\(mediaType) id=\(itemId) idAlbumTrack=\(idAlbumTrack ?? "nil") name=\(itemName)")
         // Safety: only activate native player if CarPlay is actually connected
         guard connected else {
             print("⚠️ [CarPlay][Siri] playSiriResolvedMedia: CarPlay NOT connected, skipping native playback (JS will handle)")
@@ -2073,7 +1897,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Play a Siri-resolved track using the full Track object (with album, images, artists)
     func playSiriResolvedTrack(_ track: Track) {
-        print("🎤 [CarPlay][Siri] playSiriResolvedTrack: \(track.name) id=\(track.id)")
         // Safety: only activate native player if CarPlay is actually connected
         guard connected else {
             print("⚠️ [CarPlay][Siri] playSiriResolvedTrack: CarPlay NOT connected, skipping native playback (JS will handle)")
@@ -2090,11 +1913,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let mediaName = searchParams["mediaName"] as? String ?? ""
         let artistName = searchParams["artistName"] as? String
         let albumName = searchParams["albumName"] as? String
-        let mediaType = searchParams["mediaType"] as? Int ?? 0
-        
-        print("🎤 [CarPlay][Siri] handleSiriSearch called")
-        print("🎤 [CarPlay][Siri] mediaName='\(mediaName)' artistName='\(artistName ?? "nil")' albumName='\(albumName ?? "nil")' mediaType=\(mediaType)")
-        
+
         // Safety: only activate native player if CarPlay is actually connected
         guard connected else {
             print("⚠️ [CarPlay][Siri] handleSiriSearch: CarPlay NOT connected, skipping native playback (JS will handle)")
@@ -2117,9 +1936,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             print("⚠️ [CarPlay][Siri] Empty search query, cannot search")
             return
         }
-        
-        print("🔍 [CarPlay][Siri] Searching for: '\(searchQuery)'")
-        
+
         // Check network availability
         guard CDVNetworkUtils.shared.isNetworkAvailable else {
             print("⚠️ [CarPlay][Siri] No network available, searching offline")
@@ -2134,9 +1951,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             
             switch result {
             case .success(let response):
-                print("✅ [CarPlay][Siri] Search successful")
                 self.processSiriSearchResults(response: response, originalQuery: mediaName, artistHint: artistName)
-                
+
             case .failure(let error):
                 print("❌ [CarPlay][Siri] Search failed: \(error.localizedDescription)")
                 // Try offline search as fallback
@@ -2147,9 +1963,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     
     /// Process search results and start playback
     private func processSiriSearchResults(response: SearchResponse, originalQuery: String, artistHint: String?) {
-        print("🎵 [CarPlay][Siri] Processing search results...")
-        print("🎵 [CarPlay][Siri] tracks=\(response.tracks?.list?.count ?? 0) artists=\(response.artists?.list?.count ?? 0) albums=\(response.albums?.list?.count ?? 0) playlists=\(response.playlists?.list?.count ?? 0)")
-        
         // Strategy: Prioritize based on what was found
         // 1. Playlists
         // 2. Artists
@@ -2165,7 +1978,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             } ?? playlists.first
 
             if let playlist = matchingPlaylist {
-                print("📋 [CarPlay][Siri] Found playlist: \(playlist.name) (id=\(playlist.id)), fetching tracks...")
                 playMediaByType(mediaType: "playlist", itemId: playlist.id, itemName: playlist.name, fromNative: true)
                 return
             }
@@ -2178,7 +1990,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             } ?? artists.first
 
             if let artist = matchingArtist {
-                print("🎤 [CarPlay][Siri] Found artist: \(artist.name) (id=\(artist.id)), fetching tracks...")
                 playMediaByType(mediaType: "artist", itemId: artist.id, itemName: artist.name, fromNative: true)
                 return
             }
@@ -2191,7 +2002,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             } ?? albums.first
 
             if let album = matchingAlbum {
-                print("💿 [CarPlay][Siri] Found album: \(album.title) (id=\(album.id)), fetching tracks...")
                 playMediaByType(mediaType: "album", itemId: album.id, itemName: album.title, fromNative: true)
                 return
             }
@@ -2199,12 +2009,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
         // Check for tracks
         if let tracks = response.tracks?.list, !tracks.isEmpty {
-            print("🎵 [CarPlay][Siri] Found \(tracks.count) tracks, building queue...")
             buildQueueFromTracks(tracks: tracks, contextName: "Siri Search: \(originalQuery)")
             return
         }
-        
-        print("[CarPlay][Siri] No suitable results found for '\(originalQuery)'")
     }
 
     // MARK: - Grouped Search Results (Phase 8)
@@ -2320,8 +2127,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Build queue from track list and start playback
     private func buildQueueFromTracks(tracks: [Track], contextName: String) {
-        print("🎵 [CarPlay][Siri] Building queue from \(tracks.count) tracks...")
-        
         let api: MusicApi = MusicApiImpl()
         let group = DispatchGroup()
         var queueItems: [[String: Any]?] = Array(repeating: nil, count: tracks.count)
@@ -2354,8 +2159,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 print("⚠️ [CarPlay][Siri] No valid tracks to play after URL resolution")
                 return
             }
-            
-            print("✅ [CarPlay][Siri] Queue built with \(validItems.count) tracks, starting playback...")
+
             self.musicPlayer.setCurrentParentContext([
                 "id": parentContext.id, "type": parentContext.type, "name": parentContext.name
             ])
@@ -2370,7 +2174,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     /// Fetch a single track and play it — delegates to track radio (track + related)
     private func fetchSingleTrackAndPlay(trackId: String, trackName: String, idAlbumTrack: String? = nil) {
         let effectiveIdAlbumTrack = idAlbumTrack ?? trackId
-        print("🎵 [CarPlay][Siri] Launching track radio: \(trackName) (id=\(trackId) idAlbumTrack=\(effectiveIdAlbumTrack))")
 
         let trackDict: [String: Any] = [
             "id": trackId,
@@ -2382,8 +2185,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     
     /// Fetch playlists from a tag and play the first one
     private func fetchTagPlaylistsAndPlay(tagId: String, tagName: String) {
-        print("🏷️ [CarPlay][Siri] Fetching playlists for tag: \(tagName) (id=\(tagId))")
-        
         let api: MusicApi = MusicApiImpl()
         api.getTagPlaylists(tagId: tagId) { [weak self] result in
             guard let self = self else { return }
@@ -2393,7 +2194,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 if let firstPlaylist = playlists.first,
                    let playlistId = firstPlaylist["id"] as? String ?? (firstPlaylist["id"] as? Int).map({ String($0) }),
                    let playlistName = firstPlaylist["name"] as? String {
-                    print("✅ [CarPlay][Siri] Found \(playlists.count) playlists for tag, playing first: \(playlistName)")
                     self.playMediaByType(mediaType: "playlist", itemId: playlistId, itemName: playlistName, fromNative: true)
                 } else {
                     print("⚠️ [CarPlay][Siri] No playlists found for tag \(tagName)")
@@ -2406,8 +2206,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     
     /// Search offline content when network is unavailable
     private func searchOffline(query: String) {
-        print("🔍 [CarPlay][Siri] Searching offline for: '\(query)'")
-        
         let queryLower = query.lowercased()
         let offlineItems = CDVPlaylistProvider.loadOfflineLibrary()
         
@@ -2424,10 +2222,7 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         
         let itemType = CDVPlaylistProvider.getOfflineItemType(item)
         let itemId = CDVPlaylistProvider.getOfflineItemId(item)
-        let itemTitle = CDVPlaylistProvider.getOfflineItemTitle(item)
-        
-        print("✅ [CarPlay][Siri] Found offline match: \(itemTitle) (type=\(itemType), id=\(itemId))")
-        
+
         // Load and play offline tracks (fromSiri: true to notify JS about native queue update)
         loadOfflineTracksAndPlay(itemType: itemType, itemId: itemId, itemDict: item, fromSiri: true)
     }
@@ -2441,25 +2236,20 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
       // CRITICAL: Don't try to push template if root template isn't set yet
       // This prevents the crash: "Attempting to push a template without a root template"
       guard isRootTemplateSet else {
-        print("[CarPlay] showNowPlayingTemplate: root template not set yet, skipping")
         return
       }
 
       let now = CPNowPlayingTemplate.shared
-      print("[CarPlay] showNowPlayingTemplate: presenting")
       DispatchQueue.main.async {
         if self.isPresentingNowPlaying || self.isNowPlayingShown || controller.topTemplate === now {
-            print("[CarPlay] showNowPlayingTemplate: already shown, skipping push")
             return
         }
         // Ensure we have a current track; otherwise, retry briefly to avoid presenting a blank Now Playing
         if self.musicPlayer.currentTrack == nil {
             if self.nowPlayingRetryCount < 3 {
                 self.nowPlayingRetryCount += 1
-                print("[CarPlay] showNowPlayingTemplate: no track yet, retry #\(self.nowPlayingRetryCount) in 0.5s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showNowPlayingTemplate() }
             } else {
-                print("[CarPlay] showNowPlayingTemplate: giving up after retries due to no track")
                 self.nowPlayingRetryCount = 0
             }
             return
@@ -2471,10 +2261,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if !(hasTitle || hasArtist) {
             if self.nowPlayingRetryCount < 5 {
                 self.nowPlayingRetryCount += 1
-                print("[CarPlay] showNowPlayingTemplate: missing title/artist in NowPlayingInfo, retry #\(self.nowPlayingRetryCount) in 0.3s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.showNowPlayingTemplate() }
             } else {
-                print("[CarPlay] showNowPlayingTemplate: proceeding without visible metadata after retries")
                 self.nowPlayingRetryCount = 0
             }
             return
@@ -2483,10 +2271,8 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         if !self.musicPlayer.isCurrentItemReady() {
             if self.nowPlayingRetryCount < 7 {
                 self.nowPlayingRetryCount += 1
-                print("[CarPlay] showNowPlayingTemplate: player item not ready, retry #\(self.nowPlayingRetryCount) in 0.2s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.showNowPlayingTemplate() }
             } else {
-                print("[CarPlay] showNowPlayingTemplate: proceeding even though item not ready (after retries)")
                 self.nowPlayingRetryCount = 0
             }
             return
@@ -2513,7 +2299,6 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
         // Single re-apply after presentation to avoid races (no clearing this time)
         DispatchQueue.main.asyncAfter(deadline: .now() + pushDelay + 0.15) {
-            print("[CarPlay] showNowPlayingTemplate: reapply NowPlayingInfo (post-push)")
             self.musicPlayer.updateNowPlayingInfo()
         }
         // Removed extra minimal nudge and pop/push repaint to avoid visible flicker

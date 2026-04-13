@@ -1,7 +1,6 @@
 package com.kuackmedia.androidauto.api
 
 import android.content.SharedPreferences
-import android.util.Log
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -39,11 +38,6 @@ class TokenInterceptor(
                 .addHeader("X-KUACK-APP", appKuackCode ?: "")
                 .addHeader("content-type", "application/json")
                 .build()
-
-            Log.i("TokenInterceptor", request.headers.toString())
-            Log.i("TokenInterceptor", accessToken)
-            Log.i("TokenInterceptor", refreshToken.toString())
-            Log.i("TokenInterceptor", appKuackCode ?: "No App-Kuack-Code found")
         }
 
         val response = chain.proceed(request)
@@ -54,7 +48,6 @@ class TokenInterceptor(
 
             val newToken = refreshAuthToken(refreshToken.toString(), appKuackCode.toString()) // Call /auth/ping
 
-            Log.i("TokenInterceptor", "NEW TOKEN: $newToken")
             return if (newToken != null) {
                 val newRequest = request.newBuilder()
                     .removeHeader("Authorization")
@@ -92,7 +85,6 @@ class TokenInterceptor(
             client.newCall(request).execute().use { pingResponse ->
                 val responseBody = pingResponse.body?.string()
                 if (!responseBody.isNullOrEmpty()) {
-                    Log.i("TokenInterceptor", "Refresh response: $responseBody")
                     val json = JSONObject(responseBody)
                     val newToken = json.getString("accessToken")
                     val refreshToken = json.getString("refreshToken")

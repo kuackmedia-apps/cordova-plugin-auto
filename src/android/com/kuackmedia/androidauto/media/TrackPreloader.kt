@@ -40,7 +40,6 @@ object TrackPreloader {
       try {
         val queue = mediaSession.controller.queue
         if (queue.isNullOrEmpty()) {
-          Log.w(TAG, "[PRELOAD] Queue is empty, nothing to preload")
           return@launch
         }
 
@@ -65,14 +64,12 @@ object TrackPreloader {
           // Skip if already in user's offline directory
           val offlineFile = File(context.filesDir, "offline/$trackId.mp3")
           if (offlineFile.exists()) {
-            Log.d(TAG, "[PRELOAD] Track $trackId already offline, skip")
             continue
           }
 
           // Skip if already cached
           val cacheFile = File(context.filesDir, "$CACHE_DIR/$trackId.mp3")
           if (cacheFile.exists()) {
-            Log.d(TAG, "[PRELOAD] Track $trackId already cached, skip")
             continue
           }
 
@@ -83,11 +80,8 @@ object TrackPreloader {
         cleanupOutsideWindow(context, windowTrackIds)
 
         if (tracksToPreload.isEmpty()) {
-          Log.i(TAG, "[PRELOAD] All tracks in window are available, nothing to download")
           return@launch
         }
-
-        Log.i(TAG, "[PRELOAD] Starting preload of ${tracksToPreload.size} tracks (window: ${currentIndex + 1} to ${minOf(currentIndex + PRELOAD_WINDOW, queueSize - 1)})")
 
         // Ensure cache directory exists
         val cacheDir = File(context.filesDir, CACHE_DIR)
@@ -97,20 +91,17 @@ object TrackPreloader {
 
         // Clean up orphan .tmp files
         cacheDir.listFiles()?.filter { it.name.endsWith(".tmp") }?.forEach { tmpFile ->
-          Log.d(TAG, "[PRELOAD] Deleting orphan tmp file: ${tmpFile.name}")
           tmpFile.delete()
         }
 
         // Download sequentially
         for (track in tracksToPreload) {
           if (!isActive) {
-            Log.i(TAG, "[PRELOAD] Job cancelled, stopping")
             return@launch
           }
 
           // Wait while player is buffering
           while (isBuffering && isActive) {
-            Log.d(TAG, "[PRELOAD] Player is buffering, pausing preload...")
             delay(BUFFERING_CHECK_INTERVAL_MS)
           }
 
@@ -118,10 +109,8 @@ object TrackPreloader {
 
           downloadTrack(context, track)
         }
-
-        Log.i(TAG, "[PRELOAD] Preload complete")
       } catch (e: CancellationException) {
-        Log.i(TAG, "[PRELOAD] Job cancelled")
+        // Job cancelled
       } catch (e: Exception) {
         Log.e(TAG, "[PRELOAD] Error: ${e.message}", e)
       }
@@ -133,8 +122,6 @@ object TrackPreloader {
    */
   private suspend fun downloadTrack(context: Context, track: PreloadTrackInfo) {
     try {
-      Log.i(TAG, "[DOWNLOAD] Fetching URL for track ${track.trackId}")
-
       // 1. Get signed URL from API
       val api = ServiceFactory.create(context)
       val payload = TrackRequest(
@@ -146,7 +133,6 @@ object TrackPreloader {
         extraLife = false,
       )
       val signedUrl = api.getTrackUrl(payload).signedUrl
-      Log.i(TAG, "[DOWNLOAD] Got URL for track ${track.trackId}, downloading...")
 
       // 2. Download to temp file
       val cacheDir = File(context.filesDir, CACHE_DIR)
@@ -169,7 +155,6 @@ object TrackPreloader {
               output.write(buffer, 0, bytesRead)
               totalBytes += bytesRead
             }
-            Log.i(TAG, "[DOWNLOAD] Downloaded ${totalBytes / 1024}KB for track ${track.trackId}")
           }
         }
 
@@ -177,14 +162,12 @@ object TrackPreloader {
         if (tmpFile.exists() && tmpFile.length() > 0) {
           val renamed = tmpFile.renameTo(finalFile)
           if (renamed) {
-            Log.i(TAG, "[DOWNLOAD] Cached track ${track.trackId} (${finalFile.length() / 1024}KB)")
+            // Renamed successfully
           } else {
             tmpFile.copyTo(finalFile, overwrite = true)
             tmpFile.delete()
-            Log.i(TAG, "[DOWNLOAD] Cached track ${track.trackId} via copy fallback")
           }
         } else {
-          Log.w(TAG, "[DOWNLOAD] Temp file empty or missing for track ${track.trackId}")
           tmpFile.delete()
         }
       }
@@ -213,7 +196,6 @@ object TrackPreloader {
       val trackId = file.nameWithoutExtension
       if (trackId !in windowTrackIds) {
         file.delete()
-        Log.d(TAG, "[CLEANUP] Removed ${file.name} (outside window)")
       }
     }
   }
@@ -227,7 +209,6 @@ object TrackPreloader {
     if (cacheDir.exists()) {
       val count = cacheDir.listFiles()?.size ?: 0
       cacheDir.deleteRecursively()
-      Log.i(TAG, "[CLEAR_CACHE] Deleted $count cached files")
     }
   }
 

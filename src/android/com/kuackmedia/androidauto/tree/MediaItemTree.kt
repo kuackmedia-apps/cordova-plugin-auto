@@ -63,10 +63,8 @@ object MediaItemTree {
     isInitialized = true
 
     val navigationData = loadNavigationData(context)
-    Log.i(TAG, "[INITIALIZE] Navigation data loaded: ${navigationData.size} items")
     buildNavigationMenu(navigationData, context)
     val rootChildren = getChildren(ROOT_ID)
-    Log.i(TAG, "[INITIALIZE] Root children after build: ${rootChildren.size}")
   }
 
   /**
@@ -75,8 +73,6 @@ object MediaItemTree {
    * Use this when navigation data has been updated and needs to be refreshed.
    */
   fun refresh(context: Context) {
-    Log.i(TAG, "[REFRESH] Starting navigation refresh...")
-
     // Clear all existing data
     treeNodes.clear()
     offlineNodes.clear()
@@ -89,7 +85,6 @@ object MediaItemTree {
     // Reinitialize with current musicApi
     if (::musicApi.isInitialized) {
       initialize(context, musicApi)
-      Log.i(TAG, "[REFRESH] Navigation refresh completed successfully")
     } else {
       Log.e(TAG, "[REFRESH] Cannot refresh - musicApi not initialized")
     }
@@ -97,7 +92,6 @@ object MediaItemTree {
 
   private fun loadNavigationData(context: Context): List<NavigationData> {
     val jsonFile = File(context.filesDir, "AUTO_NAVIGATION")
-    Log.i(TAG, "Ruta del archivo JSON: AUTO_NAVIGATION - " + jsonFile.absolutePath)
 
     if (!jsonFile.exists()) {
       Log.e(TAG, "El archivo AUTO_NAVIGATION no existe.")
@@ -147,8 +141,6 @@ object MediaItemTree {
 
   private fun loadNavigationDataChildren(context: Context, fileName: String):
     List<MediaBrowserCompat.MediaItem> {
-    Log.i(TAG, "Trying to parse $fileName")
-
     var result: List<MediaBrowserCompat.MediaItem>? = emptyList()
     val jsonFile = File(context.filesDir, fileName)
 
@@ -199,14 +191,6 @@ object MediaItemTree {
         rawItems?.forEachIndexed { idx, rawItem ->
           try {
             val itemJson = anyAdapter.toJson(rawItem)
-            // Debug: log type and itemType for each raw item
-            val rawMap = rawItem as? Map<*, *>
-            val rawType = rawMap?.get("type") as? String
-            val rawData = rawMap?.get("data") as? Map<*, *>
-            val rawItemType = rawData?.get("itemType") as? String
-            val rawId = rawData?.get("id")
-            Log.d(TAG, "[RECENT_LISTENED] item[$idx] type=$rawType itemType=$rawItemType id=$rawId idClass=${rawId?.javaClass?.simpleName}")
-
             val item = itemAdapter.fromJson(itemJson)
             if (item != null) items.add(item)
           } catch (e: Exception) {
@@ -217,7 +201,6 @@ object MediaItemTree {
             Log.w(TAG, "[RECENT_LISTENED] Skipping item[$idx] type=$rawType itemType=$rawItemType: ${e.message}")
           }
         }
-        Log.i(TAG, "[RECENT_LISTENED] Parsed ${items.size}/$total items from file")
         result = items
           .filter { it.data !is EmptyModel }
           .filter { it.data.itemType != "track" }
@@ -229,7 +212,6 @@ object MediaItemTree {
               null
             }
           }
-        Log.i(TAG, "[RECENT_LISTENED] After filtering: ${result.size} items")
         if (result.isNotEmpty()) {
           result.forEach { item ->
             val mediaId = item.mediaId ?: return@forEach
@@ -246,11 +228,9 @@ object MediaItemTree {
         val listType = Types.newParameterizedType(List::class.java, AutoNavigationExplorer::class.java)
         val adapter: JsonAdapter<List<AutoNavigationExplorer>> = moshi.adapter(listType)
         val libraryItems: List<AutoNavigationExplorer>? = adapter.fromJson(jsonArray)
-        Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] Parsed ${libraryItems?.size ?: 0} sections")
 
         if (libraryItems != null && libraryItems.isNotEmpty()) {
           libraryItems.forEach { libraryItem ->
-            Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] Section: ${libraryItem.text}, mediaId: ${libraryItem.mediaId}, items: ${libraryItem.items.size}")
             val libraryMediaItem = MediaItemFactory.createBrowsable(
               mediaId = libraryItem.mediaId,
               title = libraryItem.text,
@@ -266,29 +246,21 @@ object MediaItemTree {
             }
             treeNodes["AUTO_NAVIGATION_LIBRARY_MENU"]?.addChild(libraryMediaId)
 
-            var parsedCount = 0
-            var emptyCount = 0
             libraryItem.items.forEach { item ->
               try {
-                Log.d(TAG, "[AUTO_NAVIGATION_LIBRARY] Item itemType=${item.itemType}, class=${item::class.simpleName}")
                 val categoryMediaItem = MediaItemFactory.parseMediaItems(item, "", context)
                 if (categoryMediaItem != null) {
-                  parsedCount++
                   val categoryMediaId = categoryMediaItem.mediaId ?: return@forEach
                   treeNodes[categoryMediaId] = MediaItemNode(categoryMediaItem)
                   treeNodes[categoryMediaId]?.let { node ->
                     titleMap[categoryMediaItem.description.title.toString()] = node
                   }
                   treeNodes[libraryMediaId]?.addChild(categoryMediaId)
-                } else {
-                  emptyCount++
                 }
               } catch (e: Exception) {
-                emptyCount++
                 Log.w(TAG, "Failed to parse library category item: ${e.message}")
               }
             }
-            Log.i(TAG, "[AUTO_NAVIGATION_LIBRARY] ${libraryItem.text}: parsed=$parsedCount, empty/failed=$emptyCount")
           }
         }
       }
@@ -296,11 +268,9 @@ object MediaItemTree {
         val listType = Types.newParameterizedType(List::class.java, AutoNavigationExplorer::class.java)
         val adapter: JsonAdapter<List<AutoNavigationExplorer>> = moshi.adapter(listType)
         val homeItems: List<AutoNavigationExplorer>? = adapter.fromJson(jsonArray)
-        Log.i(TAG, "[AUTO_NAVIGATION_HOME] Parsed ${homeItems?.size ?: 0} sections")
 
         if (homeItems != null && homeItems.isNotEmpty()) {
           homeItems.forEach { homeItem ->
-            Log.i(TAG, "[AUTO_NAVIGATION_HOME] Section: ${homeItem.text}, mediaId: ${homeItem.mediaId}, items: ${homeItem.items.size}")
             val homeMediaItem = MediaItemFactory.createBrowsable(
               mediaId = homeItem.mediaId,
               title = homeItem.text,
@@ -316,29 +286,21 @@ object MediaItemTree {
             }
             treeNodes["AUTO_NAVIGATION_HOME_MENU"]?.addChild(homeMediaId)
 
-            var parsedCount = 0
-            var emptyCount = 0
             homeItem.items.forEach { item ->
               try {
-                Log.d(TAG, "[AUTO_NAVIGATION_HOME] Item itemType=${item.itemType}, class=${item::class.simpleName}")
                 val categoryMediaItem = MediaItemFactory.parseMediaItems(item, "", context)
                 if (categoryMediaItem != null) {
-                  parsedCount++
                   val categoryMediaId = categoryMediaItem.mediaId ?: return@forEach
                   treeNodes[categoryMediaId] = MediaItemNode(categoryMediaItem)
                   treeNodes[categoryMediaId]?.let { node ->
                     titleMap[categoryMediaItem.description.title.toString()] = node
                   }
                   treeNodes[homeMediaId]?.addChild(categoryMediaId)
-                } else {
-                  emptyCount++
                 }
               } catch (e: Exception) {
-                emptyCount++
                 Log.w(TAG, "Failed to parse home category item: ${e.message}")
               }
             }
-            Log.i(TAG, "[AUTO_NAVIGATION_HOME] ${homeItem.text}: parsed=$parsedCount, empty/failed=$emptyCount")
           }
         }
       }
@@ -363,7 +325,6 @@ object MediaItemTree {
       if (result != null && result.isNotEmpty()) {
         result.forEach { item ->
           val mediaId = item.mediaId ?: return@forEach
-          Log.i(TAG, "Adding offline item: ${item.description.title} - $mediaId")
           offlineNodes[mediaId] = MediaItemNode(item)
           offlineNodes[mediaId]?.let { node ->
             offlineTitleMap[item.description.title.toString()] = node
@@ -427,7 +388,6 @@ object MediaItemTree {
     val iconStringPath = "img/auto-offline.png"
     val iconFile = File(context.filesDir, iconStringPath)
     val exists = iconFile.exists()
-    Log.i(MusicLibraryService.Companion.TAG, "createBrowsable Icon $iconStringPath local: $exists")
     val bmp = BitmapFactory.decodeFile(iconFile.absolutePath)
 
     val offlineItem = MediaBrowserCompat.MediaItem(
@@ -463,7 +423,6 @@ object MediaItemTree {
       loginMessage = "Log in to see your music"
       Log.w(TAG, "[getLoginRequiredMediaItem] no_credential_message not found, using fallback")
     }
-    Log.i(TAG, "[getLoginRequiredMediaItem] loginMessage='$loginMessage'")
 
     // Use FLAG_PLAYABLE so Android Auto doesn't try to browse into it
     // This will show the item but clicking it won't navigate anywhere
@@ -486,7 +445,6 @@ object MediaItemTree {
     val prefs = context.getSharedPreferences("NativeStorage", Context.MODE_PRIVATE)
     val refreshToken = prefs.getString("REFRESH_TOKEN_KEY", null)?.replace("\"", "")
     val isLoggedIn = !refreshToken.isNullOrEmpty()
-    Log.d(TAG, "[isUserLoggedIn] refreshToken=${if (refreshToken.isNullOrEmpty()) "null/empty" else "present"}, isLoggedIn=$isLoggedIn")
     return isLoggedIn
   }
 
@@ -695,7 +653,6 @@ object MediaItemTree {
   }
 
   fun getChildren(id: String): List<MediaBrowserCompat.MediaItem> {
-    Log.i(TAG, "getChildren $id ")
     return treeNodes[id]?.getChildren() ?: listOf()
   }
 
@@ -704,27 +661,20 @@ object MediaItemTree {
     itemId: String,
     context: Context
   ): List<MediaBrowserCompat.MediaItem> {
-    Log.i(TAG, "[OFFLINE_TRACKS_START] Starting to load offline tracks - mediaType: $mediaType, itemId: $itemId")
     val result: MutableList<MediaBrowserCompat.MediaItem> = mutableListOf()
 
     // Read and parse OFFLINE_TRACKS file
     val jsonFile = File(context.filesDir, "OFFLINE_TRACKS")
-    Log.d(TAG, "[OFFLINE_TRACKS_FILE_CHECK] Checking file path: ${jsonFile.absolutePath}")
 
     if (!jsonFile.exists()) {
       Log.e(TAG, "[OFFLINE_TRACKS_FILE_NOT_FOUND] File OFFLINE_TRACKS does not exist at: ${jsonFile.absolutePath}")
       return emptyList()
     }
 
-    Log.i(TAG, "[OFFLINE_TRACKS_FILE_FOUND] File exists, size: ${jsonFile.length()} bytes")
-
     try {
-      Log.d(TAG, "[OFFLINE_TRACKS_READ_START] Reading file content...")
       val jsonContent = jsonFile.readText(Charsets.UTF_8)
-      Log.i(TAG, "[OFFLINE_TRACKS_READ_SUCCESS] File read successfully, content length: ${jsonContent.length} characters")
 
       // Parse JSON as Map<String, OfflineTrack>
-      Log.d(TAG, "[OFFLINE_TRACKS_PARSE_START] Initializing Moshi parser...")
       val moshi = Moshi.Builder()
         .add(MediaItem::class.java, MediaItemJsonAdapter(
           Moshi.Builder()
@@ -741,7 +691,6 @@ object MediaItemTree {
       )
       val adapter: JsonAdapter<Map<String, OfflineTrack>> = moshi.adapter(mapType)
 
-      Log.d(TAG, "[OFFLINE_TRACKS_PARSE_JSON] Parsing JSON content...")
       val offlineTracksMap: Map<String, OfflineTrack>? = adapter.fromJson(jsonContent)
 
       if (offlineTracksMap == null) {
@@ -749,12 +698,8 @@ object MediaItemTree {
         return emptyList()
       }
 
-      Log.i(TAG, "[OFFLINE_TRACKS_PARSE_SUCCESS] Successfully parsed ${offlineTracksMap.size} track entries from JSON")
-
       // Extract itemId from parentId (e.g., "item_album_38048" -> "38048")
-      Log.d(TAG, "[OFFLINE_TRACKS_EXTRACT_ID] Extracting target ID from itemId: $itemId")
       val idParts = itemId.split("_")
-      Log.d(TAG, "[OFFLINE_TRACKS_ID_PARTS] Split itemId into parts: $idParts (size: ${idParts.size})")
 
       val targetId = if (idParts.size > 2) idParts[2].toIntOrNull() else null
 
@@ -763,35 +708,20 @@ object MediaItemTree {
         return emptyList()
       }
 
-      Log.i(TAG, "[OFFLINE_TRACKS_TARGET_ID] Extracted target ID: $targetId for mediaType: $mediaType")
+      // Build parentData so tapped tracks know their parent context (ALBUM/PLAYLIST)
+      val cleanItemId = if (idParts.size > 2) idParts[2] else itemId
+      val parentTitle = getItem(itemId)?.description?.title?.toString() ?: ""
+      val parentData = "{" +
+        " \"id\": \"$cleanItemId\",\n" +
+        "  \"type\": \"${mediaType.uppercase()}\",\n" +
+        "  \"name\": \"$parentTitle\"" +
+        "}"
 
       // Filter tracks based on mediaType and itemId
-      Log.d(TAG, "[OFFLINE_TRACKS_FILTER_START] Starting to filter tracks...")
-      var matchedCount = 0
-      var processedCount = 0
-
       offlineTracksMap.forEach { (trackId, offlineTrack) ->
-        processedCount++
-
-        val albumIds = offlineTrack.albumItemsOffline
-        val playlistIds = offlineTrack.playlistsItemsOffline
-
-        Log.v(TAG, "[OFFLINE_TRACKS_CHECK] Track ID: $trackId, Name: ${offlineTrack.trackData.name}, " +
-                   "Albums: $albumIds, Playlists: $playlistIds")
-
         val shouldInclude = when (mediaType) {
-          "album" -> {
-            val contains = offlineTrack.albumItemsOffline?.contains(targetId) == true
-            Log.v(TAG, "[OFFLINE_TRACKS_ALBUM_CHECK] Track $trackId: albumItemsOffline=$albumIds, " +
-                       "contains($targetId)=$contains")
-            contains
-          }
-          "playlist" -> {
-            val contains = offlineTrack.playlistsItemsOffline?.contains(targetId) == true
-            Log.v(TAG, "[OFFLINE_TRACKS_PLAYLIST_CHECK] Track $trackId: playlistsItemsOffline=$playlistIds, " +
-                       "contains($targetId)=$contains")
-            contains
-          }
+          "album" -> offlineTrack.albumItemsOffline?.contains(targetId) == true
+          "playlist" -> offlineTrack.playlistsItemsOffline?.contains(targetId) == true
           else -> {
             Log.w(TAG, "[OFFLINE_TRACKS_UNKNOWN_TYPE] Unknown mediaType: $mediaType for track $trackId")
             false
@@ -799,14 +729,14 @@ object MediaItemTree {
         }
 
         if (shouldInclude) {
-          matchedCount++
-          Log.d(TAG, "[OFFLINE_TRACKS_MATCH_FOUND] Track $trackId matches criteria, converting to MediaItem...")
-
-          val mediaItem = MediaItemFactory.parseMediaItems(offlineTrack.trackData, "", context)
+          val mediaItem = MediaItemFactory.parseMediaItems(offlineTrack.trackData, parentData, context)
           if (mediaItem != null) {
+            // Register in tree so onPlayFromMediaId can find the track
+            val mid = mediaItem.mediaId
+            if (mid != null) {
+              treeNodes[mid] = MediaItemNode(mediaItem)
+            }
             result.add(mediaItem)
-            Log.i(TAG, "[OFFLINE_TRACKS_ADDED] Successfully added track: '${offlineTrack.trackData.name}' " +
-                       "(ID: ${offlineTrack.trackData.id})")
           } else {
             Log.w(TAG, "[OFFLINE_TRACKS_PARSE_FAILED] Failed to parse track '${offlineTrack.trackData.name}' " +
                        "(ID: ${offlineTrack.trackData.id}) into MediaItem")
@@ -814,16 +744,11 @@ object MediaItemTree {
         }
       }
 
-      Log.i(TAG, "[OFFLINE_TRACKS_FILTER_COMPLETE] Processed $processedCount tracks, found $matchedCount matches, " +
-                 "successfully added ${result.size} tracks")
-      Log.i(TAG, "[OFFLINE_TRACKS_RESULT] Final result for $mediaType ID $targetId: ${result.size} tracks")
-
     } catch (e: Exception) {
       Log.e(TAG, "[OFFLINE_TRACKS_ERROR] Exception occurred while loading offline tracks: ${e.message}", e)
       Log.e(TAG, "[OFFLINE_TRACKS_STACK_TRACE] ${e.stackTraceToString()}")
     }
 
-    Log.i(TAG, "[OFFLINE_TRACKS_END] Returning ${result.size} offline tracks for $mediaType ID: $itemId")
     return result
   }
   suspend fun getRemoteChildren(parentId: String, context: Context): List<MediaBrowserCompat.MediaItem> {
@@ -833,26 +758,24 @@ object MediaItemTree {
 
     // Check network availability
     if (!MusicLibraryService.isNetworkEnabled(context)) {
-      Log.w(TAG, "No network available, attempting to load offline tracks for $parentId - $mediaType")
-
       if (mediaType != null) {
         val offlineTracks = loadOfflineTracksByMediaTypeMediaId(mediaType, parentId, context)
         if (offlineTracks.isNotEmpty()) {
-          Log.i(TAG, "Returning ${offlineTracks.size} offline tracks for $parentId")
-          return offlineTracks
+          // Add Play All / Shuffle action items (same as online flow)
+          val idParts = parentId.split("_")
+          val cleanItemId = if (idParts.size > 2) idParts[2] else parentId
+          val parentTitle = parent?.description?.title?.toString() ?: ""
+          val actionItems = buildActionItems(mediaType, cleanItemId, parentTitle)
+          return actionItems + offlineTracks
         }
       }
 
-      Log.w(TAG, "No offline tracks found, returning empty list for remote children")
       return emptyList()
     }
-
-    Log.i(TAG, "Trying to load remote children for $parentId - $mediaType")
 
     //receive item_playlist_5232 return 5232
     val idParts = parentId.split("_")
     val itemId = if (idParts.size > 2) idParts[2] else parentId;
-    Log.i(TAG, "Trying to load remote children for $itemId - $mediaType")
     when (mediaType) {
       "playlist" -> {
         val parentData = "{" +
@@ -926,10 +849,8 @@ object MediaItemTree {
       }
 
       "podcast" -> {
-        Log.i(TAG, "[PODCAST_EPISODES_START] Fetching episodes for podcast $itemId")
         try {
           val response = this.musicApi.getPodcastEpisodes(itemId)
-          Log.i(TAG, "[PODCAST_EPISODES_RESPONSE] id=${response.id}, title=${response.title}, episodesCount=${response.episodesCount}, episodes=${response.episodes?.size ?: "null"}")
           result = response.episodes?.mapNotNull { episode ->
             try {
               val mediaItem = MediaItemFactory.parseMediaItems(episode, "", context)
@@ -943,14 +864,12 @@ object MediaItemTree {
               null
             }
           } ?: emptyList()
-          Log.i(TAG, "[PODCAST_EPISODES_END] Parsed ${result.size} episodes for podcast $itemId")
         } catch (e: Exception) {
           Log.e(TAG, "[PODCAST_EPISODES_ERROR] Exception fetching episodes for podcast $itemId: ${e.message}", e)
           result = emptyList()
         }
       }
     }
-    Log.i(TAG, "Remote children for $parentId - $mediaType size is ${result.size}")
     return result
   }
 

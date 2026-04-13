@@ -8,11 +8,9 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     
     override init() {
         super.init()
-        print("[CarPlay][SceneDelegate] init")
     }
 
     deinit {
-        print("[CarPlay][SceneDelegate] deinit - scene being deallocated")
         // NOTE: Do NOT send disconnect notification here.
         // Real disconnection is reliably handled by:
         // 1. templateApplicationScene(_:didDisconnect:) - CPTemplateApplicationSceneDelegate protocol
@@ -21,13 +19,10 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
-        print("[CarPlay][SceneDelegate] didConnect invoked")
         self.carPlayScene = templateApplicationScene
         if let plugin = CDVAutoMusicPlugin.sharedInstance(), let manager = plugin.carPlayManager {
-            print("[CarPlay][SceneDelegate] forwarding didConnect to manager")
             manager.templateApplicationScene(templateApplicationScene, didConnect: interfaceController)
         } else {
-            print("[CarPlay][SceneDelegate] plugin/manager unavailable, presenting fallback list template")
             // Fallback: show a simple template so CarPlay UI isn't blank
             let item = CPListItem(text: "Sample Song", detailText: "Sample Artist")
             let section = CPListSection(items: [item])
@@ -35,61 +30,48 @@ class CDVCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             DispatchQueue.main.async {
                 interfaceController.setRootTemplate(list, animated: true) { success, error in
                     if let error = error { print("[CarPlay][SceneDelegate] setRootTemplate fallback error: \(error)") }
-                    else { print("[CarPlay][SceneDelegate] setRootTemplate fallback success: \(success)") }
                 }
             }
         }
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnect interfaceController: CPInterfaceController) {
-        print("[CarPlay][SceneDelegate] didDisconnect invoked")
         if let plugin = CDVAutoMusicPlugin.sharedInstance(), let manager = plugin.carPlayManager {
-            print("[CarPlay][SceneDelegate] forwarding didDisconnect to manager")
             manager.templateApplicationScene(templateApplicationScene, didDisconnect: interfaceController)
         }
         self.carPlayScene = nil
     }
-    
+
     func sceneWillResignActive(_ scene: UIScene) {
-        print("[CarPlay][SceneDelegate] sceneWillResignActive - CarPlay going inactive")
     }
-    
+
     func sceneDidEnterBackground(_ scene: UIScene) {
-        print("[CarPlay][SceneDelegate] sceneDidEnterBackground - CarPlay scene in background (another app in foreground)")
         // NOTE: Do NOT send disconnect notification here!
         // sceneDidEnterBackground is called when user switches to another app in CarPlay (Maps, Messages, etc.)
         // but CarPlay is still connected and music continues playing.
         // Real disconnection is handled by didDisconnect() and UIScene.didDisconnectNotification
     }
-    
+
     func sceneWillEnterForeground(_ scene: UIScene) {
-        print("[CarPlay][SceneDelegate] sceneWillEnterForeground - CarPlay entering foreground")
     }
-    
+
     func sceneDidBecomeActive(_ scene: UIScene) {
-        print("[CarPlay][SceneDelegate] sceneDidBecomeActive - CarPlay became active")
     }
-    
+
     // MARK: - Siri Intent Handling for CarPlay
-    
+
     /// Called when Siri triggers a user activity while CarPlay scene is active
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-        print("🎤 [CarPlay][SceneDelegate] scene continue userActivity: \(userActivity.activityType)")
         handleCarPlaySiriIntent(userActivity)
     }
-    
+
     /// Handle Siri user activity in CarPlay context
     private func handleCarPlaySiriIntent(_ userActivity: NSUserActivity) {
-        print("🎤 [CarPlay][SceneDelegate] handleCarPlaySiriIntent: \(userActivity.activityType)")
-        
         if userActivity.activityType == "INPlayMediaIntent" {
-            print("🎤 [CarPlay][SceneDelegate] Detected INPlayMediaIntent from Siri in CarPlay!")
-            
             if let plugin = CDVAutoMusicPlugin.sharedInstance() {
-                print("🎤 [CarPlay][SceneDelegate] Forwarding Siri intent to plugin (CarPlay active)")
                 plugin.handleSiriIntent(userActivity: userActivity)
             } else {
-                print("⚠️ [CarPlay][SceneDelegate] Plugin not available")
+                print("⚠️ [CarPlay][SceneDelegate] Plugin not available for Siri intent")
             }
         }
     }

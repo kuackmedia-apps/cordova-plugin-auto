@@ -72,7 +72,6 @@ class CDVQueueStorage {
         let path = playlistDataFilePath()
         guard let data = data else {
             try? FileManager.default.removeItem(atPath: path)
-            print("[QueueStorage] Removed PLAYLIST_DATA")
             return
         }
         do {
@@ -83,7 +82,6 @@ class CDVQueueStorage {
                 jsonData = unescaped.data(using: .utf8) ?? jsonData
             }
             try jsonData.write(to: URL(fileURLWithPath: path), options: .atomic)
-            print("[QueueStorage] Wrote playlist_data: \(data)")
         } catch {
             print("[QueueStorage][ERROR] Failed to write playlist_data: \(error.localizedDescription)")
         }
@@ -114,7 +112,6 @@ class CDVQueueStorage {
         let path = currentEpisodeFilePath()
         guard let data = data else {
             try? FileManager.default.removeItem(atPath: path)
-            print("[QueueStorage] Removed current_episode")
             return
         }
         do {
@@ -126,7 +123,6 @@ class CDVQueueStorage {
                 jsonData = unescaped.data(using: .utf8) ?? jsonData
             }
             try jsonData.write(to: URL(fileURLWithPath: path), options: .atomic)
-            print("[QueueStorage] Wrote current_episode")
         } catch {
             print("[QueueStorage][ERROR] Failed to write current_episode: \(error.localizedDescription)")
         }
@@ -249,9 +245,6 @@ class CDVQueueStorage {
     static func loadQueueFromDisk(usingAttributes providedAttributes: [FileAttributeKey: Any]? = nil) -> ([[String: Any]], String?, Date?) {
         let path = queueFilePath()
 
-        let dir = queueDirectory()
-        print("[QueueStorage][diag] loadQueueFromDisk(): dir=\(dir) file=\(path)")
-
         let exists = FileManager.default.fileExists(atPath: path)
         var attributes: [FileAttributeKey: Any]? = providedAttributes
         if attributes == nil, exists {
@@ -259,30 +252,16 @@ class CDVQueueStorage {
         }
 
         guard exists else {
-            print("[QueueStorage][diag] queue file not found at \(path) currentId=\(currentTrackId() ?? "<nil>")")
             return ([], currentTrackId(), nil)
         }
         do {
             let data = try Data(contentsOf: URL(fileURLWithPath: path))
-            if let attrs = attributes {
-                let size = attrs[.size] as? NSNumber
-                let modified = attrs[.modificationDate] as? Date
-                print("[QueueStorage][diag] queue file exists size=\(size?.intValue ?? -1) modified=\(modified?.description ?? "<nil>")")
-            }
             guard let jsonArray = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] else {
                 print("[QueueStorage][ERROR] invalid JSON array at \(path)")
                 return ([], currentTrackId(), attributes?[.modificationDate] as? Date)
             }
             // Return items in their original format: [{ "data": { ...track... } }, ...]
-            // Extract preview info for logging
-            let idsPreview = jsonArray.prefix(4).compactMap { elem -> String? in
-                guard let d = elem["data"] as? [String: Any] else { return nil }
-                let title = (d["name"] as? String) ?? (d["title"] as? String) ?? "<untitled>"
-                let idAlbum = String(describing: d["idAlbumTrack"] ?? d["id"] ?? "")
-                return idAlbum.isEmpty ? title : "\(title) [\(idAlbum)]"
-            }.joined(separator: " | ")
             let currentId = currentTrackId()
-            print("[QueueStorage][diag] loaded items=\(jsonArray.count) currentId=\(currentId ?? "<nil>") preview=\(idsPreview)")
             let modified = attributes?[.modificationDate] as? Date
             return (jsonArray, currentId, modified)
         } catch {

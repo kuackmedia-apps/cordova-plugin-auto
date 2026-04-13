@@ -35,7 +35,6 @@ class CDVLocalStorageUtils: NSObject {
     /// - Returns: The local file path or nil if not found
     @objc static func getLocalTrackPath(_ trackId: String) -> String? {
         guard !trackId.isEmpty else {
-            print("\(TAG) getLocalTrackPath: empty trackId")
             return nil
         }
 
@@ -44,18 +43,15 @@ class CDVLocalStorageUtils: NSObject {
         // Check in Documents/offline/ (primary location used by Cordova)
         let documentsOfflinePath = (documentsPath as NSString).appendingPathComponent("offline/\(filename)")
         if FileManager.default.fileExists(atPath: documentsOfflinePath) {
-            print("\(TAG) Found local track at: \(documentsOfflinePath)")
             return documentsOfflinePath
         }
 
         // Check in Library/NoCloud/offline/ (alternative location)
         let noCloudOfflinePath = (noCloudPath as NSString).appendingPathComponent("offline/\(filename)")
         if FileManager.default.fileExists(atPath: noCloudOfflinePath) {
-            print("\(TAG) Found local track at: \(noCloudOfflinePath)")
             return noCloudOfflinePath
         }
 
-        print("\(TAG) Track not found locally: \(trackId)")
         return nil
     }
 
@@ -68,14 +64,11 @@ class CDVLocalStorageUtils: NSObject {
         // First check if track exists locally
         if let localPath = getLocalTrackPath(trackId) {
             let localUrl = URL(fileURLWithPath: localPath)
-            print("\(TAG) Using local track URL: \(localUrl)")
             completion(localUrl)
             return
         }
 
         // Track not local, fetch from API
-        print("\(TAG) Track not local, fetching from API: trackId=\(trackId) idAlbumTrack=\(idAlbumTrack ?? "nil")")
-
         guard !trackId.isEmpty else {
             print("\(TAG) Cannot fetch remote track: invalid trackId")
             completion(nil)
@@ -103,7 +96,6 @@ class CDVLocalStorageUtils: NSObject {
             switch result {
             case .success(let response):
                 if let url = URL(string: response.signedUrl) {
-                    print("\(TAG) Got remote track URL: \(response.signedUrl.prefix(80))...")
                     completion(url)
                 } else {
                     print("\(TAG) Invalid remote track URL")
@@ -126,7 +118,6 @@ class CDVLocalStorageUtils: NSObject {
     /// - Returns: The local file path or nil if not found
     @objc static func getLocalImagePath(itemType: String, itemId: String) -> String? {
         guard !itemType.isEmpty && !itemId.isEmpty else {
-            print("\(TAG) getLocalImagePath: empty itemType or itemId")
             return nil
         }
 
@@ -175,7 +166,6 @@ class CDVLocalStorageUtils: NSObject {
         for (folder, filename) in candidates {
             let path = (documentsPath as NSString).appendingPathComponent("\(folder)/\(filename)")
             if FileManager.default.fileExists(atPath: path) {
-                print("\(TAG) Image found documentPath: type=\(itemType) id=\(itemId)")
                 return path
             }
         }
@@ -184,12 +174,10 @@ class CDVLocalStorageUtils: NSObject {
         for (folder, filename) in candidates {
             let path = (noCloudPath as NSString).appendingPathComponent("\(folder)/\(filename)")
             if FileManager.default.fileExists(atPath: path) {
-                print("\(TAG) Image found cloudPath: type=\(itemType) id=\(itemId)")
                 return path
             }
         }
 
-        print("\(TAG) Image not found locally: type=\(itemType) id=\(itemId)")
         return nil
     }
 

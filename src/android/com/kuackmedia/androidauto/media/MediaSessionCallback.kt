@@ -84,17 +84,13 @@ class MediaSessionCallback(
   }
 
   override fun onPrepare() {
-    Log.d(TAG, "[ON_PREPARE] onPrepare triggered")
-
     // Check PLAYLIST_DATA to determine if current session is podcast or music
     val playlistDataRaw = CurrentMedia.readFileContent(context, PLAYLIST_DATA)
-    Log.i(TAG, "[ON_PREPARE] Raw PLAYLIST_DATA from file: $playlistDataRaw")
     var isPodcastSession = false
     if (playlistDataRaw != null) {
       try {
         val playlistDataJson = JSONObject(playlistDataRaw)
         isPodcastSession = playlistDataJson.optString("type") == "PODCAST"
-        Log.i(TAG, "[ON_PREPARE] PLAYLIST_DATA type: ${playlistDataJson.optString("type")}, isPodcastSession=$isPodcastSession")
       } catch (e: Exception) {
         Log.w(TAG, "[ON_PREPARE] Failed to parse PLAYLIST_DATA: ${e.message}")
       }
@@ -114,8 +110,6 @@ class MediaSessionCallback(
           val showId = episodeJson.optString("showId", "")
           val durationMs = episodeJson.optLong("durationMs", 0L)
           val duration = episodeJson.optString("duration", "0")
-
-          Log.i(TAG, "[ON_PREPARE_PODCAST] episodeId=$episodeId, enclosureUrl=$enclosureUrl")
 
           val extras = Bundle().apply {
             putString("id", episodeId)
@@ -138,8 +132,6 @@ class MediaSessionCallback(
         } catch (e: Exception) {
           Log.e(TAG, "[ON_PREPARE_PODCAST_ERROR] Failed to parse current_episode: ${e.message}", e)
         }
-      } else {
-        Log.w(TAG, "[ON_PREPARE_PODCAST] No current_episode file found")
       }
     } else {
       // Music session: standard queue-based prepare
@@ -147,31 +139,25 @@ class MediaSessionCallback(
       this.currentQueue = QueueManager.getCurrentQueue(this.context)
 
       if(currentQueue !== null) {
-        Log.d(TAG, "[ON_PREPARE] Current queue size: ${currentQueue?.size}")
         val savedTrackId = prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", "")
-        Log.i(TAG, "[ON_PREPARE] Saved track ID from prefs: $savedTrackId")
 
         this.currentTrack =
           CurrentMedia.getCurrentTrackFromQueue(
             savedTrackId,
             this.currentQueue
           )
-        Log.i(TAG, "[ON_PREPARE] Current track from queue: ${this.currentTrack?.mediaId}")
 
         // When onPrepare is called (e.g., when Android Auto connects), we set a flag to prevent auto-play
         // This is not an explicit user action, so the track should be loaded but not played automatically
-        Log.i(TAG, "[ON_PREPARE] Setting isCalledFromOnPrepare flag to prevent auto-play")
         isCalledFromOnPrepare = true
 
         // Enrich extras with parentData from playlist_data so the handler can build the queue title
         val enrichedExtras = Bundle(this.currentTrack?.description?.extras ?: Bundle())
-        Log.i(TAG, "[ON_PREPARE] Track extras parentData BEFORE enrichment: ${enrichedExtras.getString("parentData")}")
         if (playlistDataRaw != null && enrichedExtras.getString("parentData").isNullOrEmpty()) {
           // Pass the original playlist_data directly as parentData — don't normalize.
           // This preserves the full structure (e.g. trackData for TRACK_RADIO)
           // and the original id type (number vs string) that the JS app wrote.
           enrichedExtras.putString("parentData", playlistDataRaw)
-          Log.i(TAG, "[ON_PREPARE] Enriched extras with original PLAYLIST_DATA (preserved full structure)")
         }
 
         this.onPlayFromMediaId(this.currentTrack?.mediaId, enrichedExtras)
@@ -188,10 +174,8 @@ class MediaSessionCallback(
 
       // Check if shouldAutoPlayOnPrepare was already set (e.g., by playCurrentTrack from app)
       if (mediaPlayer.shouldAutoPlayOnPrepare) {
-        Log.i(TAG, "[onPlayFromMediaId] Called from onPrepare with auto-play flag (app request), will auto-play")
         // Keep shouldAutoPlayOnPrepare = true, it was set by playCurrentTrack()
       } else {
-        Log.i(TAG, "[onPlayFromMediaId] Called from onPrepare without auto-play flag (Android Auto connection), NO auto-play")
         // This is just Android Auto connecting, not an explicit play request
         mediaPlayer.currentTrackFromApp = true  // Mark to prevent auto-play in handlePrepare
       }
@@ -200,7 +184,6 @@ class MediaSessionCallback(
       // then enable auto-play
       // Skip methods (onSkipToNext, onSkipToPrevious, onSkipToQueueItem) already set shouldAutoPlayOnPrepare
       if (!mediaPlayer.shouldAutoPlayOnPrepare && !mediaPlayer.currentTrackFromApp) {
-        Log.i(TAG, "[onPlayFromMediaId] Direct call from Android Auto, enabling auto-play")
         mediaPlayer.shouldAutoPlayOnPrepare = true
       }
     }
@@ -208,7 +191,6 @@ class MediaSessionCallback(
     fun getDurationStringLength(length: String?, filePath: String?): Long = getDuration(length, filePath)
 
     if (mediaSessionContext == "MEDIA_AUTOPLAY") {
-      Log.d(TAG, "Blocking autoplay triggered by Android Auto")
       // Optionally reset state or ignore
       return
     }
@@ -221,7 +203,6 @@ class MediaSessionCallback(
       if (parts.size >= 3) {
         val actionMediaType = parts[1]
         val actionItemId = parts[2]
-        Log.i(TAG, "[ACTION_PLAY] action=${if (shouldShuffle) "shuffle" else "play_all"} type=$actionMediaType id=$actionItemId")
 
         val parentItem = MediaItemTree.getItem("item_${actionMediaType}_${actionItemId}")
         val parentName = parentItem?.description?.title?.toString() ?: ""
@@ -242,7 +223,6 @@ class MediaSessionCallback(
                 val mid = item.mediaId ?: ""
                 !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
               }.shuffled()
-              Log.i(TAG, "[ACTION_SHUFFLE] Loaded and shuffled ${tracks.size} tracks")
 
               withContext(Dispatchers.Main) {
                 val loadingState = QueueLoadingState(
@@ -269,7 +249,6 @@ class MediaSessionCallback(
                 "ARTIST" -> MediaItemTree.getArtistTracksPage(actionItemId, parentData, context, limit = 2, offset = 0)
                 else -> MediaItemTree.getAlbumTracksPage(actionItemId, parentData, context, limit = 2, offset = 0)
               }
-              Log.i(TAG, "[ACTION_PLAY_ALL] Loaded ${initialTracks.size} initial tracks")
 
               withContext(Dispatchers.Main) {
                 val loadingState = QueueLoadingState(
@@ -316,7 +295,6 @@ class MediaSessionCallback(
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val initialTracks = MediaItemTree.getArtistTracksPage(artistId, parentData, context, limit = 2, offset = 0)
-          Log.i(TAG, "[ARTIST_PLAY] Loaded ${initialTracks.size} initial tracks for artist $artistId")
           withContext(Dispatchers.Main) {
             val loadingState = QueueLoadingState(
               contentType = "ARTIST",
@@ -336,7 +314,6 @@ class MediaSessionCallback(
 
     // Track play: instant start with selected track + sibling buffer, then incremental loading
     if (mediaType == "track" && mediaId != null) {
-      Log.i(TAG, "[TRACK_PLAY_START] Starting track playback for mediaId: $mediaId")
       val selectedItem = MediaItemTree.getItem(mediaId)
       if (selectedItem != null) {
         val fe = selectedItem.description.extras!!
@@ -374,7 +351,6 @@ class MediaSessionCallback(
                 val selectedIndex = cachedChildren.indexOfFirst { it.mediaId == mediaId }
                 if (selectedIndex >= 0 && selectedIndex + 1 < cachedChildren.size) {
                   initialQueue.add(cachedChildren[selectedIndex + 1])
-                  Log.i(TAG, "[TRACK_PLAY_BUFFER] Added next sibling as buffer track")
                 }
               }
             }
@@ -384,6 +360,51 @@ class MediaSessionCallback(
         }
         if (queueTitle == null) {
           queueTitle = QueueManager.buildQueueTitle("TRACK_RADIO", fe.getString("title") ?: "")
+        }
+
+        // Offline: load ALL tracks at once via getRemoteChildren (handles offline internally)
+        // loadMore() won't work without network, so we must load everything upfront
+        val isOffline = !MusicLibraryService.isNetworkEnabled(context)
+        if (isOffline && pdType.uppercase() in listOf("ALBUM", "PLAYLIST", "MIX", "ARTIST")) {
+          val browsableMediaId = when (pdType.uppercase()) {
+            "ALBUM" -> "item_album_$pdId"
+            "PLAYLIST", "MIX" -> "item_playlist_$pdId"
+            "ARTIST" -> "item_artist_$pdId"
+            else -> null
+          }
+          if (browsableMediaId != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+              try {
+                val allItems = MediaItemTree.getRemoteChildren(browsableMediaId, context)
+                val allTracks = allItems.filter { item ->
+                  val mid = item.mediaId ?: ""
+                  !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
+                }
+                if (allTracks.isNotEmpty()) {
+                  val selectedIndex = allTracks.indexOfFirst { it.mediaId == mediaId }
+                  val reorderedTracks = if (selectedIndex >= 0) {
+                    allTracks.subList(selectedIndex, allTracks.size) + allTracks.subList(0, selectedIndex)
+                  } else {
+                    listOf(selectedItem) + allTracks.filter { it.mediaId != mediaId }
+                  }
+                  withContext(Dispatchers.Main) {
+                    val offlineLoadingState = QueueLoadingState(
+                      contentType = pdType.uppercase(),
+                      contentId = pdId,
+                      contentName = pdName,
+                      parentData = parentDataStr ?: "",
+                      currentOffset = reorderedTracks.size,
+                      hasMore = false
+                    )
+                    startPlaybackWithInitialTracks(reorderedTracks, queueTitle!!, offlineLoadingState)
+                  }
+                }
+              } catch (e: Exception) {
+                Log.e(TAG, "[OFFLINE_TRACK_PLAY] Error loading offline tracks: ${e.message}", e)
+              }
+            }
+            return
+          }
         }
 
         // Determine the QueueLoadingState based on parentData type
@@ -454,7 +475,6 @@ class MediaSessionCallback(
           }
         }
 
-        Log.i(TAG, "[TRACK_PLAY_QUEUE] Initial queue: ${initialQueue.size} tracks, loadingState: type=${loadingState.contentType}")
         startPlaybackWithInitialTracks(initialQueue, queueTitle!!, loadingState)
         return
       }
@@ -462,7 +482,6 @@ class MediaSessionCallback(
 
     // radio_track: play selected track + 1 related, then load more via continuation
     if (mediaType == "radio_track" && mediaId != null) {
-      Log.i(TAG, "[RADIO_TRACK_START] Starting radio_track for mediaId: $mediaId")
       val selectedItem = MediaItemTree.getItem(mediaId)
       if (selectedItem != null) {
         val fe = selectedItem.description.extras!!
@@ -470,7 +489,6 @@ class MediaSessionCallback(
         val trackName = fe.getString("title") ?: ""
         val idAlbumTrack = fe.getString("idAlbumTrack")
         val idAlbumTrackLong = idAlbumTrack?.toLongOrNull()
-        Log.i(TAG, "[RADIO_TRACK_INFO] trackId=$trackIdForApi, idAlbumTrack=$idAlbumTrack")
 
         // Build parentData with TRACK_RADIO type + full trackData for JS app sync
         val trackJson = fe.getString("track") ?: "{}"
@@ -488,7 +506,6 @@ class MediaSessionCallback(
             val relatedTracks = MediaItemTree.getRelatedTracksPage(trackIdForApi, radioParentData, context, limit = 1)
             val initialTracks = mutableListOf(selectedItem)
             initialTracks.addAll(relatedTracks)
-            Log.i(TAG, "[RADIO_TRACK_INITIAL] ${initialTracks.size} initial tracks (1 selected + ${relatedTracks.size} related)")
 
             // Collect seed and exclude IDs for continuation
             val seedIds = mutableListOf<Long>()
@@ -523,17 +540,13 @@ class MediaSessionCallback(
           }
         }
         return
-      } else {
-        Log.w(TAG, "[RADIO_TRACK_NOT_FOUND] Item not found in treeNodes for $mediaId")
       }
     }
 
     // radio (tag_radio): load 2 tracks, play immediately, then load more with cursor
     if (mediaType == "radio" && mediaId != null) {
-      Log.i(TAG, "[TAG_RADIO_START] Starting tag radio for mediaId: $mediaId")
       val stationId = mediaId.removePrefix("item_radio_")
         .let { if (it.endsWith(".0")) it.dropLast(2) else it }
-      Log.i(TAG, "[TAG_RADIO_INFO] stationId=$stationId")
 
       val parentItem = MediaItemTree.getItem(mediaId)
       val itemName = parentItem?.description?.title?.toString() ?: ""
@@ -547,7 +560,6 @@ class MediaSessionCallback(
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val initialTracks = MediaItemTree.getStationRadioPage(stationId, parentData, context, count = 2)
-          Log.i(TAG, "[TAG_RADIO_INITIAL] Got ${initialTracks.size} initial tracks for station $stationId")
           if (initialTracks.isNotEmpty()) {
             // Get lastIdAlbumTrack for cursor-based pagination
             val lastIAT = initialTracks.last().description.extras
@@ -563,8 +575,6 @@ class MediaSessionCallback(
               )
               startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
             }
-          } else {
-            Log.w(TAG, "[TAG_RADIO_NO_TRACKS] No tracks returned for station $stationId")
           }
         } catch (e: Exception) {
           Log.e(TAG, "[TAG_RADIO_ERROR] Exception: ${e.message}", e)
@@ -575,10 +585,8 @@ class MediaSessionCallback(
 
     // artist_radio: load 2 tracks by popularity (no shuffle), then load more
     if (mediaType == "artist_radio" && mediaId != null) {
-      Log.i(TAG, "[ARTIST_RADIO_START] Starting artist radio for mediaId: $mediaId")
       val artistId = mediaId.removePrefix("item_artist_radio_")
         .let { if (it.endsWith(".0")) it.dropLast(2) else it }
-      Log.i(TAG, "[ARTIST_RADIO_INFO] artistId=$artistId")
 
       val parentItem = MediaItemTree.getItem(mediaId)
       val itemName = parentItem?.description?.title?.toString() ?: ""
@@ -594,7 +602,6 @@ class MediaSessionCallback(
           val initialTracks = MediaItemTree.getArtistTracksPage(
             artistId, parentData, context, limit = 2, offset = 0, order = "popularity"
           )
-          Log.i(TAG, "[ARTIST_RADIO_INITIAL] Got ${initialTracks.size} initial tracks for artist $artistId")
           if (initialTracks.isNotEmpty()) {
             withContext(Dispatchers.Main) {
               val loadingState = QueueLoadingState(
@@ -606,8 +613,6 @@ class MediaSessionCallback(
               )
               startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
             }
-          } else {
-            Log.w(TAG, "[ARTIST_RADIO_NO_TRACKS] No tracks returned for artist $artistId")
           }
         } catch (e: Exception) {
           Log.e(TAG, "[ARTIST_RADIO_ERROR] Exception: ${e.message}", e)
@@ -617,7 +622,6 @@ class MediaSessionCallback(
     }
 
     if (mediaType == "album" && mediaId != null) {
-      Log.i(TAG, "[ALBUM_PLAY] Starting album playback for mediaId: $mediaId")
       val albumItem = MediaItemTree.getItem(mediaId)
       val albumName = albumItem?.description?.title?.toString() ?: ""
       val albumId = mediaId.removePrefix("item_album_")
@@ -632,7 +636,6 @@ class MediaSessionCallback(
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val initialTracks = MediaItemTree.getAlbumTracksPage(albumId, parentData, context, limit = 2, offset = 0)
-          Log.i(TAG, "[ALBUM_PLAY] Loaded ${initialTracks.size} initial tracks for album $albumId")
           withContext(Dispatchers.Main) {
             val loadingState = QueueLoadingState(
               contentType = "ALBUM",
@@ -652,7 +655,6 @@ class MediaSessionCallback(
 
     // autoplay playlist: load 2 tracks, play immediately, then load more
     if (mediaType == "playlist" && mediaId != null) {
-      Log.i(TAG, "[PLAYLIST_PLAY] Starting playlist playback for mediaId: $mediaId")
       val playlistItem = MediaItemTree.getItem(mediaId)
       val playlistName = playlistItem?.description?.title?.toString() ?: ""
       val playlistId = mediaId.removePrefix("item_playlist_")
@@ -667,7 +669,6 @@ class MediaSessionCallback(
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val initialTracks = MediaItemTree.getPlaylistTracksPage(playlistId, parentData, context, limit = 2, offset = 0)
-          Log.i(TAG, "[PLAYLIST_PLAY] Loaded ${initialTracks.size} initial tracks for playlist $playlistId")
           withContext(Dispatchers.Main) {
             val loadingState = QueueLoadingState(
               contentType = "PLAYLIST",
@@ -687,14 +688,12 @@ class MediaSessionCallback(
 
     // Podcast episode: resolve audio from offline file or enclosure URL
     if ((mediaType == "podcast_episode" || mediaType == "podcastEpisode") && mediaId != null) {
-      Log.i(TAG, "[PODCAST_EPISODE_PLAY] Starting podcast episode playback for mediaId: $mediaId")
       val episodeId = extras?.getString("id") ?: mediaId.removePrefix("item_podcast_episode_").removePrefix("item_podcastEpisode_")
       val enclosureUrl = extras?.getString("enclosure_url")
       val showId = extras?.getString("showId") ?: ""
       val episodeTitle = extras?.getString("title") ?: "Episode"
       val showTitle = extras?.getString("artist") ?: "Podcast"
       val imageUrl = extras?.getString("image") ?: ""
-      Log.i(TAG, "[PODCAST_EPISODE_PLAY] episodeId=$episodeId, enclosureUrl=$enclosureUrl, showId=$showId")
 
       val episodeUri = LocalStorageUtils.getEpisodeUri(context, episodeId, enclosureUrl)
       if (episodeUri != null) {
@@ -735,7 +734,6 @@ class MediaSessionCallback(
         storePodcastLocalData(podcastExtras, episodeId)
 
         QueueManager.setQueue(mediaSession, QueueManager.buildQueueTitle("PODCAST", showTitle))
-        Log.i(TAG, "[PODCAST_EPISODE_PLAY_SUCCESS] Podcast episode playback started")
       } else {
         Log.e(TAG, "[PODCAST_EPISODE_PLAY_ERROR] Could not resolve episode URI for episodeId=$episodeId")
       }
@@ -743,17 +741,13 @@ class MediaSessionCallback(
     }
 
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[onPlayFromMediaId] Start $mediaId, media_type=${extras?.getString("media_type")}")
       val trackId = extras?.getString("idAlbumTrack")
-      Log.i(TAG, "[onPlayFromMediaId] trackId $trackId")
-      Log.i(TAG, "[onPlayFromMediaId] parentData received: ${extras?.getString("parentData")}")
 
       CoroutineScope(Dispatchers.IO).launch {
         try {
           val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, extras?.getString("id"),
             trackId)
           withContext(Dispatchers.Main) {
-            Log.i(TAG, "[onPlayFromMediaId] Current track $trackUrl")
             // Build queue title from parentData if available
             val parentDataStr = extras?.getString("parentData")
             var queueTitle: String? = null
@@ -804,13 +798,9 @@ class MediaSessionCallback(
   }
 
   override fun onPlay() {
-    Log.i(TAG, "[ON_PLAY] onPlay() called, isPreparing: ${mediaPlayer.isPreparing()}, isPlaying: ${mediaPlayer.isPlaying()}")
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[ON_PLAY_EXECUTE] Executing play command")
-
       // If the player is already playing, just update state and return
       if (mediaPlayer.isPlaying()) {
-        Log.i(TAG, "[ON_PLAY_ALREADY_PLAYING] Player is already playing, just updating state")
         updateState(PlaybackStateCompat.STATE_PLAYING)
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
@@ -821,9 +811,7 @@ class MediaSessionCallback(
       }
 
       // Request audio focus before starting playback
-      Log.i(TAG, "[ON_PLAY_REQUEST_FOCUS] Requesting audio focus")
       val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
-      Log.i(TAG, "[ON_PLAY_FOCUS_RESULT] Audio focus granted: $hasFocus")
 
       if (hasFocus) {
         mediaPlayer.play()
@@ -833,13 +821,10 @@ class MediaSessionCallback(
         CordovaEventBridge.sendEvent(
           CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
           JSONObject().put("action", "play"))
-        Log.i(TAG, "[ON_PLAY_COMPLETE] Play command completed, isPlaying: ${mediaPlayer.isPlaying()}")
       } else {
         Log.w(TAG, "[ON_PLAY_NO_FOCUS] Could not gain audio focus, playback not started")
         updateState(PlaybackStateCompat.STATE_PAUSED)
       }
-    } else {
-      Log.w(TAG, "[ON_PLAY_SKIP] Skipping play because isPreparing is true")
     }
   }
 
@@ -856,21 +841,12 @@ class MediaSessionCallback(
   }
 
   override fun onPause() {
-    Log.i(TAG, "[ON_PAUSE] onPause() called at position: ${mediaPlayer.currentPosition}, isPreparing: ${mediaPlayer.isPreparing()}, isPlaying: ${mediaPlayer.isPlaying()}")
-
-    // Log stack trace to see where pause is being called from
-    val stackTrace = Thread.currentThread().stackTrace
-    val caller = if (stackTrace.size > 3) stackTrace[3] else null
-    Log.i(TAG, "[ON_PAUSE_CALLER] Called from: ${caller?.className}.${caller?.methodName}:${caller?.lineNumber}")
-
     // Check if we should ignore pause commands during audio focus stabilization period
     if (mediaPlayer.shouldIgnorePauseCommands()) {
-      Log.w(TAG, "[ON_PAUSE_IGNORED] Ignoring pause command during audio focus stabilization period")
       return
     }
 
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[ON_PAUSE_EXECUTE] Executing pause command")
       mediaPlayer.pause()
       updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
       showNotification(PlaybackStateCompat.STATE_PAUSED)
@@ -878,25 +854,18 @@ class MediaSessionCallback(
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
         JSONObject().put("action", "pause"))
-      Log.i(TAG, "[ON_PAUSE_COMPLETE] Pause command completed")
-    } else {
-      Log.w(TAG, "[ON_PAUSE_SKIP] Skipping pause because isPreparing is true")
     }
   }
 
   override fun onSkipToNext() {
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[ON_SKIP_TO_NEXT] Skip to next triggered from Android Auto")
       // Reset flags and enable auto-play for the next track
       mediaPlayer.currentTrackFromApp = false
       mediaPlayer.shouldAutoPlayOnPrepare = true
 
       val nextItem = QueueManager.getNextQueueItem(mediaSession)
       if (nextItem != null) {
-        Log.i(TAG, "[ON_SKIP_TO_NEXT] Got next item: ${nextItem.description.mediaId}")
         playQueueItem(nextItem)
-      } else {
-        Log.w(TAG, "[ON_SKIP_TO_NEXT] No next item available (queue might be empty)")
       }
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
@@ -906,18 +875,13 @@ class MediaSessionCallback(
 
   override fun onSkipToPrevious() {
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Skip to previous triggered from Android Auto")
       // Reset flags and enable auto-play for the previous track
       mediaPlayer.currentTrackFromApp = false
       mediaPlayer.shouldAutoPlayOnPrepare = true
-      Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Set shouldAutoPlayOnPrepare = true for auto-play")
 
       val previousItem = QueueManager.getPreviousQueueItem(mediaSession)
       if (previousItem != null) {
-        Log.i(TAG, "[ON_SKIP_TO_PREVIOUS] Got previous item: ${previousItem.description.mediaId}")
         playQueueItem(previousItem)
-      } else {
-        Log.w(TAG, "[ON_SKIP_TO_PREVIOUS] No previous item available (queue might be empty)")
       }
       CordovaEventBridge.sendEvent(
         CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
@@ -946,11 +910,9 @@ class MediaSessionCallback(
 
   override fun onSkipToQueueItem(id: Long) {
     if(!mediaPlayer.isPreparing()) {
-      Log.i(TAG, "[ON_SKIP_TO_QUEUE_ITEM] Skip to queue item triggered from Android Auto")
       // Reset flags and enable auto-play for the selected track
       mediaPlayer.currentTrackFromApp = false
       mediaPlayer.shouldAutoPlayOnPrepare = true
-      Log.i(TAG, "[ON_SKIP_TO_QUEUE_ITEM] Set shouldAutoPlayOnPrepare = true for auto-play")
 
       val nextItem = QueueManager.getItem(mediaSession, id)
       if(nextItem != null) {
@@ -1005,7 +967,6 @@ class MediaSessionCallback(
           )
           showNotification(PlaybackStateCompat.STATE_PLAYING)
           storeLocalData(fe, idAlbumTrack)
-          Log.i(TAG, "[START_PLAYBACK] Playing first track, triggering initial async load")
           loadMore()
 
           // Start preloading next tracks
@@ -1024,12 +985,10 @@ class MediaSessionCallback(
   private fun loadMore() {
     val state = queueLoadingState ?: return
     if (!state.hasMore || state.isLoading) {
-      Log.d(TAG, "[LOAD_MORE] Skipping: hasMore=${state.hasMore}, isLoading=${state.isLoading}")
       return
     }
 
     state.isLoading = true
-    Log.i(TAG, "[LOAD_MORE] Loading more for ${state.contentType} id=${state.contentId}, offset=${state.currentOffset}")
 
     CoroutineScope(Dispatchers.IO).launch {
       try {
@@ -1084,7 +1043,6 @@ class MediaSessionCallback(
 
         if (newTracks.isEmpty()) {
           state.hasMore = false
-          Log.i(TAG, "[LOAD_MORE] No more tracks available for ${state.contentType}")
         } else {
           when (state.contentType) {
             "RADIO" -> {
@@ -1106,7 +1064,6 @@ class MediaSessionCallback(
 
           withContext(Dispatchers.Main) {
             val appended = QueueManager.appendQueue(newTracks, mediaSession)
-            Log.i(TAG, "[LOAD_MORE] Appended $appended tracks, offset now ${state.currentOffset}")
             val currentMediaId = mediaSession.controller.metadata
               ?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
             val currentQueueItem = mediaSession.controller.queue?.find {
@@ -1165,11 +1122,9 @@ class MediaSessionCallback(
           )
           showNotification(PlaybackStateCompat.STATE_PLAYING)
           storeLocalData(extras, idAlbumTrack)
-          Log.i(TAG, "[PLAY_QUEUE_ITEM] Playing ${queueItem.description.mediaId} from existing queue")
 
           // Check if we need to load more tracks
           if (QueueManager.shouldLoadMore(3)) {
-            Log.i(TAG, "[PLAY_QUEUE_ITEM] Approaching end of queue (index=${QueueManager.getCurrentQueueIndex()}, size=${QueueManager.getQueueSize()}), triggering loadMore")
             loadMore()
           }
 
@@ -1254,8 +1209,6 @@ class MediaSessionCallback(
         "{ \"data\":" + it.description.extras?.getString("track") + " }"
       }
       val playlistData = extras.getString("parentData")
-      Log.i(TAG, "[STORE_LOCAL_DATA] Writing PLAYLIST_DATA: $playlistData")
-      Log.i(TAG, "[STORE_LOCAL_DATA] Writing CURRENT_TRACK_KEY: $trackId, queue size: ${stringQueue.size}")
       LocalStorageUtils.storeInFile(context, QUEUE_ITEMS_KEY, stringQueue.toString())
       LocalStorageUtils.storeInFile(context, PLAYLIST_DATA, playlistData)
       LocalStorageUtils.storeDataInPrefs(context, CURRENT_TRACK_KEY, trackId.toString())
@@ -1289,35 +1242,23 @@ class MediaSessionCallback(
   }
 
   private fun handlePrepare() {
-    Log.i(TAG, "[HANDLE_PREPARE_START] handling prepare callback")
-    Log.i(TAG, "[HANDLE_PREPARE_FROM_APP] currentTrackFromApp flag: ${mediaPlayer.currentTrackFromApp}")
-    Log.i(TAG, "[HANDLE_PREPARE_AUTO_PLAY] shouldAutoPlayOnPrepare flag: ${mediaPlayer.shouldAutoPlayOnPrepare}")
-    Log.i(TAG, "[HANDLE_PREPARE_IS_PLAYING] mediaPlayer.isPlaying: ${mediaPlayer.isPlaying()}")
-    Log.i(TAG, "[HANDLE_PREPARE_POSITION] currentPosition: ${mediaPlayer.currentPosition}")
-
     // Sync the queue index with the current track
     val currentMediaId = mediaSession.controller.metadata?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
     QueueManager.syncCurrentIndex(mediaSession, currentMediaId)
 
     // Check if we should auto-play (explicitly requested from app)
     if(mediaPlayer.shouldAutoPlayOnPrepare) {
-      Log.i(TAG, "[HANDLE_PREPARE_AUTO_PLAY_TRUE] Auto-play requested, starting playback")
       mediaPlayer.shouldAutoPlayOnPrepare = false
 
       // Request audio focus before starting playback
-      Log.i(TAG, "[HANDLE_PREPARE_REQUEST_FOCUS_AUTO] Requesting audio focus for auto-play")
       val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
-      Log.i(TAG, "[HANDLE_PREPARE_FOCUS_RESULT_AUTO] Audio focus granted: $hasFocus")
 
       if (hasFocus) {
-        Log.i(TAG, "[HANDLE_PREPARE_START_PLAYBACK_AUTO] Starting playback via mediaPlayer.start()")
         mediaPlayer.start()
-        Log.i(TAG, "[HANDLE_PREPARE_AFTER_START_AUTO] mediaPlayer.isPlaying after start: ${mediaPlayer.isPlaying()}")
         updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
         showNotification(PlaybackStateCompat.STATE_PLAYING)
-        Log.i(TAG, "[HANDLE_PREPARE_COMPLETE_AUTO] Auto-play started successfully")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS_AUTO] Could not gain audio focus for auto-play, setting to PAUSED")
         updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
@@ -1325,26 +1266,20 @@ class MediaSessionCallback(
       }
     } else if(mediaPlayer.currentTrackFromApp) {
       // Track from app but no auto-play - just prepare and leave in STOPPED state
-      Log.i(TAG, "[HANDLE_PREPARE_FROM_APP_NO_AUTO] Track from app, setting to STOPPED state (no auto-play)")
       mediaPlayer.currentTrackFromApp = false
       updateState(PlaybackStateCompat.STATE_STOPPED, mediaPlayer.currentPosition)
     } else {
       // Normal playback from Android Auto (e.g., user clicked a song)
       // Request audio focus again right before starting playback
       // This helps prevent race conditions with audio focus loss
-      Log.i(TAG, "[HANDLE_PREPARE_REQUEST_FOCUS] Requesting audio focus before starting playback")
       val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
-      Log.i(TAG, "[HANDLE_PREPARE_FOCUS_RESULT] Audio focus granted: $hasFocus")
 
       if (hasFocus) {
-        Log.i(TAG, "[HANDLE_PREPARE_START_PLAYBACK] Starting playback via mediaPlayer.start()")
         mediaPlayer.start()
-        Log.i(TAG, "[HANDLE_PREPARE_AFTER_START] mediaPlayer.isPlaying after start: ${mediaPlayer.isPlaying()}")
         updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
         showNotification(PlaybackStateCompat.STATE_PLAYING)
-        Log.i(TAG, "[HANDLE_PREPARE_COMPLETE] Playback started successfully")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS] Could not gain audio focus, playback not started")
         updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
@@ -1439,11 +1374,8 @@ class MediaSessionCallback(
   }
 
   private fun handleAudioFocusChange(focusChange: Int) {
-    Log.i(TAG, "[HANDLE_AUDIO_FOCUS] Audio focus change received: $focusChange")
-
     when (focusChange) {
       android.media.AudioManager.AUDIOFOCUS_GAIN -> {
-        Log.i(TAG, "[HANDLE_AUDIO_FOCUS_GAIN] Audio focus regained - updating state to PLAYING")
         // When we regain audio focus, immediately update the state to PLAYING
         // This prevents Android Auto from auto-pausing after we regain focus
         if (mediaPlayer.isPlaying()) {
@@ -1452,47 +1384,39 @@ class MediaSessionCallback(
           handler.removeCallbacks(updatePlaybackPositionRunnable)
           handler.post(updatePlaybackPositionRunnable)
           mediaSession.isActive = true
-          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_GAIN] State updated to PLAYING successfully")
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS -> {
-        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS] Audio focus lost permanently - pausing playback")
         // Another app has taken audio focus permanently (e.g., user started playing in Spotify)
         // We must pause immediately
         if (mediaPlayer.isPlaying()) {
           mediaPlayer.pause()
           updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
           handler.removeCallbacks(updatePlaybackPositionRunnable)
-          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_LOSS] Playback paused due to permanent audio focus loss")
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_LOSS_TRANSIENT] Transient audio focus loss - pausing playback")
         // Temporary interruption (e.g., notification, phone call)
         // Pause but expect to resume when focus is regained
         if (mediaPlayer.isPlaying()) {
           mediaPlayer.pause()
           updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
           handler.removeCallbacks(updatePlaybackPositionRunnable)
-          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_LOSS_TRANSIENT] Playback paused due to transient audio focus loss")
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-        Log.w(TAG, "[HANDLE_AUDIO_FOCUS_DUCK] Audio focus loss, can duck - pausing playback")
         // Can lower volume (duck) but in Android Auto context, it's better to pause
         // to avoid multiple audio sources playing simultaneously
         if (mediaPlayer.isPlaying()) {
           mediaPlayer.pause()
           updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
           handler.removeCallbacks(updatePlaybackPositionRunnable)
-          Log.i(TAG, "[HANDLE_AUDIO_FOCUS_DUCK] Playback paused to avoid simultaneous audio")
         }
       }
     }
   }
 
   private fun handlePlaybackCompletion() {
-    Log.i(TAG, "[PLAYBACK_COMPLETION] Media playback completed. Stopping and resetting player.")
     mediaPlayer.stop()
     mediaPlayer.reset()
     updateState(PlaybackStateCompat.STATE_STOPPED, 0)
@@ -1599,8 +1523,6 @@ class MediaSessionCallback(
     if (imageUrl != null) {
       CoroutineScope(Dispatchers.IO).launch {
         try {
-          Log.i(TAG, "[NOTIFICATION_IMAGE_START] Loading notification image: $imageUrl")
-
           // Check if this is a local FileProvider URI
           val isFileProvider = imageUrl.startsWith("content://") &&
                                (imageUrl.contains(".fileprovider") ||
@@ -1608,8 +1530,6 @@ class MediaSessionCallback(
                                 imageUrl.contains(".cdv.core.file.provider"))
 
           val bitmap = if (isFileProvider) {
-            Log.i(TAG, "[NOTIFICATION_IMAGE_LOCAL] Detected local FileProvider image: $imageUrl")
-
             // Grant permission to system UI for notification
             try {
               context.grantUriPermission(
@@ -1617,13 +1537,11 @@ class MediaSessionCallback(
                 imageUri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
               )
-              Log.i(TAG, "[NOTIFICATION_IMAGE_PERMISSION] Granted READ permission to com.android.systemui")
             } catch (e: Exception) {
               Log.w(TAG, "[NOTIFICATION_IMAGE_PERMISSION_WARN] Could not grant permission to systemui: ${e.message}")
             }
 
             // Load bitmap from ContentResolver
-            Log.d(TAG, "[NOTIFICATION_IMAGE_LOAD_LOCAL] Loading bitmap from ContentResolver")
             context.contentResolver.openInputStream(imageUri)?.use { inputStream ->
               BitmapFactory.decodeStream(inputStream)
             } ?: run {
@@ -1632,13 +1550,11 @@ class MediaSessionCallback(
             }
           } else {
             // Remote image - load from URL
-            Log.i(TAG, "[NOTIFICATION_IMAGE_REMOTE] Loading remote image from URL")
             val url = URL(imageUrl)
             BitmapFactory.decodeStream(url.openConnection().getInputStream())
           }
 
           if (bitmap != null) {
-            Log.i(TAG, "[NOTIFICATION_IMAGE_SUCCESS] Bitmap loaded successfully, size: ${bitmap.width}x${bitmap.height}")
             withContext(Dispatchers.Main) {
               builder.setLargeIcon(bitmap)
               safelyShowNotification(NOTIFICATION_ID, builder.build())

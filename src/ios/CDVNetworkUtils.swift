@@ -29,11 +29,9 @@ class CDVNetworkUtils: NSObject {
     /// Start monitoring network changes
     @objc func startMonitoring() {
         guard !isMonitoring else {
-            print("\(CDVNetworkUtils.TAG) Already monitoring network")
             return
         }
 
-        print("\(CDVNetworkUtils.TAG) Starting network monitoring")
         isMonitoring = true
 
         monitor.pathUpdateHandler = { [weak self] path in
@@ -49,10 +47,8 @@ class CDVNetworkUtils: NSObject {
 
             self.isNetworkAvailable = isNowAvailable && hasInternet
 
-            print("\(CDVNetworkUtils.TAG) Network status changed: \(wasAvailable) -> \(self.isNetworkAvailable)")
-            print("\(CDVNetworkUtils.TAG) Path status: \(path.status), interfaces: wifi=\(path.usesInterfaceType(.wifi)) cellular=\(path.usesInterfaceType(.cellular)) ethernet=\(path.usesInterfaceType(.wiredEthernet))")
-
             if wasAvailable != self.isNetworkAvailable {
+                print("\(CDVNetworkUtils.TAG) Network status changed: \(wasAvailable) -> \(self.isNetworkAvailable)")
                 DispatchQueue.main.async {
                     self.onNetworkStatusChanged?(self.isNetworkAvailable)
                 }
@@ -67,14 +63,12 @@ class CDVNetworkUtils: NSObject {
                             (currentPath.usesInterfaceType(.wifi) ||
                              currentPath.usesInterfaceType(.cellular) ||
                              currentPath.usesInterfaceType(.wiredEthernet))
-        print("\(CDVNetworkUtils.TAG) Initial network state: \(isNetworkAvailable)")
     }
 
     /// Stop monitoring network changes
     @objc func stopMonitoring() {
         guard isMonitoring else { return }
 
-        print("\(CDVNetworkUtils.TAG) Stopping network monitoring")
         isMonitoring = false
         monitor.cancel()
     }

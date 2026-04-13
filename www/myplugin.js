@@ -9,7 +9,6 @@ var exec = require('cordova/exec');
     onMediaUpdateCallback: null,
 
     onConnectionChange: function (callback) {
-      console.log('[auto] onConnectionChange called');
       AutoPlugin.onConnectionChangeCallback = callback;
 
       exec(
@@ -28,7 +27,6 @@ var exec = require('cordova/exec');
     },
 
     onMediaUpdate: function (callback) {
-      console.log('[auto] onMediaUpdate called');
       AutoPlugin.onMediaUpdateCallback = callback;
 
       exec(
@@ -47,7 +45,6 @@ var exec = require('cordova/exec');
     },
 
     onPlaybackStateChange: function (callback) {
-      console.log('[auto] onPlaybackStateChange called');
       AutoPlugin.onPlaybackStateChangeCallback = callback;
 
       exec(
@@ -66,12 +63,10 @@ var exec = require('cordova/exec');
     },
 
     onNativeQueueUpdate: function (callback) {
-      console.log('[auto] onNativeQueueUpdate called');
       AutoPlugin.onNativeQueueUpdateCallback = callback;
 
       exec(
         function (data) {
-          console.log('[auto] Native queue update received:', data);
           if (typeof AutoPlugin.onNativeQueueUpdateCallback === 'function') {
             AutoPlugin.onNativeQueueUpdateCallback(data);
           }
@@ -86,7 +81,6 @@ var exec = require('cordova/exec');
     },
 
     play: function(cb, errorCb) {
-      console.log('[auto] play called');
       cordova.exec(
         function success(result) {
           if (typeof cb === 'function') {
@@ -106,10 +100,8 @@ var exec = require('cordova/exec');
     },
 
     pause: function(cb, errorCb) {
-      console.log('[auto] pause called');
       cordova.exec(
         function success(result) {
-          console.log('Track paused successfully:', result);
           if (typeof cb === 'function') {
             cb(result);
           }
@@ -127,10 +119,8 @@ var exec = require('cordova/exec');
     },
 
     getCurrentPlaybackState: function(cb, errorCb) {
-      console.log('[auto] getCurrentPlaybackState called');
       cordova.exec(
         function success(result) {
-          console.log('Track getCurrentPlaybackState successfully:', result);
           cb(result);
         },
         function error(err) {
@@ -146,11 +136,9 @@ var exec = require('cordova/exec');
     },
 
     isConnected: function (cb, errorCb) {
-      console.log('[auto] about to call isConnected');
       cordova.exec(
         function success(result) {
           // Align log format with requested snippet
-          console.log('[auto] isConnected ->', result);
           if (typeof cb === 'function') {
             cb(result);
           }
@@ -168,7 +156,6 @@ var exec = require('cordova/exec');
     },
 
     getPosition: function (cb, errorCb) {
-      console.log('[auto] getPosition called');
       cordova.exec(
         function success(result) {
           if (typeof cb === 'function') {
@@ -188,7 +175,6 @@ var exec = require('cordova/exec');
     },
 
     playCurrentTrack: function (cb, errorCb) {
-      console.log('[auto] playCurrentTrack called');
       cordova.exec(
         function success(result) {
           if (typeof cb === 'function') {
@@ -227,13 +213,6 @@ var exec = require('cordova/exec');
 
     // ---- Auth Config bridge (iOS) ----
     setAuthConfig: function(accessToken, refreshToken, appCode, baseUrl, expirationAt, cb, errorCb) {
-      console.log('[auto] setAuthConfig called', {
-        hasAccessToken: !!accessToken,
-        hasRefreshToken: !!refreshToken,
-        appCode: appCode,
-        baseUrl: baseUrl,
-        expirationAt: expirationAt
-      });
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('setAuthConfig error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -244,7 +223,6 @@ var exec = require('cordova/exec');
     },
 
     getAuthConfig: function(cb, errorCb) {
-      console.log('[auto] getAuthConfig called');
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('getAuthConfig error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -256,7 +234,6 @@ var exec = require('cordova/exec');
   
     // ---- Queue and Playback Controls ----
     updateQueue: function(queue, cb, errorCb) {
-      console.log('[auto] updateQueue called', { count: Array.isArray(queue) ? queue.length : 'n/a' });
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('updateQueue error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -267,7 +244,6 @@ var exec = require('cordova/exec');
     },
 
     notifyQueueStorageUpdated: function(cb, errorCb) {
-      console.log('[auto] notifyQueueStorageUpdated called');
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('notifyQueueStorageUpdated error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -278,7 +254,6 @@ var exec = require('cordova/exec');
     },
 
     notifyCurrentTrackUpdated: function(cb, errorCb) {
-      console.log('[auto] notifyCurrentTrackUpdated called');
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('notifyCurrentTrackUpdated error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -289,7 +264,6 @@ var exec = require('cordova/exec');
     },
 
     skipToNext: function(cb, errorCb) {
-      console.log('[auto] skipToNext called');
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('skipToNext error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -300,7 +274,6 @@ var exec = require('cordova/exec');
     },
 
     skipToPrevious: function(cb, errorCb) {
-      console.log('[auto] skipToPrevious called');
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('skipToPrevious error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -311,7 +284,6 @@ var exec = require('cordova/exec');
     },
 
     seekTo: function(positionMs, cb, errorCb) {
-      console.log('[auto] seekTo called', { positionMs });
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('seekTo error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -323,7 +295,6 @@ var exec = require('cordova/exec');
 
     // ---- Hardcoded content helpers (diagnostics) ----
     getHardcodedPlaylists: function(cb, errorCb) {
-      console.log('[auto] getHardcodedPlaylists called');
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('getHardcodedPlaylists error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -334,7 +305,6 @@ var exec = require('cordova/exec');
     },
 
     getHardcodedPlaylistTracks: function(playlistId, cb, errorCb) {
-      console.log('[auto] getHardcodedPlaylistTracks called', { playlistId });
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('getHardcodedPlaylistTracks error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -345,7 +315,6 @@ var exec = require('cordova/exec');
     },
 
     playHardcodedTrack: function(url, metadata, cb, errorCb) {
-      console.log('[auto] playHardcodedTrack called', { url, hasMetadata: !!metadata });
       exec(
         function success(result) { if (typeof cb === 'function') cb(result); },
         function error(err) { console.error('playHardcodedTrack error:', err); if (typeof errorCb === 'function') errorCb(err); },
@@ -364,16 +333,13 @@ var exec = require('cordova/exec');
      * @param {function} errorCb - Called on error
      */
     requestSiriAuthorization: function(callback, errorCb) {
-      console.log('[auto] requestSiriAuthorization called');
       if (cordova.platformId !== 'ios') {
-        console.warn('[auto] Siri authorization is only supported on iOS');
         if (typeof errorCb === 'function') errorCb('Not supported on this platform');
         return;
       }
 
       exec(
         function(status) {
-          console.log('[auto] Siri authorization status:', status);
           if (typeof callback === 'function') callback(status);
         },
         function(err) {
@@ -392,16 +358,13 @@ var exec = require('cordova/exec');
      * @param {function} errorCb - Called on error
      */
     getSiriAuthorizationStatus: function(callback, errorCb) {
-      console.log('[auto] getSiriAuthorizationStatus called');
       if (cordova.platformId !== 'ios') {
-        console.warn('[auto] Siri authorization is only supported on iOS');
         if (typeof errorCb === 'function') errorCb('Not supported on this platform');
         return;
       }
 
       exec(
         function(status) {
-          console.log('[auto] Current Siri status:', status);
           if (typeof callback === 'function') callback(status);
         },
         function(err) {
@@ -415,15 +378,12 @@ var exec = require('cordova/exec');
     },
 
     onSiriIntent: function(callback) {
-      console.log('[auto] onSiriIntent called');
       if (cordova.platformId !== 'ios') {
-        console.warn('[auto] Siri intents are only supported on iOS');
         return;
       }
 
       exec(
         function(data) {
-          console.log('[auto] Siri intent received:', data);
           if (typeof callback === 'function') {
             callback(data);
           }
@@ -438,16 +398,13 @@ var exec = require('cordova/exec');
     },
 
     playSiriSearchResults: function(cb, errorCb) {
-      console.log('[auto] playSiriSearchResults called');
       if (cordova.platformId !== 'ios') {
-        console.warn('[auto] Siri is only supported on iOS');
         if (typeof errorCb === 'function') errorCb('Not supported on this platform');
         return;
       }
 
       exec(
         function success(result) {
-          console.log('[auto] Siri search results playback started');
           if (typeof cb === 'function') cb(result);
         },
         function error(err) {
@@ -471,8 +428,6 @@ var exec = require('cordova/exec');
      * @param {function} errorCb - Called on error
      */
     searchAndPlay: function(searchParams, callback, errorCb) {
-      console.log('[auto] searchAndPlay called', searchParams);
-
       var params = {
         mediaName: searchParams.query || searchParams.mediaName || '',
         artistName: searchParams.artistName || null,
@@ -483,7 +438,6 @@ var exec = require('cordova/exec');
 
       exec(
         function success(result) {
-          console.log('[auto] searchAndPlay success:', result);
           if (typeof callback === 'function') callback(result);
         },
         function error(err) {
@@ -497,7 +451,6 @@ var exec = require('cordova/exec');
     },
 
     onShuffleRepeatChange: function (callback) {
-      console.log('[auto] onShuffleRepeatChange called');
       AutoPlugin.onShuffleRepeatChangeCallback = callback;
 
       exec(
@@ -516,7 +469,6 @@ var exec = require('cordova/exec');
     },
 
     setShuffleRepeat: function (params, callback, errorCb) {
-      console.log('[auto] setShuffleRepeat called', params);
       exec(
         function (result) {
           if (typeof callback === 'function') callback(result);

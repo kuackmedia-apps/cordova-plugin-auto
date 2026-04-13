@@ -52,13 +52,11 @@ class CDVTrackPreloader {
 
         // Check network availability — don't attempt downloads without connectivity
         guard CDVNetworkUtils.shared.isNetworkAvailable else {
-            print("\(TAG) Preload skipped: no network — existing auto_cache files preserved")
             return
         }
 
         let preloadWindow = currentPreloadWindow()
         guard preloadWindow > 0 else {
-            print("\(TAG) Preload skipped: window=0")
             return
         }
 
@@ -71,7 +69,6 @@ class CDVTrackPreloader {
         // Calculate window: currentIndex+1 ... currentIndex+preloadWindow
         let windowTracks = calculateWindow(queue: queue, currentIndex: currentIndex, windowSize: preloadWindow)
         guard !windowTracks.isEmpty else {
-            print("\(TAG) Preload skipped: no tracks in window")
             return
         }
 
@@ -82,17 +79,11 @@ class CDVTrackPreloader {
             let currentId = (currentData["id"] as? String) ?? String(describing: currentData["idTrack"] ?? "")
             if !currentId.isEmpty {
                 windowTrackIds.insert(currentId)
-                print("\(TAG) Keeping current track \(currentId) in auto_cache (playing)")
             }
         }
 
         // Clean up auto_cache files outside the current window
         cleanupOutsideWindow(keepTrackIds: windowTrackIds)
-
-        let networkType = currentPreloadWindow() == PRELOAD_WINDOW_WIFI ? "WiFi" : "Cellular"
-        let trackIds = windowTracks.map { $0.trackId }
-        print("\(TAG) Starting preload: window=\(windowTracks.count) currentIndex=\(currentIndex) queueCount=\(queue.count) network=\(networkType)")
-        print("\(TAG)   trackIds: \(trackIds.joined(separator: ", "))")
 
         // Download sequentially on background queue
         let workItem = DispatchWorkItem { [weak self] in
@@ -100,19 +91,16 @@ class CDVTrackPreloader {
 
             for trackInfo in windowTracks {
                 guard !(self.preloadWorkItem?.isCancelled ?? true) else {
-                    print("\(self.TAG) Preload cancelled")
                     break
                 }
 
                 // Skip if already in offline/ (user download)
                 if CDVLocalStorageUtils.getLocalTrackPath(trackInfo.trackId) != nil {
-                    print("\(self.TAG) Skip track \(trackInfo.trackId): already in offline/")
                     continue
                 }
 
                 // Skip if already in auto_cache/
                 if self.isInAutoCache(trackInfo.trackId) {
-                    print("\(self.TAG) Skip track \(trackInfo.trackId): already in auto_cache/")
                     continue
                 }
 
@@ -124,15 +112,12 @@ class CDVTrackPreloader {
 
                 // Check network again (may have dropped during wait)
                 guard CDVNetworkUtils.shared.isNetworkAvailable else {
-                    print("\(self.TAG) Network lost during preload — stopping")
                     break
                 }
 
                 // Download the track
-                print("\(self.TAG) Downloading track \(trackInfo.trackId) (idAlbumTrack=\(trackInfo.idAlbumTrack))...")
                 self.downloadTrack(trackInfo)
             }
-            print("\(self.TAG) Preload cycle complete")
         }
         preloadWorkItem = workItem
         DispatchQueue.global(qos: .utility).async(execute: workItem)
@@ -141,25 +126,20 @@ class CDVTrackPreloader {
     /// Clear the entire auto_cache directory
     /// Call on CarPlay connect (clear stale) AND disconnect (cleanup)
     func clearCache() {
-        print("\(TAG) Clearing auto_cache...")
         preloadWorkItem?.cancel()
         currentTask?.cancel()
 
         let fm = FileManager.default
         guard fm.fileExists(atPath: cacheDir) else {
-            print("\(TAG) auto_cache directory doesn't exist, nothing to clear")
             return
         }
 
         do {
             let files = try fm.contentsOfDirectory(atPath: cacheDir)
-            var removedCount = 0
             for file in files {
                 let filePath = (cacheDir as NSString).appendingPathComponent(file)
                 try fm.removeItem(atPath: filePath)
-                removedCount += 1
             }
-            print("\(TAG) Cleared \(removedCount) files from auto_cache")
         } catch {
             print("\(TAG) Error clearing auto_cache: \(error)")
         }
@@ -233,18 +213,13 @@ class CDVTrackPreloader {
 
         do {
             let files = try fm.contentsOfDirectory(atPath: cacheDir)
-            var removedCount = 0
             for file in files {
                 // Extract trackId from filename (e.g., "12345.mp3" -> "12345")
                 let trackId = (file as NSString).deletingPathExtension
                 if !keepTrackIds.contains(trackId) {
                     let filePath = (cacheDir as NSString).appendingPathComponent(file)
                     try fm.removeItem(atPath: filePath)
-                    removedCount += 1
                 }
-            }
-            if removedCount > 0 {
-                print("\(TAG) Cleaned up \(removedCount) files outside window")
             }
         } catch {
             print("\(TAG) Error cleaning up auto_cache: \(error)")
@@ -294,9 +269,7 @@ class CDVTrackPreloader {
             guard let self = self else { semaphore.signal(); return }
 
             if let error = error {
-                if (error as NSError).code == NSURLErrorCancelled {
-                    print("\(self.TAG) Download cancelled for track \(trackId)")
-                } else {
+                if (error as NSError).code != NSURLErrorCancelled {
                     print("\(self.TAG) Download failed for track \(trackId): \(error.localizedDescription)")
                 }
                 semaphore.signal()
@@ -322,9 +295,6 @@ class CDVTrackPreloader {
                     try fm.removeItem(atPath: finalPath)
                 }
                 try fm.moveItem(atPath: tmpPath, toPath: finalPath)
-
-                let fileSize = (try? fm.attributesOfItem(atPath: finalPath)[.size] as? UInt64) ?? 0
-                print("\(self.TAG) Preloaded track \(trackId) (\(fileSize / 1024)KB)")
             } catch {
                 print("\(self.TAG) File operation failed for track \(trackId): \(error)")
                 // Clean up tmp file
@@ -354,18 +324,11 @@ class CDVTrackPreloader {
 
             if !isBuffering { break }
 
-            if attempts == 0 {
-                print("\(TAG) Player is buffering, pausing preload...")
-            }
             Thread.sleep(forTimeInterval: 0.5)
             attempts += 1
 
             // Check cancellation during wait
             if preloadWorkItem?.isCancelled ?? true { break }
-        }
-
-        if attempts > 0 {
-            print("\(TAG) Buffering wait ended after \(attempts * 500)ms")
         }
     }
 
@@ -374,7 +337,6 @@ class CDVTrackPreloader {
         if !fm.fileExists(atPath: cacheDir) {
             do {
                 try fm.createDirectory(atPath: cacheDir, withIntermediateDirectories: true, attributes: nil)
-                print("\(TAG) Created auto_cache directory: \(cacheDir)")
             } catch {
                 print("\(TAG) Failed to create auto_cache directory: \(error)")
             }

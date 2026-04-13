@@ -42,7 +42,6 @@ class CDVTextsManager: NSObject {
                     if let str = value as? String { return str }
                     return String(describing: value)
                 }
-                print("\(CDVTextsManager.TAG) Loaded \(texts.count) text keys")
             }
         } catch {
             print("\(CDVTextsManager.TAG) Error reading AUTO_TEXTS: \(error)")

@@ -13,16 +13,10 @@ object CurrentMedia {
     currentTrack: String,
     currentQueue: List<MediaSessionCompat.QueueItem>?): MediaBrowserCompat.MediaItem? {
 
-    Log.i(TAG, "[getCurrentTrackFromQueue] Current queue: $currentQueue")
     val currentQueueItem = currentQueue
       ?.firstOrNull {
-        Log.i(TAG, "[getCurrentTrackFromQueue] Queue compare it ${it.description.extras}")
         it.description.extras?.getString("idAlbumTrack") == currentTrack
       }
-      ?.also { Log.i(TAG, "found current track: ${it.description.title}") }
-
-    Log.i(TAG, "Finding current track: $currentTrack")
-    Log.i(TAG, "Finding current Queue item: $currentQueueItem")
 
     return if(currentQueueItem !== null) {
       MediaBrowserCompat.MediaItem(
@@ -41,14 +35,12 @@ object CurrentMedia {
     return if (file.exists()) {
       try {
         val content = file.readText(Charsets.UTF_8)
-        Log.d(TAG, "[readFileContent] Read ${content.length} bytes from $fileName")
         content
       } catch (e: Exception) {
         Log.e(TAG, "[readFileContent] Error reading $fileName: ${e.message}", e)
         null
       }
     } else {
-      Log.d(TAG, "[readFileContent] File not found: $fileName")
       null
     }
   }

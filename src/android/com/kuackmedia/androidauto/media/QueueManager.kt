@@ -34,7 +34,6 @@ object QueueManager {
 
     // Reset currentQueueIndex when building new queue
     currentQueueIndex = 0
-    Log.i(TAG, "[BUILD_QUEUE] Built queue with ${this.queue?.size ?: 0} items, reset currentQueueIndex to 0")
   }
 
   fun setQueue(mediaSession: MediaSessionCompat, queueTitle: String? = null) {
@@ -42,13 +41,11 @@ object QueueManager {
     mediaSession.setQueue(queue)
     if (!queueTitle.isNullOrEmpty()) {
       mediaSession.setQueueTitle(queueTitle)
-      Log.i(TAG, "[SET_QUEUE] Queue title: $queueTitle")
     }
 
     // Validate currentQueueIndex after setting queue
     val queueSize = queue?.size ?: 0
     if (currentQueueIndex >= queueSize && queueSize > 0) {
-      Log.w(TAG, "[SET_QUEUE] currentQueueIndex ($currentQueueIndex) >= queue.size ($queueSize), resetting to 0")
       currentQueueIndex = 0
     }
   }
@@ -88,7 +85,6 @@ object QueueManager {
 
         // Validate that file is not empty
         if (jsonArray.isBlank()) {
-          Log.w(TAG, "QUEUE file is empty")
           return null
         }
 
@@ -100,11 +96,9 @@ object QueueManager {
           return null
         }
 
-        Log.i(TAG, "QUEUE FILE: $jsonArray")
         val listType = Types.newParameterizedType(List::class.java, QueueItem::class.java)
         val adapter: JsonAdapter<List<QueueItem>> = moshi.adapter(listType)
         val items: List<QueueItem>? = adapter.fromJson(jsonArray)
-        Log.i(TAG, "QUEUE_ITEMS_KEY_RAW: $items")
 
         this.queue = items
           ?.mapNotNull { it.data } // Use mapNotNull to filter out null data
@@ -113,7 +107,6 @@ object QueueManager {
             try {
               MediaItemFactory.parseMediaItems(it, "", context)
             } catch (e: Exception) {
-              Log.w(TAG, "Failed to parse queue item: ${e.message}")
               null
             }
           }
@@ -121,7 +114,6 @@ object QueueManager {
             MediaSessionCompat.QueueItem(track.description, index.toLong())
           }
 
-        Log.i(TAG, "QUEUE_ITEMS_KEY: ${this.queue}")
         return this.queue
 
       } catch (e: com.squareup.moshi.JsonDataException) {
@@ -149,23 +141,19 @@ object QueueManager {
   fun getNextQueueItem(mediaSession: MediaSessionCompat): MediaSessionCompat.QueueItem? {
     val queue = mediaSession.controller.queue
     if (queue == null || queue.isEmpty()) {
-      Log.w(TAG, "[GET_NEXT] Queue is null or empty")
       return null
     }
 
     // Validate that currentQueueIndex is within bounds
     if (currentQueueIndex >= queue.size) {
-      Log.w(TAG, "[GET_NEXT] currentQueueIndex ($currentQueueIndex) >= queue.size (${queue.size}), resetting to 0")
       currentQueueIndex = 0
     }
 
     // If we're at the end of the queue, loop back to the beginning
     if (currentQueueIndex + 1 >= queue.size) {
-      Log.i(TAG, "[GET_NEXT] Reached end of queue (index $currentQueueIndex of ${queue.size}), looping to start")
       currentQueueIndex = 0
     } else {
       currentQueueIndex += 1
-      Log.i(TAG, "[GET_NEXT] Moving to next track, index: $currentQueueIndex")
     }
 
     return queue[currentQueueIndex]
@@ -174,23 +162,19 @@ object QueueManager {
   fun getPreviousQueueItem(mediaSession: MediaSessionCompat): MediaSessionCompat.QueueItem? {
     val queue = mediaSession.controller.queue
     if (queue == null || queue.isEmpty()) {
-      Log.w(TAG, "[GET_PREVIOUS] Queue is null or empty")
       return null
     }
 
     // Validate that currentQueueIndex is within bounds
     if (currentQueueIndex >= queue.size) {
-      Log.w(TAG, "[GET_PREVIOUS] currentQueueIndex ($currentQueueIndex) >= queue.size (${queue.size}), resetting to last item")
       currentQueueIndex = queue.size - 1
     }
 
     // If we're at the beginning of the queue, loop back to the end
     if (currentQueueIndex - 1 < 0) {
-      Log.i(TAG, "[GET_PREVIOUS] At start of queue (index $currentQueueIndex), looping to end")
       currentQueueIndex = queue.size - 1
     } else {
       currentQueueIndex -= 1
-      Log.i(TAG, "[GET_PREVIOUS] Moving to previous track, index: $currentQueueIndex")
     }
 
     return queue[currentQueueIndex]
@@ -199,7 +183,6 @@ object QueueManager {
   fun getItem(mediaSession: MediaSessionCompat, id: Long): MediaSessionCompat.QueueItem? {
     val queue = mediaSession.controller.queue
     if (queue == null || queue.isEmpty()) {
-      Log.w(TAG, "[GET_ITEM] Queue is null or empty")
       return null
     }
 
@@ -221,13 +204,11 @@ object QueueManager {
    */
   fun syncCurrentIndex(mediaSession: MediaSessionCompat, currentMediaId: String?) {
     if (currentMediaId == null) {
-      Log.w(TAG, "[SYNC_INDEX] currentMediaId is null, cannot sync")
       return
     }
 
     val queue = mediaSession.controller.queue
     if (queue == null || queue.isEmpty()) {
-      Log.w(TAG, "[SYNC_INDEX] Queue is null or empty, cannot sync")
       return
     }
 
@@ -236,9 +217,6 @@ object QueueManager {
 
     if (index >= 0) {
       currentQueueIndex = index
-      Log.i(TAG, "[SYNC_INDEX] Synchronized index to $currentQueueIndex for mediaId: $currentMediaId")
-    } else {
-      Log.w(TAG, "[SYNC_INDEX] Could not find mediaId '$currentMediaId' in queue, keeping current index: $currentQueueIndex")
     }
   }
 
@@ -261,7 +239,6 @@ object QueueManager {
     this.queue = currentQueue
     mediaSession.setQueue(this.queue)
 
-    Log.i(TAG, "[APPEND_QUEUE] Appended ${newItems.size} items. Queue now has ${currentQueue.size} items. currentQueueIndex=$currentQueueIndex")
     return newItems.size
   }
 

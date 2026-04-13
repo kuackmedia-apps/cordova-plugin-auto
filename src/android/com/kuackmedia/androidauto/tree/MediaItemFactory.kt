@@ -92,7 +92,6 @@ object MediaItemFactory {
       "artist" -> {
         val artist = mediaItem as Artist
         //LOG artist IMAGES
-        Log.i(TAG, "Artist images: ${artist.images}")
         result = this.buildMediaItem(
           title = artist.name,
           subtitle = TextsManager.getText("artist"),
@@ -124,7 +123,7 @@ object MediaItemFactory {
         extras.putString("artist", getArtistsNames(track.artists))
         extras.putString("album", track.album?.title)
         extras.putString("image", imageUri.toString())
-        extras.putString("length", track.length)
+        extras.putString("length", track.length ?: "0")
         extras.putString("id", cleanId)
         extras.putString("idAlbumTrack", track.idAlbumTrack.toString())
 
@@ -178,7 +177,7 @@ object MediaItemFactory {
         extras.putString("artist", getArtistsNames(track.artists))
         extras.putString("album", track.album?.title)
         extras.putString("image", imageUri.toString())
-        extras.putString("length", track.length)
+        extras.putString("length", track.length ?: "0")
         extras.putString("id", cleanId)
         extras.putString("idAlbumTrack", track.idAlbumTrack.toString())
 
@@ -282,7 +281,6 @@ object MediaItemFactory {
 
     val iconFile = File(context.filesDir, iconStringPath!!)
     val exists = iconFile.exists()
-    Log.i(TAG, "createBrowsable Icon $iconStringPath local: $exists")
     val bmp = BitmapFactory.decodeFile(iconFile.absolutePath)
 
     val descriptionBuilder = MediaDescriptionCompat.Builder()
@@ -295,17 +293,12 @@ object MediaItemFactory {
         var uri: Uri? = null
         if (iconStringPath.startsWith("content://") || iconStringPath.startsWith("file://")) {
           uri = Uri.parse(iconStringPath)
-          Log.i(TAG, "createBrowsable: iconStringPath already a URI: $uri")
         } else {
           val iconFile = File(context.filesDir, iconStringPath)
-          Log.i(TAG, "createBrowsable: checking local file ${iconFile.absolutePath} (exists=${iconFile.exists()})")
           if (iconFile.exists()) {
             uri = FileProvider.getUriForFile(context, "${context.packageName}.auto.file.provider", iconFile)
-            Log.i(TAG, "createBrowsable: content Uri for file: $uri")
             // grant permission to likely clients (debug)
             grantReadPermissionToCarApps(context, uri)
-          } else {
-            Log.w(TAG, "createBrowsable: local icon file not found: ${iconFile.absolutePath}")
           }
         }
         if (uri != null) {
@@ -314,8 +307,6 @@ object MediaItemFactory {
       } catch (ex: Exception) {
         Log.w(TAG, "createBrowsable: error creating uri for iconStringPath=$iconStringPath: ${ex.message}", ex)
       }
-    } else {
-      Log.i(TAG, "createBrowsable: no iconStringPath for $title")
     }
 
     if (itemStyle != null && itemStyle == "LIST") {
@@ -352,7 +343,7 @@ object MediaItemFactory {
           grantReadPermissionToCarApps(context, uri)
           return uri
         } catch (e: Exception) {
-          Log.w(TAG, "getPodcastImageUri: FileProvider failed for ${localFile.absolutePath}: ${e.message}")
+          // FileProvider failed, try next extension
         }
       }
     }
@@ -362,12 +353,9 @@ object MediaItemFactory {
 
   private fun getImageUri(images: List<CoverImage>?, itemType: String?, itemId: String?, context: Context): Uri? {
 
-    Log.i(TAG, "getImageUrl  $itemType  - $itemId")
-
     // First try to get local path
     val localPath = getLocalPathFromItemTypeAndItemId(itemType, itemId, context)
     if (localPath != null) {
-      Log.i(TAG, "getImageUrl  found localPath $localPath")
       return localPath
     }
  //   Log.i(TAG, "getImageUrl  localPath $localPath")
@@ -393,14 +381,11 @@ object MediaItemFactory {
               try {
                 val authority = "${context.packageName}.auto.file.provider"
                 val contentUri = FileProvider.getUriForFile(context, authority, file.canonicalFile)
-                Log.i(TAG, "getImageUri: converted file:// to content:// URI: $contentUri")
                 grantReadPermissionToCarApps(context, contentUri)
                 return contentUri
               } catch (e: Exception) {
-                Log.w(TAG, "getImageUri: FileProvider failed for $filePath: ${e.message}")
+                // FileProvider conversion failed, fall through to remote URL
               }
-            } else {
-              Log.w(TAG, "getImageUri: local file not found: $filePath")
             }
           }
         }
@@ -417,13 +402,10 @@ object MediaItemFactory {
     val basePath = try {
       basePathRaw.canonicalFile
     } catch (e: Exception) {
-      Log.w(TAG, "Could not get canonical path, using absolute: ${e.message}")
       basePathRaw
     }
-    Log.i(TAG, "getLocalPathFromItemTypeAndItemId called - itemType: $itemType, itemId: $itemId, basePath: ${basePath.absolutePath}")
 
     if (itemType == null || itemId == null) {
-      Log.w(TAG, "getLocalPathFromItemTypeAndItemId - null itemType or itemId")
       return null
     }
 
@@ -443,7 +425,6 @@ object MediaItemFactory {
       } catch (e: Exception) {
         fileRaw
       }
-      Log.i(TAG, "Checking local candidate: ${fileCanonical.absolutePath} (exists=${fileCanonical.exists()})")
       if (fileCanonical.exists()) {
         val authority = "${context.packageName}.auto.file.provider"
 
@@ -454,17 +435,11 @@ object MediaItemFactory {
         for (file in filesToTry) {
           try {
             val uri = FileProvider.getUriForFile(context, authority, file)
-            Log.i(TAG, "Found file -> content Uri: $uri (using path: ${file.absolutePath})")
 
             // Quick runtime verification: can we open it via ContentResolver?
             try {
               context.contentResolver.openInputStream(uri)?.use { stream ->
                 val firstByte = stream.read()
-                if (firstByte >= 0) {
-                  Log.i(TAG, "ContentResolver can open Uri: $uri (firstByte=$firstByte)")
-                } else {
-                  Log.w(TAG, "ContentResolver opened Uri but no data: $uri")
-                }
               }
             } catch (ioEx: Exception) {
               Log.w(TAG, "ContentResolver failed to open Uri $uri: ${ioEx.message}", ioEx)
@@ -482,7 +457,6 @@ object MediaItemFactory {
       }
     }
 
-    Log.i(TAG, "No local image found for itemType: $itemType, itemId: $itemId")
     return null
   }
 
@@ -497,9 +471,8 @@ object MediaItemFactory {
       try {
         pm.getPackageInfo(pkg, 0)
         context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        Log.i(TAG, "grantReadPermissionToCarApps: granted READ for $uri to $pkg")
       } catch (ex: Exception) {
-        Log.d(TAG, "grantReadPermissionToCarApps: package $pkg not present")
+        // package not present
       }
     }
   }

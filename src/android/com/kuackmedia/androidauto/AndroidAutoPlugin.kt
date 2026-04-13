@@ -32,14 +32,12 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "play" -> {
-        Log.d("AndroidAutoPlugin", "[play]")
         MediaControlBridge.play()
         callbackContext.success("Playing")
         return true
       }
 
       "pause" -> {
-        Log.d("AndroidAutoPlugin", "[play]")
         MediaControlBridge.pause()
         callbackContext.success("pause")
         return true
@@ -60,7 +58,6 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "isConnected" -> {
-        Log.d("AndroidAutoPlugin", "[isConnected] ${MediaControlBridge.androidAutoConnected}")
         callbackContext.success(if (MediaControlBridge.androidAutoConnected) 1 else 0)
         return true
       }
@@ -71,14 +68,12 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "playCurrentTrack" -> {
-        Log.d("AndroidAutoPlugin", "[playCurrentTrack]")
         MediaControlBridge.playCurrentTrack()
         callbackContext.success("Playing current track")
         return true
       }
 
       "updateNavigation" -> {
-        Log.d("AndroidAutoPlugin", "[updateNavigation] Refreshing Android Auto navigation")
         try {
           MusicLibraryService.refreshNavigation()
           callbackContext.success("Navigation updated successfully")

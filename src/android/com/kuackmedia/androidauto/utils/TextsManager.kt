@@ -46,7 +46,6 @@ object TextsManager {
     //Log.d(TAG, "Accessing text for key: $key");
     //log all texts
     if (texts.isEmpty()) {
-      Log.w(TAG, "No texts available. Check if init() was called successfully.")
       return ""
     }
     return texts[key] ?: ""

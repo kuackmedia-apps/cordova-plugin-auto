@@ -22,7 +22,6 @@ object LocalStorageUtils {
     val imageFile = File(context.filesDir, "images/$imageId")
 
     val exists = imageFile.exists()
-    Log.i(TAG, "Image $imageId local: $exists")
     return exists
   }
 
@@ -32,11 +31,9 @@ object LocalStorageUtils {
     val imageFile = File(context.filesDir, "img/$imageId")
 
     if (imageFile.exists()) {
-      Log.i(TAG, "Using local image: " + imageFile.absolutePath)
       return Uri.fromFile(imageFile)
     } else {
       val remoteUri = item.description.iconUri
-      Log.i(TAG, "Using remote image: $remoteUri")
       return remoteUri
     }
   }
@@ -45,12 +42,10 @@ object LocalStorageUtils {
     //String iconId = iconName;
     val iconFile = File(context.filesDir, iconName)
     val exists = iconFile.exists()
-    Log.i(TAG, "Icon $iconName local: $exists")
     return iconFile.absolutePath
   }
 
   fun storeDataInPrefs(context: Context, key: String, data: String?) {
-    Log.i(TAG, "Storing data in prefs: $key - $data")
     val prefs = context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
     prefs.edit {
       putString(key, "\"$data\"")
@@ -63,10 +58,7 @@ object LocalStorageUtils {
    * crashes or is killed during write operation.
    */
   fun storeInFile(context: Context, key: String, data: String?) {
-    Log.i(TAG, "Storing data in file: $key")
-
     if (data == null) {
-      Log.w(TAG, "storeInFile: data is null, skipping write for key: $key")
       return
     }
 
@@ -77,18 +69,15 @@ object LocalStorageUtils {
     try {
       // Step 1: Write to temporary file
       tempFile.writeText(data, Charsets.UTF_8)
-      Log.d(TAG, "storeInFile: wrote ${data.length} bytes to temp file: $tempKey")
 
       // Step 2: Atomic rename from temp to final
       val renamed = tempFile.renameTo(finalFile)
       if (renamed) {
-        Log.i(TAG, "storeInFile: atomic rename successful for key: $key")
+        // Rename successful
       } else {
         // Fallback: if rename fails (e.g., cross-filesystem), copy and delete
-        Log.w(TAG, "storeInFile: rename failed, using copy fallback for key: $key")
         tempFile.copyTo(finalFile, overwrite = true)
         tempFile.delete()
-        Log.i(TAG, "storeInFile: copy fallback successful for key: $key")
       }
     } catch (e: Exception) {
       Log.e(TAG, "storeInFile: failed to write file: $key - ${e.message}", e)
@@ -106,8 +95,6 @@ object LocalStorageUtils {
    * 2. Fallback: enclosure URL (direct HTTP stream from RSS feed)
    */
   fun getEpisodeUri(context: Context, episodeId: String?, enclosureUrl: String?): Uri? {
-    Log.i(TAG, "[GET_EPISODE_URI] episodeId=$episodeId, enclosureUrl=$enclosureUrl")
-
     if (episodeId.isNullOrEmpty() || episodeId == "null") {
       Log.e(TAG, "[GET_EPISODE_URI] Invalid episodeId: $episodeId")
       return null
@@ -116,13 +103,11 @@ object LocalStorageUtils {
     // Check offline episode file
     val episodeFile = File(context.filesDir, "offline/episodes/$episodeId.mp3")
     if (episodeFile.exists()) {
-      Log.i(TAG, "[GET_EPISODE_URI_LOCAL] Using offline episode: ${episodeFile.absolutePath}")
       return Uri.fromFile(episodeFile)
     }
 
     // Fallback to enclosure URL
     if (!enclosureUrl.isNullOrEmpty() && enclosureUrl != "null") {
-      Log.i(TAG, "[GET_EPISODE_URI_REMOTE] Using enclosure URL: $enclosureUrl")
       return Uri.parse(enclosureUrl)
     }
 
@@ -131,8 +116,6 @@ object LocalStorageUtils {
   }
 
   suspend fun getTrackUri(context: Context, trackId: String?, idAlbumTrack: String?): Uri? {
-    Log.i(TAG, "[GET_TRACK_URI_START] Called with trackId=$trackId, idAlbumTrack=$idAlbumTrack")
-
     // Validate trackId
     if (trackId.isNullOrEmpty() || trackId == "null") {
       Log.e(TAG, "[GET_TRACK_URI_ERROR] Invalid trackId: $trackId")
@@ -143,30 +126,23 @@ object LocalStorageUtils {
 
     // 1. Check user's offline downloads
     val trackFile = File(context.filesDir, "offline/$trackName")
-    Log.d(TAG, "[GET_TRACK_URI_CHECK_LOCAL] Checking offline: ${trackFile.absolutePath}")
     if (trackFile.exists()) {
-      Log.i(TAG, "[GET_TRACK_URI_LOCAL_FOUND] Using offline track: ${trackFile.absolutePath}")
       return Uri.fromFile(trackFile)
     }
 
     // 2. Check auto_cache (preloaded by TrackPreloader)
     val cacheFile = File(context.filesDir, "auto_cache/$trackName")
     if (cacheFile.exists()) {
-      Log.i(TAG, "[GET_TRACK_URI_CACHE_FOUND] Using cached track: ${cacheFile.absolutePath}")
       return Uri.fromFile(cacheFile)
     }
 
     run {
-      Log.i(TAG, "[GET_TRACK_URI_REMOTE] Local file not found, attempting remote fetch")
-
       // Check if idAlbumTrack is valid
       if (idAlbumTrack.isNullOrEmpty() || idAlbumTrack == "null") {
         Log.e(TAG, "[GET_TRACK_URI_ERROR] Cannot fetch remote track: idAlbumTrack is invalid ($idAlbumTrack)")
         Log.e(TAG, "[GET_TRACK_URI_ERROR] This usually happens with offline tracks that don't have idAlbumTrack")
         return null
       }
-
-      Log.d(TAG, "[GET_TRACK_URI_API_CALL] Creating API request with trackId=$trackId, idAlbumTrack=$idAlbumTrack")
 
       try {
         val api = ServiceFactory.create(context)
@@ -178,10 +154,8 @@ object LocalStorageUtils {
           forcePreview = false,
           extraLife = false,
         )
-        Log.i(TAG, "[GET_TRACK_URI_PAYLOAD] Track request payload: $payload")
 
         val url = api.getTrackUrl(payload).signedUrl
-        Log.i(TAG, "[GET_TRACK_URI_SUCCESS] Track URL retrieved: $url")
         return url.toUri()
       } catch (e: Exception) {
         Log.e(TAG, "[GET_TRACK_URI_EXCEPTION] Failed to get track URL: ${e.message}", e)

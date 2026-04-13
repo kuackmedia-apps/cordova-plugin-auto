@@ -48,25 +48,13 @@ class TokenInterceptor: URLProtocol {
             headers["Content-Type"] = "application/json"
             request.allHTTPHeaderFields = headers
         }
-        // Diagnostics for outgoing request
-        let authHeaderPreview = request.allHTTPHeaderFields?["Authorization"]?.isEmpty == false ? "present" : "missing"
-        let appHeader = request.allHTTPHeaderFields?["X-KUACK-APP"] ?? "<nil>"
-        print("[TokenInterceptor] -> \(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "-") auth=\(authHeaderPreview) app=\(appHeader) baseUrl=\(TokenInterceptor.baseUrl)")
-        // Verbose request logging similar to Android's HttpLoggingInterceptor(Level.BODY)
-        if let headers = request.allHTTPHeaderFields { print("[TokenInterceptor][REQ HEADERS] \(headers)") }
-        if let body = request.httpBody, body.count > 0 {
-            let preview = String(data: body, encoding: .utf8) ?? "<non-utf8>"
-            print("[TokenInterceptor][REQ BODY] \(preview)")
-        }
-        
+
         let session = URLSession(configuration: .default)
         let task = session.dataTask(with: request) { data, response, error in
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
-                print("[TokenInterceptor][401] Unauthorized. Attempting token refresh...")
                 // Try to refresh token
                 TokenInterceptor.refreshAuthToken { newToken in
                     if let newToken = newToken {
-                        print("[TokenInterceptor] Refresh success. Retrying original request with new token.")
                         var newRequest = request
                         var headers = newRequest.allHTTPHeaderFields ?? [:]
                         headers["Authorization"] = "Bearer \(newToken)"
@@ -95,19 +83,6 @@ class TokenInterceptor: URLProtocol {
                     }
                 }
                 return
-            }
-            if let http = response as? HTTPURLResponse {
-                print("[TokenInterceptor] <- status=\(http.statusCode) for \(request.url?.absoluteString ?? "-")")
-                // On non-2xx, emit detailed diagnostics
-                if !(200...299).contains(http.statusCode) {
-                    if let headers = http.allHeaderFields as? [String: Any] {
-                        print("[TokenInterceptor][RESP HEADERS] \(headers)")
-                    }
-                    if let data = data {
-                        let body = String(data: data, encoding: .utf8) ?? "<non-utf8>"
-                        print("[TokenInterceptor][RESP BODY] \(body)")
-                    }
-                }
             }
             if let data = data, let response = response {
                 self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -141,9 +116,6 @@ class TokenInterceptor: URLProtocol {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let session = URLSession(configuration: .default)
         let task = session.dataTask(with: request) { data, response, error in
-            if let http = response as? HTTPURLResponse {
-                print("[TokenInterceptor] Refresh response status=\(http.statusCode)")
-            }
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let newToken = json["accessToken"] as? String,
@@ -155,7 +127,6 @@ class TokenInterceptor: URLProtocol {
             }
             UserDefaults.standard.setValue("\"\(newToken)\"", forKey: "AT_TOKEN_KEY")
             UserDefaults.standard.setValue("\"\(newRefreshToken)\"", forKey: "REFRESH_TOKEN_KEY")
-            print("[TokenInterceptor] Stored new access/refresh tokens")
             completion(newToken)
         }
         task.resume()

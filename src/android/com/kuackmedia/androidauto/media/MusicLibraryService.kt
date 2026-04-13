@@ -109,8 +109,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         // trigger the service.
 
         TextsManager.init(applicationContext)
-        Log.i(TAG, "TextsManager initialized")
-        Log.i(TAG, "MusicLibraryService test ${TextsManager.getText("artist")}");
         initApiData()
 
         val musicApi = ServiceFactory.create(applicationContext)
@@ -171,7 +169,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
             override fun onAvailable(network: Network) {
                 val newNetworkAvailability = isNetworkAvailable(applicationContext)
                 networkAvailable = true
-                Log.d(TAG, "Network state changed: AVAILABLE. Reloading all nodes.")
                 notifyChildrenChanged(ROOT_ID)
                 MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
                     mediaItem?.mediaId?.let {
@@ -184,9 +181,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
             override fun onLost(network: Network) {
                 val newNetworkAvailability = isNetworkAvailable(applicationContext)
-                Log.d(TAG, "Network state changed: LOST. Reloading all nodes.")
                 networkAvailable = false
-                Log.d(TAG, "Network state changed: LOST 1. Reloading all nodes.")
                 notifyChildrenChanged(ROOT_ID)
                 MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
                     mediaItem?.mediaId?.let {
@@ -205,19 +200,14 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         clientUid: Int,
         rootHints: Bundle?
     ): BrowserRoot? {
-        Log.i(TAG, "[ON_GET_ROOT] Connection request from package: $clientPackageName, uid: $clientUid")
-
         // Check if the client is an allowed Android Auto package
         val isAllowedClient = ALLOWED_PACKAGES.contains(clientPackageName)
 
         if (!isAllowedClient) {
             // Reject connections from non-Android Auto clients (e.g., com.android.bluetooth)
             // This prevents the service from activating when Bluetooth connects
-            Log.w(TAG, "[ON_GET_ROOT] Rejecting connection from non-Android Auto client: $clientPackageName")
             return null
         }
-
-        Log.i(TAG, "[ON_GET_ROOT] Accepting connection from Android Auto client: $clientPackageName")
 
         val extras = Bundle()
         extras.putInt(
@@ -238,11 +228,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
                 CordovaEvents.ON_CONNECTION_CHANGE,
                 JSONObject().put("connected", true)
             )
-            Log.i(TAG, "[ON_GET_ROOT] Android Auto connected, event sent to app")
 
             // Prepare the player and load the queue only when Android Auto really connects
             // This was previously in onCreate() but caused issues with Bluetooth triggering it
-            Log.i(TAG, "[ON_GET_ROOT] Calling prepare() to load queue and current track")
             mediaSession.controller.transportControls.prepare()
         }
 
@@ -250,7 +238,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        Log.i(TAG, "[ON_UNBIND] Client disconnected")
         if (isAndroidAutoConnected) {
             isAndroidAutoConnected = false
             MediaControlBridge.setConnected(false)
@@ -258,7 +245,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
                 CordovaEvents.ON_CONNECTION_CHANGE,
                 JSONObject().put("connected", false)
             )
-            Log.i(TAG, "[ON_UNBIND] Android Auto disconnected, event sent to app")
         }
         return super.onUnbind(intent)
     }
@@ -267,8 +253,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         parentId: String,
         result: Result<List<MediaBrowserCompat.MediaItem?>?>
     ) {
-
-        Log.i(TAG, "[onLoadChildren] parentId='$parentId', ROOT_ID='$ROOT_ID', equals=${parentId == ROOT_ID}")
 
         if (parentId == OFFLINE_ROOT) {
             //OFFLINE ITEMS
@@ -284,79 +268,66 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
         // Check if this is the ROOT and user is not logged in - BEFORE getting children
         val isLoggedIn = MediaItemTree.isUserLoggedIn(applicationContext)
-        Log.i(TAG, "[onLoadChildren] isLoggedIn=$isLoggedIn")
 
         if (parentId == ROOT_ID && !isLoggedIn) {
-            Log.w(TAG, "[onLoadChildren] User not logged in - showing login required message")
             val loginItem = MediaItemTree.getLoginRequiredMediaItem(applicationContext)
-            Log.i(TAG, "[onLoadChildren] Created loginItem: ${loginItem.description.title}")
             result.sendResult(mutableListOf(loginItem))
             return
         }
 
         var localChildren = MediaItemTree.getChildren(parentId)
-        Log.i(TAG, "[onLoadChildren] localChildren.size=${localChildren.size}")
 
         // If ROOT has no children, try refreshing the tree from files
         // This handles the race condition where the service initialized before JS wrote the navigation files
         if (parentId == ROOT_ID && localChildren.isEmpty()) {
-            Log.w(TAG, "[onLoadChildren] ROOT has no children, attempting to refresh tree from files")
             MediaItemTree.refresh(applicationContext)
             localChildren = MediaItemTree.getChildren(parentId)
-            Log.i(TAG, "[onLoadChildren] After refresh, localChildren.size=${localChildren.size}")
         }
 
-        if  (!isNetworkAvailable(this)) {
-            // This is an online-only section and we are offline. Show link to library.
+        // ROOT level + offline: show offline entry point
+        if (parentId == ROOT_ID && !isNetworkAvailable(this)) {
             val offlineMediaItem = MediaItemTree.getOfflineMediaItem(applicationContext)
-            val offlineItems = mutableListOf<MediaBrowserCompat.MediaItem>()
-            offlineItems.add(offlineMediaItem)
-            result.sendResult(offlineItems)
+            result.sendResult(mutableListOf(offlineMediaItem))
             return
         }
 
+        // Return cached children if available (works both online and offline)
         if (localChildren.isNotEmpty()) {
             result.sendResult(localChildren)
             return
         }
 
-        // No local children
-        if (isNetworkAvailable(this)) {
-            // fetch remote
-            result.detach()
+        // No cached children — try to load (getRemoteChildren handles both online and offline)
+        result.detach()
+        val resultSent = java.util.concurrent.atomic.AtomicBoolean(false)
 
-            // Use atomic flag to prevent calling sendResult() twice
-            val resultSent = java.util.concurrent.atomic.AtomicBoolean(false)
+        serviceScope.launch {
+            try {
+                val remoteChildren =
+                    MediaItemTree.getRemoteChildren(parentId, applicationContext)
 
-            serviceScope.launch {
-                try {
-                    val remoteChildren =
-                        MediaItemTree.getRemoteChildren(parentId, applicationContext)
+                if (remoteChildren.isNotEmpty()) {
                     QueueManager.buildQueue(remoteChildren)
-
-                    // Only send result if not already sent
                     if (resultSent.compareAndSet(false, true)) {
                         result.sendResult(remoteChildren)
-                    } else {
-                        Log.w(TAG, "onLoadChildren: Result already sent for $parentId, skipping")
                     }
-                } catch (e: Exception) {
-                    Log.e("MusicService", "Error loading children", e)
-
-                    // Only send result if not already sent
+                } else if (!isNetworkAvailable(applicationContext)) {
+                    // Offline and no offline tracks found — show "No Internet"
+                    if (resultSent.compareAndSet(false, true)) {
+                        val offlineMediaItem = MediaItemTree.getOfflineMediaItem(applicationContext)
+                        result.sendResult(mutableListOf(offlineMediaItem))
+                    }
+                } else {
                     if (resultSent.compareAndSet(false, true)) {
                         result.sendResult(mutableListOf())
-                    } else {
-                        Log.w(TAG, "onLoadChildren: Result already sent for $parentId (error case), skipping")
                     }
                 }
+            } catch (e: Exception) {
+                Log.e("MusicService", "Error loading children", e)
+                if (resultSent.compareAndSet(false, true)) {
+                    result.sendResult(mutableListOf())
+                }
             }
-        } else {
-            // show offline link
-            val offlineMediaItem = MediaItemTree.getOfflineMediaItem(applicationContext)
-            val offlineItems = mutableListOf<MediaBrowserCompat.MediaItem>()
-            offlineItems.add(offlineMediaItem)
-            result.sendResult(offlineItems)
         }
     }
 
@@ -365,8 +336,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
      * Reloads MediaItemTree and notifies Android Auto of changes.
      */
     private fun refreshNavigationInternal() {
-        Log.i(TAG, "[REFRESH_NAVIGATION] Starting navigation refresh")
-
         try {
             // Refresh the MediaItemTree
             MediaItemTree.refresh(applicationContext)
@@ -378,21 +347,16 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
             MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
                 mediaItem?.mediaId?.let {
                     if (mediaItem.isBrowsable) {
-                        Log.d(TAG, "[REFRESH_NAVIGATION] Notifying child changed: $it")
                         notifyChildrenChanged(it)
                     }
                 }
             }
-
-            Log.i(TAG, "[REFRESH_NAVIGATION] Navigation refresh completed successfully")
         } catch (e: Exception) {
             Log.e(TAG, "[REFRESH_NAVIGATION] Error refreshing navigation: ${e.message}", e)
         }
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy called")
-
         // Unregister this instance
         instance = null
 
@@ -408,7 +372,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
                 CordovaEvents.ON_CONNECTION_CHANGE,
                 JSONObject().put("connected", false)
             )
-            Log.i(TAG, "[ON_DESTROY] Android Auto disconnect event sent")
         }
 
         // Remove audio controls notification
@@ -424,7 +387,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         query: String, extras: Bundle?,
         result: Result<MutableList<MediaBrowserCompat.MediaItem?>?>
     ) {
-        Log.d(TAG, "Received search query: $query")
         result.detach() // Notify the system you'll send the result asynchronously
         serviceScope.launch {
             try {
@@ -448,13 +410,5 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
         this.currentTrackName =
             prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", "")
-
-        Log.i(TAG, "REFRESH_TOKEN_KEY: $refreshToken")
-        Log.i(TAG, "ACCESS_TOKEN_KEY: $accessToken")
-        Log.i(TAG, "AT_EXP_TIME_KEY: $accessTokenExpiration")
-        Log.i(TAG, "APP_KUACK_CODE: $appKuackCode")
-        Log.i(TAG, "API_URL: $baseUrl")
-        Log.i(TAG, "DeviceID: $deviceId")
-        Log.i(TAG, "CURRENT_TRACK_KEY: ${this.currentTrackName}")
     }
 }

@@ -37,13 +37,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
     }
 
   override fun release() {
-    Log.i(TAG, "[MediaPlayerAdapter] Release was executed")
     isReleased = true
 
     // Release audio focus before releasing the media player
     currentAudioFocusRequest?.let { request ->
       currentAudioManager?.abandonAudioFocusRequest(request)
-      Log.i(TAG, "[RELEASE] Audio focus abandoned")
     }
     currentAudioFocusRequest = null
     currentAudioManager = null
@@ -52,13 +50,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun reset() {
-    Log.i(TAG, "[MediaPlayerAdapter] Reset was executed")
     isReleased = false
     mediaPlayer.reset()
   }
 
   init {
-    Log.i(TAG, "MediaPlayerAdapter init")
     mediaPlayer.setAudioAttributes(
       AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -81,13 +77,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override fun setOnAudioFocusChangeListener(callback: (Int) -> Unit) {
     this.audioFocusChangeCallback = callback
-    Log.i(TAG, "[SET_AUDIO_FOCUS_LISTENER] Audio focus change callback registered")
   }
 
   override fun setOnCompletionListener(handlePlaybackCompletion: () -> Unit) {
     mediaPlayer.setOnCompletionListener(object : OnCompletionListener {
       override fun onCompletion(mp: MediaPlayer?) {
-        Log.i(TAG, "[MediaPlayerAdapter] Finished track")
         handlePlaybackCompletion()
       }
     })
@@ -96,7 +90,6 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   override fun setOnPreparedListener(handlePrepare: () -> Unit) {
     mediaPlayer.setOnPreparedListener(object : OnPreparedListener {
       override fun onPrepared(mp: MediaPlayer?) {
-        Log.i(TAG, "[PREPARE_CALLBACK] Prepare callback called")
         handlePrepare()
         isPreparing = false
 
@@ -104,7 +97,6 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         // wait a bit before allowing audio focus loss to pause playback
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
           shouldIgnoreAudioFocusLoss = false
-          Log.i(TAG, "[PREPARE_CALLBACK] Audio focus loss handling re-enabled")
         }, 500)
       }
     })
@@ -129,19 +121,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun start() {
-    Log.i(TAG, "[START] start() called, isPreparing: $isPreparing, isPlaying: ${mediaPlayer.isPlaying}")
     try {
-      // Check and log volume before starting
-      val leftVolume = mediaPlayer.audioSessionId
-      Log.i(TAG, "[START] Current audio session ID: $leftVolume")
-
       mediaPlayer.start()
-      Log.i(TAG, "[START_SUCCESS] mediaPlayer.start() completed, isPlaying: ${mediaPlayer.isPlaying}")
 
       // Verify the player is actually outputting audio
-      if (mediaPlayer.isPlaying) {
-        Log.i(TAG, "[START_VERIFY] Player is playing, currentPosition: ${mediaPlayer.currentPosition}")
-      } else {
+      if (!mediaPlayer.isPlaying) {
         Log.w(TAG, "[START_WARNING] start() called but isPlaying is false!")
       }
     } catch (e: Exception) {
@@ -150,21 +134,15 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun play() {
-    Log.i(TAG, "[PLAY] play() called, isPreparing: $isPreparing, isPlaying: ${mediaPlayer.isPlaying}")
     try {
       if (!isPreparing && !mediaPlayer.isPlaying) {
-        Log.i(TAG, "[PLAY] Starting playback")
         mediaPlayer.start()
-        Log.i(TAG, "[PLAY_SUCCESS] Playback started, isPlaying: ${mediaPlayer.isPlaying}")
 
         // After playback has started, wait a bit before allowing audio focus loss/pause commands
         // This prevents race conditions with audio focus
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
           shouldIgnoreAudioFocusLoss = false
-          Log.i(TAG, "[PLAY] Audio focus loss handling re-enabled after play()")
         }, 500)
-      } else {
-        Log.w(TAG, "[PLAY_SKIP] Skipping play (isPreparing: $isPreparing, isPlaying: ${mediaPlayer.isPlaying})")
       }
     } catch (e: Exception) {
       Log.e(TAG, "[PLAY_ERROR] Error calling mediaPlayer.start(): ${e.message}", e)
@@ -173,8 +151,6 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override fun playCurrentTrack(context: Context) {
     try {
-      Log.i(TAG, "[PLAY_TRACK_START] Starting playback for URI: ${this.currentTrackUri}")
-
       val audioManager = context.getSystemService(AUDIO_SERVICE) as AudioManager
       this.currentAudioManager = audioManager
 
@@ -190,36 +166,24 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         .setAcceptsDelayedFocusGain(true)
         .setWillPauseWhenDucked(false)
         .setOnAudioFocusChangeListener { focusChange ->
-          Log.i(TAG, "[AUDIO_FOCUS_CHANGE] Audio focus changed to: $focusChange, shouldIgnoreAudioFocusLoss: $shouldIgnoreAudioFocusLoss")
-
           when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
-              Log.i(TAG, "[AUDIO_FOCUS_GAIN] Gained audio focus")
               // Always notify about GAIN events
               audioFocusChangeCallback?.invoke(focusChange)
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
-              if (shouldIgnoreAudioFocusLoss) {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS] Lost audio focus permanently, but IGNORING due to shouldIgnoreAudioFocusLoss flag (early startup - likely offline track)")
-              } else {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS] Lost audio focus permanently - another app took control")
+              if (!shouldIgnoreAudioFocusLoss) {
                 // Notify the callback (MediaSessionCallback) about the focus change
                 audioFocusChangeCallback?.invoke(focusChange)
               }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-              if (shouldIgnoreAudioFocusLoss) {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS_TRANSIENT] Lost audio focus temporarily, but IGNORING due to shouldIgnoreAudioFocusLoss flag")
-              } else {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS_TRANSIENT] Lost audio focus temporarily")
+              if (!shouldIgnoreAudioFocusLoss) {
                 audioFocusChangeCallback?.invoke(focusChange)
               }
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-              if (shouldIgnoreAudioFocusLoss) {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS_TRANSIENT_DUCK] Lost audio focus, can duck, but IGNORING due to shouldIgnoreAudioFocusLoss flag")
-              } else {
-                Log.w(TAG, "[AUDIO_FOCUS_LOSS_TRANSIENT_DUCK] Lost audio focus, can duck")
+              if (!shouldIgnoreAudioFocusLoss) {
                 audioFocusChangeCallback?.invoke(focusChange)
               }
             }
@@ -232,44 +196,32 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         .build()
 
       this.currentAudioFocusRequest = focusRequest
-      Log.i(TAG, "[PLAY_TRACK_FOCUS_REQUEST_CREATED] Audio focus request created, will request in handlePrepare()")
 
       if (mediaPlayer.isPlaying) {
-        Log.d(TAG, "[PLAY_TRACK_STOP] Stopping current playback")
         mediaPlayer.stop()
         mediaPlayer.reset()
       }
 
       if (this.currentTrackUri != null) {
-        Log.d(TAG, "[PLAY_TRACK_RESET] Resetting media player")
         mediaPlayer.reset()
 
         val uriString = this.currentTrackUri.toString()
         val uriScheme = this.currentTrackUri?.scheme
 
-        Log.i(TAG, "[PLAY_TRACK_URI_INFO] URI scheme: $uriScheme, full URI: $uriString")
-        Log.i(TAG, "[PLAY_TRACK_SET_SOURCE] Setting data source")
-
         // Check if it's a file:// URI and use alternative method
         if (uriScheme == "file") {
-          Log.i(TAG, "[PLAY_TRACK_FILE_URI] Detected file:// URI, using setDataSource with context")
           try {
             mediaPlayer.setDataSource(context, this.currentTrackUri!!)
-            Log.i(TAG, "[PLAY_TRACK_FILE_URI_SUCCESS] setDataSource with context succeeded")
           } catch (e: Exception) {
             Log.e(TAG, "[PLAY_TRACK_FILE_URI_ERROR] setDataSource with context failed: ${e.message}", e)
-            Log.i(TAG, "[PLAY_TRACK_FILE_URI_FALLBACK] Trying string-based setDataSource")
             mediaPlayer.setDataSource(uriString)
           }
         } else {
-          Log.i(TAG, "[PLAY_TRACK_REMOTE_URI] Using string-based setDataSource for remote URI")
           mediaPlayer.setDataSource(uriString)
         }
 
-        Log.i(TAG, "[PLAY_TRACK_PREPARE] Starting async prepare")
         mediaPlayer.prepareAsync()
         isPreparing = true
-        Log.i(TAG, "[PLAY_TRACK_PREPARING] isPreparing set to true")
       } else {
         Log.w(TAG, "[PLAY_TRACK_NO_URI] currentTrackUri is null, cannot play")
       }
@@ -281,35 +233,18 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun pause() {
-    Log.i(TAG, "[PAUSE] pause() called, isPlaying: ${mediaPlayer.isPlaying}, isPreparing: $isPreparing")
-
-    // Log stack trace to see who is calling pause
-    val stackTrace = Thread.currentThread().stackTrace
-    val caller = if (stackTrace.size > 3) {
-      "${stackTrace[3].className}.${stackTrace[3].methodName}:${stackTrace[3].lineNumber}"
-    } else {
-      "unknown"
-    }
-    Log.i(TAG, "[PAUSE_CALLER] Called from: $caller")
-
     if (mediaPlayer.isPlaying) {
-      Log.i(TAG, "[PAUSE_EXECUTE] Pausing playback")
       mediaPlayer.pause()
-      Log.i(TAG, "[PAUSE_SUCCESS] Pause completed, isPlaying: ${mediaPlayer.isPlaying}")
-    } else {
-      Log.w(TAG, "[PAUSE_SKIP] Player is not playing, skip pause")
     }
   }
 
   override fun stop() {
-    Log.i(TAG, "[MediaPlayerAdapter] Stop was executed")
     if (mediaPlayer.isPlaying) {
       mediaPlayer.stop()
     }
   }
 
   override fun seekTo(position: Long) {
-    Log.i(TAG, "Seek to $position isPreparing $isPreparing isPlaying ${mediaPlayer.isPlaying}")
     if(!isPreparing) {
       mediaPlayer.seekTo(position.toInt())
     }
@@ -320,17 +255,12 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun requestAudioFocusForPlayback(): Boolean {
-    Log.i(TAG, "[REQUEST_AUDIO_FOCUS] Requesting audio focus for playback")
-    Log.i(TAG, "[REQUEST_AUDIO_FOCUS_STATE] currentAudioFocusRequest: ${if(currentAudioFocusRequest != null) "available" else "NULL"}, currentAudioManager: ${if(currentAudioManager != null) "available" else "NULL"}")
-
     currentAudioFocusRequest?.let { request ->
       currentAudioManager?.let { manager ->
         // Enable the ignore flag BEFORE requesting focus to prevent immediate loss handling
         shouldIgnoreAudioFocusLoss = true
-        Log.i(TAG, "[REQUEST_AUDIO_FOCUS] Enabled shouldIgnoreAudioFocusLoss flag")
 
         val result = manager.requestAudioFocus(request)
-        Log.i(TAG, "[REQUEST_AUDIO_FOCUS_RESULT] Audio focus request result: $result (GRANTED=${AudioManager.AUDIOFOCUS_REQUEST_GRANTED}, FAILED=${AudioManager.AUDIOFOCUS_REQUEST_FAILED}, DELAYED=${AudioManager.AUDIOFOCUS_REQUEST_DELAYED})")
 
         val granted = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         if (!granted) {
