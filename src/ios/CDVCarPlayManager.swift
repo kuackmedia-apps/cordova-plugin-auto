@@ -1629,7 +1629,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
     /// Build the offline tab template (reusable for both full setup and tab update)
     private func buildOfflineTab() -> CPListTemplate {
+        print("[CarPlay] buildOfflineTab: loading offline library items...")
         let offlineItems = CDVPlaylistProvider.loadOfflineLibrary()
+        print("[CarPlay] buildOfflineTab: got \(offlineItems.count) offline items")
 
         var listItems: [CPListItem] = []
 
