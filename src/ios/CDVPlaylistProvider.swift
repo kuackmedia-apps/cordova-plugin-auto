@@ -255,36 +255,17 @@ class CDVPlaylistProvider: NSObject {
 
         if let json = appFolderJson {
             if let arr = json as? [[String: Any]] {
-                print("[CDVPlaylistProvider] loadOfflineLibrary: found \(arr.count) items from app folder")
                 return arr
-            } else {
-                print("[CDVPlaylistProvider] loadOfflineLibrary: file found but could not cast to [[String: Any]], type=\(type(of: json))")
-            }
-        } else {
-            print("[CDVPlaylistProvider] loadOfflineLibrary: AUTO_NAVIGATION_LIBRARY_OFFLINE not found in app folder")
-            // Log search paths for debugging
-            let fm = FileManager.default
-            if let lib = fm.urls(for: .libraryDirectory, in: .userDomainMask).first {
-                let noCloud = lib.appendingPathComponent("NoCloud", isDirectory: true)
-                let filePath = noCloud.appendingPathComponent("AUTO_NAVIGATION_LIBRARY_OFFLINE")
-                print("[CDVPlaylistProvider] loadOfflineLibrary: checking Library/NoCloud path: \(filePath.path), exists=\(fm.fileExists(atPath: filePath.path))")
-                // List files in NoCloud directory
-                if let contents = try? fm.contentsOfDirectory(atPath: noCloud.path) {
-                    let offlineFiles = contents.filter { $0.contains("OFFLINE") || $0.contains("offline") }
-                    print("[CDVPlaylistProvider] loadOfflineLibrary: NoCloud offline-related files: \(offlineFiles)")
-                }
             }
         }
 
         // Bundle fallback
         if let json = loadJSON(from: "AUTO_NAVIGATION_LIBRARY_OFFLINE", in: "navigation") {
             if let arr = json as? [[String: Any]] {
-                print("[CDVPlaylistProvider] loadOfflineLibrary: found \(arr.count) items from bundle fallback")
                 return arr
             }
         }
 
-        print("[CDVPlaylistProvider] loadOfflineLibrary: returning empty - no offline library data found")
         return []
     }
 
@@ -407,14 +388,10 @@ class CDVPlaylistProvider: NSObject {
     ///   - itemId: The ID of the album or playlist
     /// - Returns: Array of track dictionaries
     @objc static func loadOfflineTracks(itemType: String, itemId: String) -> [[String: Any]] {
-        print("[CDVPlaylistProvider] loadOfflineTracks: itemType=\(itemType), itemId=\(itemId)")
         // Load OFFLINE_TRACKS file
         guard let offlineTracksData = loadOfflineTracksFile() else {
-            print("[CDVPlaylistProvider] loadOfflineTracks: OFFLINE_TRACKS file not found")
             return []
         }
-
-        print("[CDVPlaylistProvider] loadOfflineTracks: OFFLINE_TRACKS has \(offlineTracksData.count) entries")
 
         guard let targetIdInt = Int(itemId) else {
             print("[CDVPlaylistProvider] loadOfflineTracks: invalid itemId '\(itemId)' - cannot convert to Int")
@@ -423,7 +400,6 @@ class CDVPlaylistProvider: NSObject {
 
         var result: [[String: Any]] = []
         let keyToCheck = itemType.lowercased() == "album" ? "ALBUM_ITEMS_OFFLINE" : "PLAYLISTS_ITEMS_OFFLINE"
-        print("[CDVPlaylistProvider] loadOfflineTracks: using key '\(keyToCheck)' to filter for targetId=\(targetIdInt)")
 
         // Iterate through all tracks and filter by album/playlist ID
         for (_, trackEntry) in offlineTracksData {
@@ -452,7 +428,6 @@ class CDVPlaylistProvider: NSObject {
             }
         }
 
-        print("[CDVPlaylistProvider] loadOfflineTracks: found \(result.count) tracks for \(itemType) \(itemId)")
         return result
     }
 
