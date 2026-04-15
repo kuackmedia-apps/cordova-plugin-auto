@@ -1510,7 +1510,9 @@ class CDVMusicPlayer: NSObject {
     @objc func cleanup() {
         player.pause()
         player.replaceCurrentItem(with: nil)
-        persistQueueState()
+        if isCarPlayActive {
+            persistQueueState()
+        }
     }
 
     private func queueItemsForPersistence() -> [[String: Any]] {
