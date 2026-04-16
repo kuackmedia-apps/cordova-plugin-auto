@@ -10,6 +10,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let userActivity = connectionOptions.userActivities.first {
             handleSiriUserActivity(userActivity)
         }
+        // Handle URL schemes on cold start
+        if !connectionOptions.urlContexts.isEmpty {
+            handleURLContexts(connectionOptions.urlContexts)
+        }
         guard let windowScene = scene as? UIWindowScene else { return }
 
         if session.role == .windowApplication {
@@ -71,6 +75,34 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             self.window = window
 
         }
+    }
+
+    // MARK: - URL Scheme Handling
+
+    /// Called when a URL scheme opens the app while the scene is already connected (warm start)
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        handleURLContexts(URLContexts)
+    }
+
+    /// Forward URL contexts to Cordova's notification system so CDVHandleOpenURL calls JavaScript's handleOpenURL()
+    private func handleURLContexts(_ urlContexts: Set<UIOpenURLContext>) {
+        guard let urlContext = urlContexts.first else { return }
+        let url = urlContext.url
+
+        NotificationCenter.default.post(
+            name: NSNotification.Name("CDVPluginHandleOpenURLNotification"),
+            object: url
+        )
+
+        let openURLData = NSMutableDictionary()
+        openURLData["url"] = url
+        if let sourceApplication = urlContext.options.sourceApplication {
+            openURLData["sourceApplication"] = sourceApplication
+        }
+        NotificationCenter.default.post(
+            name: NSNotification.Name("CDVPluginHandleOpenURLWithAppSourceAndAnnotationNotification"),
+            object: openURLData
+        )
     }
 
     // MARK: - Siri Intent Handling
