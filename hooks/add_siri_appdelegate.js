@@ -19,25 +19,77 @@ module.exports = function(context) {
     // Find the project name by looking for .xcodeproj directory
     const files = fs.readdirSync(iosPath);
     const xcodeprojFile = files.find(f => f.endsWith('.xcodeproj'));
-    
+
     if (!xcodeprojFile) {
         console.log('Could not find .xcodeproj file, skipping Siri AppDelegate modification');
         return;
     }
-    
+
     const projectName = xcodeprojFile.replace('.xcodeproj', '');
     console.log('Found project:', projectName);
+
+    // Read CarPlayEnabled preference from config.xml
+    const carplayEnabled = getPreference(projectRoot, 'CarPlayEnabled') === 'true';
+    console.log('CarPlay enabled:', carplayEnabled);
 
     // ========================================
     // STEP 1: Add Siri entitlement to .entitlements file
     // ========================================
     addSiriEntitlement(iosPath, projectName);
-    
+
     // ========================================
-    // STEP 2: Modify AppDelegate
+    // STEP 2: Add CarPlay entitlement (conditional)
+    // ========================================
+    if (carplayEnabled) {
+        addCarPlayEntitlement(iosPath, projectName);
+    }
+
+    // ========================================
+    // STEP 3: Modify AppDelegate
     // ========================================
     modifyAppDelegate(iosPath, projectName);
 };
+
+function getPreference(projectRoot, name) {
+    const configPath = path.join(projectRoot, 'config.xml');
+    try {
+        const content = fs.readFileSync(configPath, 'utf8');
+        const regex = new RegExp(`<preference\\s+name="${name}"\\s+value="([^"]*)"`, 'i');
+        const match = content.match(regex);
+        return match ? match[1] : '';
+    } catch (e) {
+        console.log(`Could not read config.xml for preference ${name}:`, e.message);
+        return '';
+    }
+}
+
+function addCarPlayEntitlement(iosPath, projectName) {
+    const entitlementsPaths = [
+        path.join(iosPath, projectName, 'Entitlements-Debug.plist'),
+        path.join(iosPath, projectName, 'Entitlements-Release.plist')
+    ];
+
+    for (const entPath of entitlementsPaths) {
+        if (fs.existsSync(entPath)) {
+            try {
+                let content = fs.readFileSync(entPath, 'utf8');
+
+                if (content.includes('com.apple.developer.carplay-audio')) {
+                    console.log(`CarPlay entitlement already exists in ${path.basename(entPath)}`);
+                    continue;
+                }
+
+                const carplayEntitlement = `\t<key>com.apple.developer.carplay-audio</key>\n\t<true/>\n`;
+                content = content.replace('</dict>', carplayEntitlement + '</dict>');
+
+                fs.writeFileSync(entPath, content, 'utf8');
+                console.log(`Added CarPlay entitlement to ${path.basename(entPath)}`);
+            } catch (error) {
+                console.error(`Error adding CarPlay entitlement to ${entPath}:`, error.message);
+            }
+        }
+    }
+}
 
 function addSiriEntitlement(iosPath, projectName) {
     // Find entitlements files
