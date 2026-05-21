@@ -63,17 +63,14 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Start network monitoring and refresh templates when connectivity changes
         CDVNetworkUtils.shared.startMonitoring()
         CDVNetworkUtils.shared.onNetworkStatusChanged = { [weak self] isAvailable in
-            print("[CarPlay] Network status changed: \(isAvailable ? "ONLINE" : "OFFLINE")")
             guard let self = self, self.connected, let controller = self.interfaceController else { return }
 
             if isAvailable {
                 // Network recovered: refresh templates to show online navigation
-                print("[CarPlay] Network recovered — refreshing templates to online mode")
                 DispatchQueue.main.async {
                     self.setupTemplates(controller)
                     // Resume dynamic queue loading and preloader if needed
                     if self.musicPlayer.isDynamicQueue && self.musicPlayer.shouldLoadMore() {
-                        print("[CarPlay] Network recovered — triggering loadMore for dynamic queue")
                         self.musicPlayer.loadMore()
                     }
                     CDVTrackPreloader.shared.preloadNextTracks(queue: self.musicPlayer.queue, currentIndex: self.musicPlayer.currentIndex)
@@ -82,13 +79,11 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                 // Network lost: switch navigation to offline items
                 if self.musicPlayer.isPlaying {
                     // Player active: update tabs without replacing root template (preserves NowPlaying + playback)
-                    print("[CarPlay] Network lost, player ACTIVE — switching tabs to offline without resetting root")
                     DispatchQueue.main.async {
                         self.switchTabsToOffline()
                     }
                 } else {
                     // Player idle: full offline template setup (safe to replace root)
-                    print("[CarPlay] Network lost, player IDLE — full offline template setup")
                     DispatchQueue.main.async {
                         self.setupTemplates(controller)
                     }

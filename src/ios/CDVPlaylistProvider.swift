@@ -133,22 +133,7 @@ class CDVPlaylistProvider: NSObject {
                 let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments])
                 return json
             } catch {
-                // Enhanced diagnostics for bundled JSON failures
-                let nsErr = error as NSError
-                var diag = ""
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-                   let size = attrs[.size] as? NSNumber {
-                    diag += " size=\(size.intValue)"
-                }
-                if let data = try? Data(contentsOf: url),
-                   let idx = nsErr.userInfo["NSJSONSerializationErrorIndex"] as? Int {
-                    let start = max(0, idx - 160)
-                    let end = min(data.count, idx + 160)
-                    let range = start..<end
-                    let snippet = String(decoding: data[range], as: UTF8.self)
-                    diag += " index=\(idx) snippet=\n\(snippet)\n"
-                }
-                print("[CDVPlaylistProvider] loadJSON(bundle): failed at path=\(path) error=\(nsErr).\(diag)")
+                // Silently ignore parse errors and continue searching
             }
         }
         return nil
@@ -189,28 +174,9 @@ class CDVPlaylistProvider: NSObject {
                         let json = try JSONSerialization.jsonObject(with: data, options: [.allowFragments])
                         return json
                     } catch {
-                        // Enhanced diagnostics: byte length and snippet around parse error index if available
-                        let nsErr = error as NSError
-                        var diag = ""
-                        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-                           let size = attrs[.size] as? NSNumber {
-                            diag += " size=\(size.intValue)"
-                        }
-                        if let data = try? Data(contentsOf: url),
-                           let idx = nsErr.userInfo["NSJSONSerializationErrorIndex"] as? Int {
-                            let start = max(0, idx - 160)
-                            let end = min(data.count, idx + 160)
-                            let range = start..<end
-                            let snippet = String(decoding: data[range], as: UTF8.self)
-                            diag += " index=\(idx) snippet=\n\(snippet)\n"
-                        }
-                        print("[CDVPlaylistProvider] Failed to load/parse JSON at \(url.path): \(nsErr).\(diag)")
                         // Attempt a non-destructive repair for common corruption (concatenated arrays/garbage at end)
                         if let data = try? Data(contentsOf: url), let repaired = attemptRepairJSON(data: data) {
-                            print("[CDVPlaylistProvider][REPAIR] Successfully repaired JSON at \(url.lastPathComponent). Using repaired content.")
                             return repaired
-                        } else {
-                            print("[CDVPlaylistProvider][CORRUPT] Unable to repair JSON at \(url.lastPathComponent). Will continue searching/fallback.")
                         }
                     }
                 }
@@ -394,7 +360,6 @@ class CDVPlaylistProvider: NSObject {
         }
 
         guard let targetIdInt = Int(itemId) else {
-            print("[CDVPlaylistProvider] loadOfflineTracks: invalid itemId '\(itemId)' - cannot convert to Int")
             return []
         }
 
