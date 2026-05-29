@@ -1347,9 +1347,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                     let itemId = String(describing: itemDict["id"] ?? "")
                                     var loaded: UIImage? = nil
 
+                                    // For tracks/radio_tracks, use album ID for cover lookup
+                                    var lookupType = itemType?.lowercased() ?? ""
+                                    var lookupId = itemId
+                                    if (lookupType == "track" || lookupType == "radio_track"),
+                                       let albumDict = itemDict["album"] as? [String: Any],
+                                       let albumId = albumDict["id"] {
+                                        lookupId = String(describing: albumId)
+                                        lookupType = "album"
+                                    }
+
                                     // Try local offline image
-                                    if let t = itemType, !t.isEmpty, !itemId.isEmpty {
-                                        loaded = CDVLocalStorageUtils.getLocalImage(itemType: t.lowercased(), itemId: itemId)
+                                    if !lookupType.isEmpty, !lookupId.isEmpty {
+                                        loaded = CDVLocalStorageUtils.getLocalImage(itemType: lookupType, itemId: lookupId)
                                     }
                                     // Try file:// URL
                                     if loaded == nil, let s = urlStr, let url = URL(string: s), url.isFileURL {
@@ -1363,6 +1373,48 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                 }
 
                                 let imageRow = CPListImageRowItem(text: subTitle, images: images)
+
+                                // Async download for any Quick Access images that fell back to placeholder
+                                if images.contains(where: { $0 === placeholder }) {
+                                    let capturedPreviewItems = previewItems
+                                    let group = DispatchGroup()
+                                    for (index, itemDict) in capturedPreviewItems.enumerated() where images[index] === placeholder {
+                                        guard let urlStr = self.extractImageURL(from: itemDict),
+                                              let url = URL(string: urlStr), !url.isFileURL else { continue }
+                                        group.enter()
+                                        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+                                            defer { group.leave() }
+                                            guard let self, let data = data, let img = UIImage(data: data) else { return }
+                                            self.listImageCache.setObject(img, forKey: url as NSURL)
+                                        }.resume()
+                                    }
+                                    group.notify(queue: .main) { [weak self] in
+                                        guard let self else { return }
+                                        var updated: [UIImage] = []
+                                        for itemDict in capturedPreviewItems {
+                                            if let s = self.extractImageURL(from: itemDict),
+                                               let url = URL(string: s),
+                                               let cached = self.listImageCache.object(forKey: url as NSURL) {
+                                                updated.append(cached)
+                                            } else {
+                                                updated.append(placeholder)
+                                            }
+                                        }
+                                        let newRow = CPListImageRowItem(text: subTitle, images: updated)
+                                        newRow.handler = imageRow.handler
+                                        newRow.listImageRowHandler = imageRow.listImageRowHandler
+                                        guard let tabBar = self.interfaceController?.rootTemplate as? CPTabBarTemplate,
+                                              let home = tabBar.templates.first as? CPListTemplate,
+                                              !home.sections.isEmpty else { return }
+                                        var sectionItems = Array(home.sections[0].items)
+                                        if let idx = sectionItems.firstIndex(where: { $0 is CPListImageRowItem }) {
+                                            sectionItems[idx] = newRow
+                                            var sections = home.sections
+                                            sections[0] = CPListSection(items: sectionItems)
+                                            home.updateSections(sections)
+                                        }
+                                    }
+                                }
 
                                 // Title tap -> navigate to full section list
                                 imageRow.handler = { [weak self] _, completion in
