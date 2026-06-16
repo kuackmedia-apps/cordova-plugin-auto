@@ -6,8 +6,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-        // Handle any Siri intents that launched this scene
-        if let userActivity = connectionOptions.userActivities.first {
+        // Handle any user activity that launched this scene: Universal Links
+        // (browsing-web) are forwarded to the AppDelegate where
+        // cordova-plugin-deeplinks listens; everything else falls through to Siri.
+        if let userActivity = connectionOptions.userActivities.first,
+           !forwardUniversalLinkIfNeeded(userActivity) {
             handleSiriUserActivity(userActivity)
         }
         // Handle URL schemes on cold start
@@ -107,9 +110,39 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     // MARK: - Siri Intent Handling
 
-    /// Called when Siri triggers a user activity while the scene is active
+    /// Called when a user activity continues while the scene is active.
+    /// Universal Links (browsing-web) go to the AppDelegate (deeplinks);
+    /// Siri intents keep their existing path.
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        if forwardUniversalLinkIfNeeded(userActivity) { return }
         handleSiriUserActivity(userActivity)
+    }
+
+    // MARK: - Universal Links
+
+    /// Forward Universal Links (browsing-web activities) to the AppDelegate's
+    /// application:continueUserActivity:restorationHandler:, where
+    /// cordova-plugin-deeplinks is hooked. In a scene-based app iOS delivers
+    /// these to the SceneDelegate, not the AppDelegate, so without this bridge
+    /// the deep link is silently dropped. Retries briefly on cold launch until
+    /// the Cordova viewController/plugin instance is ready.
+    @discardableResult
+    private func forwardUniversalLinkIfNeeded(_ userActivity: NSUserActivity, attempt: Int = 0) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              userActivity.webpageURL != nil else { return false }
+        DispatchQueue.main.async {
+            let handled = UIApplication.shared.delegate?.application?(
+                UIApplication.shared,
+                continue: userActivity,
+                restorationHandler: { _ in }
+            ) ?? false
+            if !handled && attempt < 10 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.forwardUniversalLinkIfNeeded(userActivity, attempt: attempt + 1)
+                }
+            }
+        }
+        return true
     }
 
     /// Handle Siri user activity and forward to the plugin
