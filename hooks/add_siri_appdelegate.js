@@ -45,6 +45,17 @@ module.exports = function(context) {
     }
 
     // ========================================
+    // STEP 2b: Add Sign in with Apple entitlement (conditional)
+    // ========================================
+    // Gated by AppleSignInEnabled so only apps that opt in (and have SIWA
+    // enabled on their App ID) get the entitlement — otherwise signing fails.
+    const appleSignInEnabled = getPreference(projectRoot, 'AppleSignInEnabled') === 'true';
+    console.log('Apple Sign In enabled:', appleSignInEnabled);
+    if (appleSignInEnabled) {
+        addAppleSignInEntitlement(iosPath, projectName);
+    }
+
+    // ========================================
     // STEP 3: Modify AppDelegate
     // ========================================
     modifyAppDelegate(iosPath, projectName);
@@ -119,6 +130,41 @@ function addSiriEntitlement(iosPath, projectName) {
                 console.log(`Added Siri entitlement to ${path.basename(entPath)}`);
             } catch (error) {
                 console.error(`Error modifying ${entPath}:`, error.message);
+            }
+        }
+    }
+}
+
+function addAppleSignInEntitlement(iosPath, projectName) {
+    // Same entitlements files as addSiriEntitlement. The signed file is
+    // Resources/<App>.entitlements (CODE_SIGN_ENTITLEMENTS points there); the
+    // deeplinks hook recreates it on clean builds, so we re-inject here.
+    const possibleEntitlementsPaths = [
+        path.join(iosPath, projectName, 'Entitlements-Debug.plist'),
+        path.join(iosPath, projectName, 'Entitlements-Release.plist'),
+        path.join(iosPath, projectName, `${projectName}.entitlements`),
+        path.join(iosPath, projectName, 'Resources', `${projectName}.entitlements`)
+    ];
+
+    for (const entPath of possibleEntitlementsPaths) {
+        if (fs.existsSync(entPath)) {
+            try {
+                let content = fs.readFileSync(entPath, 'utf8');
+
+                if (content.includes('com.apple.developer.applesignin')) {
+                    console.log(`Apple Sign In entitlement already exists in ${path.basename(entPath)}`);
+                    continue;
+                }
+
+                // applesignin is an array value (["Default"])
+                const appleSignInEntitlement =
+                    `\t<key>com.apple.developer.applesignin</key>\n\t<array>\n\t\t<string>Default</string>\n\t</array>\n`;
+                content = content.replace('</dict>', appleSignInEntitlement + '</dict>');
+
+                fs.writeFileSync(entPath, content, 'utf8');
+                console.log(`Added Apple Sign In entitlement to ${path.basename(entPath)}`);
+            } catch (error) {
+                console.error(`Error adding Apple Sign In entitlement to ${entPath}:`, error.message);
             }
         }
     }
