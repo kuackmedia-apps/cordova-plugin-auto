@@ -28,9 +28,14 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 object MediaItemTree {
   private const val TAG: String = "MediaItemTree"
+
+  /** Cota para awaitApi(): la init async tarda ~5 s; 15 s deja margen en gama baja. */
+  private const val API_WAIT_TIMEOUT_MS = 15_000L
   private var treeNodes: MutableMap<String, MediaItemNode> = mutableMapOf()
   private var offlineNodes: MutableMap<String, MediaItemNode> = mutableMapOf()
   private var offlineTitleMap: MutableMap<String, MediaItemNode> = mutableMapOf()
@@ -55,16 +60,91 @@ object MediaItemTree {
     }
   }
 
-  fun initialize(context: Context, musicApi: MusicApi) {
+  /**
+   * Construye el MENÚ de navegación (las pestañas de Android Auto) desde el archivo
+   * local AUTO_NAVIGATION. NO necesita `musicApi`: es barato (~18 ms medidos) y
+   * debe correr SINCRÓNICAMENTE en onCreate().
+   *
+   * Se separó de la carga de `musicApi` (que sí es cara: ~1.773 ms por la
+   * inicialización de Moshi con kotlin-reflect) para que las pestañas existan
+   * apenas Android Auto haga bind. Si el menú se construyera async, el primer
+   * onLoadChildren(ROOT) llegaría con el árbol vacío y Auto se quedaría SIN
+   * pestañas (regresión detectada en dispositivo el 2026-07-30).
+   */
+  fun initializeMenu(context: Context) {
     this.assets = context.assets
-    this.musicApi = musicApi
 
-    if (isInitialized) return
+    if (isInitialized) {
+      if (!menuReady.isCompleted) menuReady.complete(true)
+      return
+    }
     isInitialized = true
 
-    val navigationData = loadNavigationData(context)
-    buildNavigationMenu(navigationData, context)
-    val rootChildren = getChildren(ROOT_ID)
+    try {
+      val navigationData = loadNavigationData(context)
+      lastNavigationData = navigationData
+      buildNavigationMenu(navigationData, context)
+      getChildren(ROOT_ID)
+    } finally {
+      // Completar SIEMPRE (incluso si falló) para no dejar colgado a onLoadChildren.
+      if (!menuReady.isCompleted) menuReady.complete(true)
+    }
+  }
+
+  /** Señal de que el menú (pestañas) ya está construido. */
+  private val menuReady = CompletableDeferred<Boolean>()
+
+  /**
+   * Espera a que el menú esté listo. Lo usa onLoadChildren(ROOT) cuando el árbol
+   * todavía está vacío porque la init async no terminó: sin esto, Auto recibiría
+   * una lista vacía y se quedaría SIN pestañas (regresión del 2026-07-30).
+   */
+  suspend fun awaitMenu(): Boolean = menuReady.await()
+
+  /** ¿Ya terminó de construirse el menú? (sin suspender) */
+  fun isMenuReady(): Boolean = menuReady.isCompleted
+
+  /**
+   * Asigna el cliente de API una vez que ServiceFactory terminó (en hilo de IO).
+   * Solo hace falta para navegar HACIA ADENTRO del contenido remoto, no para el menú.
+   */
+  fun setMusicApi(musicApi: MusicApi) {
+    this.musicApi = musicApi
+    apiReady.complete(true)
+  }
+
+  /**
+   * Señal de que `musicApi` ya está disponible. Los métodos remotos la esperan en
+   * vez de tocar el `lateinit` a ciegas (evita UninitializedPropertyAccessException
+   * si el usuario navega antes de que termine la init).
+   */
+  private val apiReady = CompletableDeferred<Boolean>()
+
+  /** Marca la init de la API como fallida para no dejar colgados a los que esperan. */
+  fun setMusicApiFailed() {
+    if (!apiReady.isCompleted) apiReady.complete(false)
+  }
+
+  /**
+   * Espera a que `musicApi` esté listo. Devuelve false si su init falló o si nadie lo
+   * arrancó.
+   *
+   * El timeout no es decorativo: desde que la init dejó de correr en onCreate() y pasó a
+   * dispararse en onGetRoot(), existe la posibilidad teórica de llegar acá sin que nadie
+   * haya iniciado nada. Sin cota, `apiReady.await()` no vuelve nunca y el llamador queda
+   * colgado con result.detach() sin resolver → el cliente se queda esperando.
+   */
+  private suspend fun awaitApi(): Boolean {
+    if (::musicApi.isInitialized) return true
+    return withTimeoutOrNull(API_WAIT_TIMEOUT_MS) { apiReady.await() } ?: run {
+      Log.e(TAG, "awaitApi: timeout de ${API_WAIT_TIMEOUT_MS}ms — la API nunca se inicializó")
+      false
+    }
+  }
+
+  fun initialize(context: Context, musicApi: MusicApi) {
+    setMusicApi(musicApi)
+    initializeMenu(context)
   }
 
   /**
@@ -115,14 +195,27 @@ object MediaItemTree {
         return emptyList()
       }
 
-      val moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-      val listType = Types.newParameterizedType(List::class.java, NavigationData::class.java)
-      val adapter: JsonAdapter<List<NavigationData>> = moshi.adapter(listType)
-      val navigationData = adapter.fromJson(jsonArray)
+      // Parseo con org.json (NO Moshi): este método corre en el MAIN thread para
+      // construir las pestañas de Auto. Usar Moshi + KotlinJsonAdapterFactory acá
+      // dispara la inicialización de kotlin-reflect (~5,5 s medidos en frío) y
+      // bloquea el main thread → ANR. NavigationData son 3 strings: no necesita
+      // reflection. Toda la reflection queda en ServiceFactory, en el hilo de IO.
+      val arr = org.json.JSONArray(jsonArray)
+      val navigationData = ArrayList<NavigationData>(arr.length())
+      for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        val fileName = o.optString("fileName", "")
+        if (fileName.isEmpty()) continue
+        navigationData.add(
+          NavigationData(
+            icon = o.optString("icon", ""),
+            text = o.optString("text", ""),
+            fileName = fileName,
+          )
+        )
+      }
 
-      return navigationData ?: emptyList()
+      return navigationData
 
     } catch (e: java.io.EOFException) {
       Log.e(TAG, "Incomplete JSON file AUTO_NAVIGATION (EOF): ${e.message}", e)
@@ -483,10 +576,28 @@ object MediaItemTree {
             )
           )
         treeNodes[ROOT_ID]?.addChild(mediaId)
-
-        loadNavigationDataChildren(context, it.fileName)
+        // NO se precarga el contenido acá: Android Auto solo necesita las PESTAÑAS para
+        // pintar el menú, y el contenido lo pide (con onLoadChildren) recién al entrar.
+        // Precargarlo cuesta ~4,3 s (Moshi/kotlin-reflect en frío) y hacía que Auto
+        // agotara su timeout, recreara la conexión y terminara en
+        // "SecurityException: create too many virtualDisplay". Ver preloadChildren().
       } catch (e: Exception) {
         Log.e(TAG, "Error building navigation menu item: ${e.message}")
+      }
+    }
+  }
+
+  /**
+   * Precarga el contenido de cada pestaña desde los archivos locales. Es lo CARO
+   * (~4,3 s la primera vez: inicializa Moshi con kotlin-reflect), así que se llama
+   * DESPUÉS de que el menú ya está disponible y siempre fuera del main thread.
+   */
+  fun preloadChildren(context: Context, navigationData: List<NavigationData>) {
+    navigationData.forEach {
+      try {
+        loadNavigationDataChildren(context, it.fileName)
+      } catch (e: Exception) {
+        Log.e(TAG, "Error precargando ${it.fileName}: ${e.message}")
       }
     }
     try {
@@ -494,7 +605,21 @@ object MediaItemTree {
     } catch (e: Exception) {
       Log.e(TAG, "Error loading offline navigation: ${e.message}")
     }
+    if (!childrenReady.isCompleted) childrenReady.complete(true)
   }
+
+  /** Señal de que el contenido de las pestañas ya se precargó. */
+  private val childrenReady = CompletableDeferred<Boolean>()
+
+  /** Espera la precarga del contenido (para cuando el usuario entra a una pestaña muy rápido). */
+  suspend fun awaitChildren(): Boolean = childrenReady.await()
+
+  fun areChildrenReady(): Boolean = childrenReady.isCompleted
+
+  /** Los datos del menú, para poder precargar su contenido después. */
+  private var lastNavigationData: List<NavigationData> = emptyList()
+
+  fun getNavigationData(): List<NavigationData> = lastNavigationData
 
   fun getItem(id: String): MediaBrowserCompat.MediaItem? {
     return treeNodes[id]?.item
@@ -752,6 +877,14 @@ object MediaItemTree {
     return result
   }
   suspend fun getRemoteChildren(parentId: String, context: Context): List<MediaBrowserCompat.MediaItem> {
+    // `musicApi` se asigna en un hilo de IO (ServiceFactory tarda ~1.7 s). Si el usuario
+    // navega antes, esperamos acá en vez de tocar el lateinit y crashear. Es gratis:
+    // ya estamos en una corrutina y el llamador usó result.detach().
+    if (!awaitApi()) {
+      Log.e(TAG, "[REMOTE] musicApi no disponible (su init falló) — devuelvo vacío para $parentId")
+      return emptyList()
+    }
+
     val parent = getItem(parentId)
     val mediaType = parent?.description?.extras?.getString("media_type")
     var result: List<MediaBrowserCompat.MediaItem> = emptyList()

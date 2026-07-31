@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
@@ -92,6 +93,11 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     private var networkAvailable: Boolean = false
     private var isAndroidAutoConnected: Boolean = false
 
+    // Guarda de idempotencia para ensureLibraryInitialized(). onGetRoot() puede llamarse
+    // varias veces sobre la misma instancia (Auto reconecta, el Asistente consulta), y el
+    // árbol se construye una sola vez.
+    private var libraryInitStarted: Boolean = false
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         MediaButtonReceiver.handleIntent(mediaSession, intent)
         return super.onStartCommand(intent, flags, startId)
@@ -111,11 +117,17 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         TextsManager.init(applicationContext)
         initApiData()
 
-        val musicApi = ServiceFactory.create(applicationContext)
-
         playerAdapter = MediaPlayerAdapter()
 
-        MediaItemTree.initialize(applicationContext, musicApi)
+        // El árbol de navegación NO se construye acá: ver ensureLibraryInitialized(), que
+        // se dispara desde onGetRoot() una vez que sabemos que el cliente es de Auto.
+        //
+        // Android instancia el servicio y ejecuta onCreate() ANTES de preguntar quién se
+        // conecta. Como el intent-filter MediaBrowserService es público, lo despiertan
+        // también com.android.systemui (reanudación de medios, en cada boot y cada vez que
+        // se abren los ajustes rápidos) y com.android.bluetooth — clientes que onGetRoot()
+        // rechaza. Construir el árbol en onCreate() significaba pagar el costo completo
+        // para tirarlo a la basura, en el arranque del teléfono y en gama baja.
 
         // Clear preloaded cache from previous session
         TrackPreloader.clearCache(applicationContext)
@@ -195,6 +207,46 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
     }
 
+    /**
+     * Construye el árbol de navegación. Idempotente y asíncrona.
+     *
+     * Se llama desde onGetRoot() y no desde onCreate() a propósito: onCreate() corre para
+     * cualquier cliente que despierte el servicio, incluidos los que después rechazamos.
+     *
+     * Medido en emulador (Android 11, app logueada):
+     *   buildNavigationMenu()   = 5153 ms  ← decodifica un bitmap por pestaña + grantUriPermission
+     *   ServiceFactory.create() = 38-246 ms (Moshi, ya caliente)
+     * Por eso va async: quien necesite el árbol ESPERA (onLoadChildren + MediaItemTree.awaitMenu)
+     * en vez de recibir un árbol vacío.
+     */
+    private fun ensureLibraryInitialized() {
+        if (libraryInitStarted) return
+        libraryInitStarted = true
+
+        serviceScope.launch {
+            try {
+                // 1) MENÚ (solo las pestañas): ~200 ms. Es lo único que Auto necesita para
+                //    pintar la pantalla, y onLoadChildren(ROOT) espera esto — poco tiempo,
+                //    dentro de la paciencia de Auto.
+                MediaItemTree.initializeMenu(applicationContext)
+
+                // 2) CONTENIDO de las pestañas: ~4,3 s (Moshi/kotlin-reflect en frío).
+                //    Va DESPUÉS y nadie lo espera para mostrar el menú. Precargarlo antes
+                //    hacía que Auto agotara su timeout, recreara la conexión y terminara en
+                //    "SecurityException: create too many virtualDisplay".
+                MediaItemTree.preloadChildren(applicationContext, MediaItemTree.getNavigationData())
+
+                // 3) API remota: solo hace falta al navegar contenido que no está cacheado.
+                val musicApi = ServiceFactory.create(applicationContext)
+                MediaItemTree.setMusicApi(musicApi)
+            } catch (e: Exception) {
+                // Sin esto, quien esté esperando en awaitMenu()/awaitApi() quedaría colgado.
+                Log.e(TAG, "Init async falló: ${e.message}")
+                MediaItemTree.setMusicApiFailed()
+            }
+        }
+    }
+
     override fun onGetRoot(
         clientPackageName: String,
         clientUid: Int,
@@ -204,10 +256,16 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         val isAllowedClient = ALLOWED_PACKAGES.contains(clientPackageName)
 
         if (!isAllowedClient) {
-            // Reject connections from non-Android Auto clients (e.g., com.android.bluetooth)
-            // This prevents the service from activating when Bluetooth connects
+            // Reject connections from non-Android Auto clients (e.g., com.android.bluetooth,
+            // com.android.systemui). Se sale ANTES de construir nada: es el caso mayoritario
+            // —el sistema sondea el servicio en cada boot y al abrir los ajustes rápidos—
+            // y hasta ahora pagaba el init completo para terminar rechazado igual.
+            Log.i(TAG, "onGetRoot: cliente no permitido ($clientPackageName), sin inicializar")
             return null
         }
+
+        // Recién acá sabemos que quien pregunta es Auto/Asistente y que el árbol hace falta.
+        ensureLibraryInitialized()
 
         val extras = Bundle()
         extras.putInt(
@@ -253,6 +311,10 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         parentId: String,
         result: Result<List<MediaBrowserCompat.MediaItem?>?>
     ) {
+        // Red de seguridad: onGetRoot() ya lo llamó para todo cliente aceptado, pero si
+        // alguna ruta llegara hasta acá sin haberlo hecho, awaitApi() esperaría para
+        // siempre (apiReady nunca se completaría). Es idempotente.
+        ensureLibraryInitialized()
 
         if (parentId == OFFLINE_ROOT) {
             //OFFLINE ITEMS
@@ -276,6 +338,20 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         }
 
         var localChildren = MediaItemTree.getChildren(parentId)
+
+        // El menú se construye async (cuesta ~5 s: bitmaps + permisos). Si Auto pide el
+        // ROOT antes de que termine, ESPERAMOS a que esté listo en vez de devolver una
+        // lista vacía — devolverla dejaba a Auto sin pestañas (regresión del 2026-07-30).
+        if (parentId == ROOT_ID && localChildren.isEmpty() && !MediaItemTree.isMenuReady()) {
+            result.detach()
+            serviceScope.launch {
+                MediaItemTree.awaitMenu()
+                val children = MediaItemTree.getChildren(ROOT_ID)
+                Log.i(TAG, "onLoadChildren(ROOT): el menú aún no estaba listo, se esperó la init; children=${children.size}")
+                withContext(Dispatchers.Main) { result.sendResult(children.toMutableList()) }
+            }
+            return
+        }
 
         // If ROOT has no children, try refreshing the tree from files
         // This handles the race condition where the service initialized before JS wrote the navigation files
