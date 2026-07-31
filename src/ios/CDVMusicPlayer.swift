@@ -1243,6 +1243,33 @@ class CDVMusicPlayer: NSObject {
 
     private func setupRemoteCommandCenter() {
         let cc = MPRemoteCommandCenter.shared()
+
+        // Limpiar TODOS los targets previos antes de registrar los del auto.
+        //
+        // MPRemoteCommandCenter es un singleton del proceso, y cordova-plugin-music-controls2
+        // registra sus propios handlers en los mismos comandos (MusicControls.m:427). Al
+        // conectar CarPlay hay una ventana garantizada con handlers duales: activateForCarPlay()
+        // registra los nuestros en el paso 2, y el destroy() del otro plugin recién llega
+        // después de dar la vuelta nativo → JS → nativo (CDVCarPlayManager.swift, pasos 2-4).
+        //
+        // Hasta iOS 25 convivían. iOS 26 despacha los comandos con continuaciones y no tolera
+        // handlers duales: si CarPlay manda NextTrack en esa ventana, _MPRemoteCommandEventDispatch
+        // se dealloca sin invocar su continuación → NSInternalInconsistencyException (crash FATAL,
+        // 73 usuarios en 6 apps, 100% en foreground).
+        //
+        // removeTarget(nil) es la API de Apple para quitar todos los targets. Es seguro: con
+        // CarPlay activo queremos que responda SU player (AVPlayer), no el del WebView; y al
+        // desconectar, teardownRemoteCommandCenter() limpia los nuestros y MusicControls.create()
+        // vuelve a registrar los suyos cuando el usuario reproduce.
+        cc.playCommand.removeTarget(nil)
+        cc.pauseCommand.removeTarget(nil)
+        cc.nextTrackCommand.removeTarget(nil)
+        cc.previousTrackCommand.removeTarget(nil)
+        cc.togglePlayPauseCommand.removeTarget(nil)
+        cc.changePlaybackPositionCommand.removeTarget(nil)
+        cc.changeShuffleModeCommand.removeTarget(nil)
+        cc.changeRepeatModeCommand.removeTarget(nil)
+
         cc.playCommand.isEnabled = true
         cc.pauseCommand.isEnabled = true
         cc.nextTrackCommand.isEnabled = true
