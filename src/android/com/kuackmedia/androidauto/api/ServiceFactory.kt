@@ -12,39 +12,58 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 object ServiceFactory {
-  private lateinit var okHttpClient: OkHttpClient
+  // Construir la API es caro: dos Moshi con KotlinJsonAdapterFactory (kotlin-reflect
+  // genera los adapters en runtime — segundos en frío en gama baja, y es la firma del
+  // ANR de 2.004 usuarios en producción) + OkHttp + Retrofit. Se paga UNA vez por
+  // proceso; antes se reconstruía TODO en cada llamada — incluida la del camino de
+  // reproducción (LocalStorageUtils.getTrackUri) — re-pagando la reflexión, duplicando
+  // connection pools y reasignando un lateinit sin sincronización.
+  @Volatile
+  private var api: MusicApi? = null
 
   fun create(context: Context): MusicApi {
-    val prefs = { context.getSharedPreferences("NativeStorage", MODE_PRIVATE) }
-    //val baseUrl = prefs().getString("API_URL", "https://api.prod.kuackmedia.com/api/")!!
-    val baseUrl = "https://api.prod.kuackmedia.com/api/"
+    val existing = api
+    if (existing != null) return existing
+    synchronized(this) {
+      val recheck = api
+      if (recheck != null) return recheck
 
-    val loggingInterceptor = HttpLoggingInterceptor().apply {
-      level = HttpLoggingInterceptor.Level.NONE
-    }
+      // applicationContext: la instancia sobrevive al servicio y no debe retener
+      // un Context de componente. SharedPreferences resuelve al mismo archivo.
+      val appContext = context.applicationContext
+      val prefs = { appContext.getSharedPreferences("NativeStorage", MODE_PRIVATE) }
+      //val baseUrl = prefs().getString("API_URL", "https://api.prod.kuackmedia.com/api/")!!
+      val baseUrl = "https://api.prod.kuackmedia.com/api/"
 
-    val interceptor = TokenInterceptor(prefProvider = prefs, baseUrl = baseUrl)
-    okHttpClient = OkHttpClient.Builder()
-      .addInterceptor(loggingInterceptor)
-      .addInterceptor(interceptor)
-      .build()
+      val loggingInterceptor = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.NONE
+      }
 
-    val mediaItemAdapter = MediaItemJsonAdapter(
-      Moshi.Builder()
+      val interceptor = TokenInterceptor(prefProvider = prefs, baseUrl = baseUrl)
+      val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(loggingInterceptor)
+        .addInterceptor(interceptor)
+        .build()
+
+      val mediaItemAdapter = MediaItemJsonAdapter(
+        Moshi.Builder()
+          .add(KotlinJsonAdapterFactory())
+          .build()
+      )
+      val moshi = Moshi.Builder()
+        .add(MediaItem::class.java, mediaItemAdapter)
         .add(KotlinJsonAdapterFactory())
         .build()
-    )
-    val moshi = Moshi.Builder()
-      .add(MediaItem::class.java, mediaItemAdapter)
-      .add(KotlinJsonAdapterFactory())
-      .build()
 
-    val retrofit: Retrofit = Retrofit.Builder()
-      .baseUrl(baseUrl)
-      .addConverterFactory(MoshiConverterFactory.create(moshi))
-      .client(okHttpClient)
-      .build()
+      val retrofit: Retrofit = Retrofit.Builder()
+        .baseUrl(baseUrl)
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .client(okHttpClient)
+        .build()
 
-    return retrofit.create(MusicApi::class.java)
+      val built = retrofit.create(MusicApi::class.java)
+      api = built
+      return built
+    }
   }
 }
