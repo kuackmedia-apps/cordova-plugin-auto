@@ -2288,7 +2288,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
 
       let now = CPNowPlayingTemplate.shared
       DispatchQueue.main.async {
-        if self.isPresentingNowPlaying || self.isNowPlayingShown || controller.topTemplate === now {
+        if self.isPresentingNowPlaying || self.isNowPlayingShown {
+            return
+        }
+        // CarPlay prohíbe pushear un template que ya esté en CUALQUIER posición del
+        // stack, no solo en la cima: tras buscar sobre NowPlaying y tocar un resultado
+        // (que resetea isNowPlayingShown y dispara play()), el template queda apilado
+        // debajo de los resultados y re-pushearlo tira NSGenericException fatal. Si ya
+        // está en el stack, se lo revela con pop(to:) en vez de duplicarlo.
+        if controller.templates.contains(where: { $0 === now }) {
+            if controller.topTemplate !== now {
+                controller.pop(to: now, animated: true, completion: nil)
+            }
+            self.isNowPlayingShown = true
             return
         }
         // Ensure we have a current track; otherwise, retry briefly to avoid presenting a blank Now Playing
@@ -2337,7 +2349,20 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let pushDelay: TimeInterval = 0.3
         self.isPresentingNowPlaying = true
         DispatchQueue.main.asyncAfter(deadline: .now() + pushDelay) {
-            controller.pushTemplate(now, animated: true)
+            // El guard de arriba corre en otro turno del main queue que este push
+            // diferido: si en el medio otro camino metió NowPlaying al stack, el
+            // push duplicado crashea. Re-chequeo + completion (convierte cualquier
+            // edge que se escape en un error logueado en vez de NSGenericException).
+            if controller.templates.contains(where: { $0 === now }) {
+                self.isNowPlayingShown = true
+                self.isPresentingNowPlaying = false
+                return
+            }
+            controller.pushTemplate(now, animated: true) { _, error in
+                if let error = error {
+                    print("[CarPlay] pushTemplate(NowPlaying) error: \(error)")
+                }
+            }
             // Mark as shown and clear presenting flag shortly after push
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.isNowPlayingShown = true
