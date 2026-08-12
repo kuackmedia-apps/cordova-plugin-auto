@@ -12,6 +12,24 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     @objc private(set) var connected: Bool = false
     private var isNowPlayingShown: Bool = false
     private let listImageCache = NSCache<NSURL, UIImage>()
+
+    /// Contexto de la fila de Quick Access (CPListImageRowItem) por archivo de navegación.
+    /// CPListImageRowItem no permite mutar sus imágenes: para completar las carátulas que
+    /// llegan async hay que reemplazar la fila entera DENTRO de su template. La búsqueda
+    /// anterior vía rootTemplate.templates.first fallaba en silencio mientras el placeholder
+    /// de "Loading" seguía siendo root (primera vinculación con CarPlay).
+    private final class QuickAccessRowContext {
+        weak var template: CPListTemplate?
+        let rowTitle: String
+        let previewItems: [[String: Any]]
+        var retriesLeft: Int = 2
+        init(rowTitle: String, previewItems: [[String: Any]]) {
+            self.rowTitle = rowTitle
+            self.previewItems = previewItems
+        }
+    }
+    private var quickAccessRows: [String: QuickAccessRowContext] = [:]
+
     private var nowPlayingRetryCount: Int = 0
     private var didReopenNowPlayingOnce: Bool = false
     private var isPresentingNowPlaying: Bool = false
@@ -633,6 +651,124 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         // Default: playlist/mix/album/artist — delegate to playMediaByType (handles dynamic queue)
         guard !id.isEmpty else { return }
         playMediaByType(mediaType: mediaType, itemId: id, itemName: name, fromNative: true)
+    }
+
+    // MARK: - Quick Access image row (backfill async de carátulas)
+
+    /// Resolución sincrónica de carátulas para la fila de Quick Access: imagen offline
+    /// local → file:// → cache en memoria. nil = todavía no disponible (candidata a descarga).
+    /// Única fuente de verdad compartida por el build inicial y los refresh — así un refresh
+    /// nunca pisa con placeholder una imagen que había cargado por camino local.
+    private func resolveQuickAccessImages(_ previewItems: [[String: Any]]) -> [UIImage?] {
+        var images: [UIImage?] = []
+        for itemDict in previewItems {
+            let urlStr = extractImageURL(from: itemDict)
+            let itemType = (itemDict["itemType"] as? String) ?? (itemDict["type"] as? String)
+            let itemId = String(describing: itemDict["id"] ?? "")
+            var loaded: UIImage? = nil
+
+            // For tracks/radio_tracks, use album ID for cover lookup
+            var lookupType = itemType?.lowercased() ?? ""
+            var lookupId = itemId
+            if (lookupType == "track" || lookupType == "radio_track"),
+               let albumDict = itemDict["album"] as? [String: Any],
+               let albumId = albumDict["id"] {
+                lookupId = String(describing: albumId)
+                lookupType = "album"
+            }
+
+            if !lookupType.isEmpty, !lookupId.isEmpty {
+                loaded = CDVLocalStorageUtils.getLocalImage(itemType: lookupType, itemId: lookupId)
+            }
+            if loaded == nil, let s = urlStr, let url = URL(string: s), url.isFileURL {
+                loaded = UIImage(contentsOfFile: url.path)
+            }
+            if loaded == nil, let s = urlStr, let url = URL(string: s), !url.isFileURL {
+                loaded = listImageCache.object(forKey: url as NSURL)
+            }
+            images.append(loaded)
+        }
+        return images
+    }
+
+    /// Descarga las carátulas que faltan para la fila de Quick Access de `fileName` y
+    /// re-renderiza la fila al terminar. Si alguna descarga falla (típico de la primera
+    /// vinculación, con la red del teléfono saturada por el sync post-instalación),
+    /// reintenta acotado en vez de dejar el placeholder para siempre.
+    @available(iOS 14.0, *)
+    private func downloadMissingQuickAccessImages(fileName: String) {
+        guard let ctx = quickAccessRows[fileName] else { return }
+        let resolved = resolveQuickAccessImages(ctx.previewItems)
+        var pendingURLs: [URL] = []
+        for (index, image) in resolved.enumerated() where image == nil {
+            if let s = extractImageURL(from: ctx.previewItems[index]),
+               let url = URL(string: s), !url.isFileURL {
+                pendingURLs.append(url)
+            }
+        }
+        // Items sin URL de imagen quedan en placeholder por diseño — dejar rastro para QA
+        let noURL = resolved.enumerated().filter { $0.element == nil && extractImageURL(from: ctx.previewItems[$0.offset]) == nil }
+        for (index, _) in noURL {
+            print("[CarPlay][IMG][QA] \(fileName) item #\(index + 1): SIN URL de imagen (dato, no descarga)")
+        }
+        guard !pendingURLs.isEmpty else { return }
+        print("[CarPlay][IMG][QA] \(fileName): faltan \(pendingURLs.count) carátulas, descargando (reintentos restantes: \(ctx.retriesLeft))")
+
+        let group = DispatchGroup()
+        for url in pendingURLs {
+            group.enter()
+            URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+                defer { group.leave() }
+                guard let self else { return }
+                if let error = error {
+                    print("[CarPlay][IMG][QA] descarga FALLÓ \(url.absoluteString): \(error.localizedDescription)")
+                    return
+                }
+                if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                    print("[CarPlay][IMG][QA] descarga HTTP \(http.statusCode): \(url.absoluteString)")
+                }
+                guard let data = data, let img = UIImage(data: data) else {
+                    print("[CarPlay][IMG][QA] datos inválidos (no es imagen): \(url.absoluteString)")
+                    return
+                }
+                self.listImageCache.setObject(img, forKey: url as NSURL)
+            }.resume()
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self else { return }
+            self.refreshQuickAccessRow(fileName: fileName)
+            // Reintento acotado para las descargas que fallaron
+            guard let ctx = self.quickAccessRows[fileName], ctx.retriesLeft > 0 else { return }
+            if self.resolveQuickAccessImages(ctx.previewItems).contains(where: { $0 == nil }) {
+                ctx.retriesLeft -= 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                    self?.downloadMissingQuickAccessImages(fileName: fileName)
+                }
+            }
+        }
+    }
+
+    /// Reconstruye la fila de Quick Access de `fileName` con las carátulas disponibles ahora
+    /// y la swapea EN SU template (referencia directa), sin depender de qué haya como root.
+    /// Idempotente y barata: se puede llamar en cada punto donde pudo resolverse una imagen.
+    @available(iOS 14.0, *)
+    private func refreshQuickAccessRow(fileName: String) {
+        guard let ctx = quickAccessRows[fileName], let template = ctx.template else { return }
+        let placeholder = UIImage(systemName: "music.note") ?? UIImage()
+        let images = resolveQuickAccessImages(ctx.previewItems).map { $0 ?? placeholder }
+        DispatchQueue.main.async {
+            var sections = template.sections
+            guard !sections.isEmpty else { return }
+            var items = Array(sections[0].items)
+            guard let idx = items.firstIndex(where: { $0 is CPListImageRowItem }),
+                  let oldRow = items[idx] as? CPListImageRowItem else { return }
+            let newRow = CPListImageRowItem(text: ctx.rowTitle, images: images)
+            newRow.handler = oldRow.handler
+            newRow.listImageRowHandler = oldRow.listImageRowHandler
+            items[idx] = newRow
+            sections[0] = CPListSection(items: items)
+            template.updateSections(sections)
+        }
     }
 
     /// Load an image from URL (file://, cache, or remote download)
@@ -1264,6 +1400,9 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         }
     }
     private func setupTemplates(_ controller: CPInterfaceController) {
+      // Los templates se reconstruyen desde cero: descartar los contextos de Quick Access
+      // de la pasada anterior (referencias débiles, pero el dict crecería en cada rebuild).
+      quickAccessRows.removeAll()
       // Check network availability - if offline, show offline library
       let isOnline = CDVNetworkUtils.shared.isNetworkAvailable
 
@@ -1343,81 +1482,21 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
                                 let previewItems = Array(subItems.prefix(min(6, maxGrid)))
                                 let placeholder = UIImage(systemName: "music.note") ?? UIImage()
 
-                                // Load images synchronously (file://, local offline, cache)
-                                var images: [UIImage] = []
-                                for itemDict in previewItems {
-                                    let urlStr = self.extractImageURL(from: itemDict)
-                                    let itemType = (itemDict["itemType"] as? String) ?? (itemDict["type"] as? String)
-                                    let itemId = String(describing: itemDict["id"] ?? "")
-                                    var loaded: UIImage? = nil
-
-                                    // For tracks/radio_tracks, use album ID for cover lookup
-                                    var lookupType = itemType?.lowercased() ?? ""
-                                    var lookupId = itemId
-                                    if (lookupType == "track" || lookupType == "radio_track"),
-                                       let albumDict = itemDict["album"] as? [String: Any],
-                                       let albumId = albumDict["id"] {
-                                        lookupId = String(describing: albumId)
-                                        lookupType = "album"
-                                    }
-
-                                    // Try local offline image
-                                    if !lookupType.isEmpty, !lookupId.isEmpty {
-                                        loaded = CDVLocalStorageUtils.getLocalImage(itemType: lookupType, itemId: lookupId)
-                                    }
-                                    // Try file:// URL
-                                    if loaded == nil, let s = urlStr, let url = URL(string: s), url.isFileURL {
-                                        loaded = UIImage(contentsOfFile: url.path)
-                                    }
-                                    // Try memory cache
-                                    if loaded == nil, let s = urlStr, let url = URL(string: s), !url.isFileURL {
-                                        loaded = self.listImageCache.object(forKey: url as NSURL)
-                                    }
-                                    images.append(loaded ?? placeholder)
-                                }
+                                // Resolución sincrónica (offline local, file://, cache); lo que
+                                // falte lo completa refreshQuickAccessRow cuando llegue.
+                                let resolved = self.resolveQuickAccessImages(previewItems)
+                                let images: [UIImage] = resolved.map { $0 ?? placeholder }
 
                                 let imageRow = CPListImageRowItem(text: subTitle, images: images)
 
-                                // Async download for any Quick Access images that fell back to placeholder
-                                if images.contains(where: { $0 === placeholder }) {
-                                    let capturedPreviewItems = previewItems
-                                    let group = DispatchGroup()
-                                    for (index, itemDict) in capturedPreviewItems.enumerated() where images[index] === placeholder {
-                                        guard let urlStr = self.extractImageURL(from: itemDict),
-                                              let url = URL(string: urlStr), !url.isFileURL else { continue }
-                                        group.enter()
-                                        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                                            defer { group.leave() }
-                                            guard let self, let data = data, let img = UIImage(data: data) else { return }
-                                            self.listImageCache.setObject(img, forKey: url as NSURL)
-                                        }.resume()
-                                    }
-                                    group.notify(queue: .main) { [weak self] in
-                                        guard let self else { return }
-                                        var updated: [UIImage] = []
-                                        for itemDict in capturedPreviewItems {
-                                            if let s = self.extractImageURL(from: itemDict),
-                                               let url = URL(string: s),
-                                               let cached = self.listImageCache.object(forKey: url as NSURL) {
-                                                updated.append(cached)
-                                            } else {
-                                                updated.append(placeholder)
-                                            }
-                                        }
-                                        let newRow = CPListImageRowItem(text: subTitle, images: updated)
-                                        newRow.handler = imageRow.handler
-                                        newRow.listImageRowHandler = imageRow.listImageRowHandler
-                                        guard let tabBar = self.interfaceController?.rootTemplate as? CPTabBarTemplate,
-                                              let home = tabBar.templates.first as? CPListTemplate,
-                                              !home.sections.isEmpty else { return }
-                                        var sectionItems = Array(home.sections[0].items)
-                                        if let idx = sectionItems.firstIndex(where: { $0 is CPListImageRowItem }) {
-                                            sectionItems[idx] = newRow
-                                            var sections = home.sections
-                                            sections[0] = CPListSection(items: sectionItems)
-                                            home.updateSections(sections)
-                                        }
-                                    }
+                                // Registrar la fila para poder re-renderizarla por identidad de
+                                // template (el lookup viejo vía rootTemplate.templates.first se
+                                // descartaba en silencio mientras "Loading" seguía como root).
+                                let qaContext = QuickAccessRowContext(rowTitle: subTitle, previewItems: previewItems)
+                                self.quickAccessRows[fileName] = qaContext
+
+                                if resolved.contains(where: { $0 == nil }) {
+                                    self.downloadMissingQuickAccessImages(fileName: fileName)
                                 }
 
                                 // Title tap -> navigate to full section list
@@ -1506,13 +1585,19 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
             let cpList = CPListTemplate(title: safeTitle, sections: cpSections)
             cpList.tabTitle = safeTitle
             if #available(iOS 13.0, *) { cpList.tabImage = carPlayTabImage(from: sectionIcon, sectionTitle: sectionTitle, fileName: fileName) }
+            // Enlazar el template a su fila de Quick Access (registrada arriba) para que el
+            // backfill async actualice ESTE template, sin importar qué haya como root.
+            quickAccessRows[fileName]?.template = cpList
             // Ensure sections are applied on main thread for reliability
             DispatchQueue.main.async {
                 cpList.updateSections(cpSections)
             }
             // Re-apply after a short delay to avoid race with presentation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 cpList.updateSections(cpSections)
+                // El re-apply restaura las secciones originales (placeholders incluidos):
+                // re-render de la fila con lo que se haya resuelto en el medio.
+                if #available(iOS 14.0, *) { self?.refreshQuickAccessRow(fileName: fileName) }
             }
             navTemplates.append(cpList)
         }
@@ -1627,8 +1712,15 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
         let tabBar = CPTabBarTemplate(templates: tabTemplates)
         tabBar.delegate = self
         DispatchQueue.main.async {
-            controller.setRootTemplate(tabBar, animated: true, completion: { success, error in
+            controller.setRootTemplate(tabBar, animated: true, completion: { [weak self] success, error in
                 if let error = error { print("[CarPlay] setRootTemplate(TabBar) error: \(error)") }
+                // Completar las carátulas de Quick Access que se resolvieron durante la
+                // transición Loading→TabBar (el momento exacto en que el lookup viejo fallaba).
+                if #available(iOS 14.0, *), let self = self {
+                    for fileName in self.quickAccessRows.keys {
+                        self.refreshQuickAccessRow(fileName: fileName)
+                    }
+                }
             })
             self.isNowPlayingShown = false
         }
