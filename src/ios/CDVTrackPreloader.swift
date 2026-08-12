@@ -190,6 +190,13 @@ class CDVTrackPreloader {
         let startIdx = currentIndex + 1
         let endIdx = min(startIdx + windowSize, queue.count)
 
+        // currentIndex puede apuntar fuera de la cola (cola vacía tras un relaunch, o
+        // reemplazada por una más corta): el callback de cambio de red del init llama
+        // con el estado tal cual esté. Sin este guard, startIdx > endIdx aborta el
+        // proceso (Fatal error: Range requires lowerBound <= upperBound) — crash loop
+        // reproducido en QA con el toggle offline→online de CarPlay.
+        guard startIdx < endIdx else { return tracks }
+
         for i in startIdx..<endIdx {
             let item = queue[i]
             let data = CDVQueueStorage.extractFlattenedData(item)
