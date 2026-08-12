@@ -379,8 +379,12 @@ class CDVCarPlayManager: NSObject, CPTemplateApplicationSceneDelegate, CPTabBarT
     private func extractImageURL(from dict: [String: Any]) -> String? {
         // 1) Direct keys commonly used by API payloads
         if let s = dict["artwork"] as? String, !s.isEmpty { return s }
+        // Podcasts traen la carátula en ourImage/image/imageUrl (string), no en images[].
+        // ourImage va antes que image para elegir la misma que Android (MediaItemFactory.kt).
+        if let s = dict["ourImage"] as? String, !s.isEmpty { return s }
         if let s = dict["image"] as? String, !s.isEmpty { return s }
         if let s = dict["icon"] as? String, !s.isEmpty { return s }
+        if let s = dict["imageUrl"] as? String, !s.isEmpty { return s }
         // 2) images: [ { url, size, type } ] — choose the largest by size, else first with url
         if let images = dict["images"] as? [[String: Any]], !images.isEmpty {
             let sorted = images.sorted { (a, b) -> Bool in
