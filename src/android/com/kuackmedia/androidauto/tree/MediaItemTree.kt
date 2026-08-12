@@ -159,15 +159,18 @@ object MediaItemTree {
     offlineTitleMap.clear()
     titleMap.clear()
 
-    // Reset initialization flag
+    // Reset initialization flag so initializeMenu() rebuilds instead of short-circuiting.
     isInitialized = false
 
-    // Reinitialize with current musicApi
-    if (::musicApi.isInitialized) {
-      initialize(context, musicApi)
-    } else {
-      Log.e(TAG, "[REFRESH] Cannot refresh - musicApi not initialized")
-    }
+    // Reconstruir el menú desde los archivos JSON (AUTO_NAVIGATION*). NO requiere
+    // musicApi: el menú y su contenido salen de los archivos que escribe el JS; musicApi
+    // solo hace falta para navegar HACIA ADENTRO del contenido remoto, y si ya se asignó
+    // se conserva (es lateinit, no se toca). Antes refresh() exigía musicApi y, como
+    // borraba el árbol ANTES de chequearlo, cuando el refresh llegaba antes de que la init
+    // async asignara musicApi (Auto conectado antes de que los datos estuvieran listos)
+    // dejaba el árbol vacío y sin menú. Esto es justo lo que permite que una escritura
+    // tardía del JS (con su notifyNativeRefresh) aparezca sin desconectar/reconectar.
+    initializeMenu(context)
   }
 
   private fun loadNavigationData(context: Context): List<NavigationData> {
