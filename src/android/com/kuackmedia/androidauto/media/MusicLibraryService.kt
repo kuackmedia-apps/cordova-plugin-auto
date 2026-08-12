@@ -236,6 +236,23 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
                 //    "SecurityException: create too many virtualDisplay".
                 MediaItemTree.preloadChildren(applicationContext, MediaItemTree.getNavigationData())
 
+                // 2b) AVISAR que el contenido ya está. onLoadChildren espera (awaitMenu) sólo
+                //     para el ROOT; para una pestaña devuelve getChildren() sin esperar, y Auto
+                //     CACHEA esa respuesta. Si el usuario entra a una pestaña durante los ~4,3 s
+                //     del preload, se queda con la lista vacía hasta reconectar — reproducido en
+                //     Xiaomi 12 Pro real: menú visible, todas las pestañas vacías. Notificar es
+                //     el mecanismo estándar de MediaBrowserService para contenido async.
+                withContext(Dispatchers.Main) {
+                    notifyChildrenChanged(ROOT_ID)
+                    MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
+                        mediaItem?.mediaId?.let {
+                            if (mediaItem.isBrowsable) {
+                                notifyChildrenChanged(it)
+                            }
+                        }
+                    }
+                }
+
                 // 3) API remota: solo hace falta al navegar contenido que no está cacheado.
                 val musicApi = ServiceFactory.create(applicationContext)
                 MediaItemTree.setMusicApi(musicApi)
