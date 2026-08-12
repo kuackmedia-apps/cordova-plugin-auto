@@ -153,6 +153,8 @@ object MediaItemTree {
    * Use this when navigation data has been updated and needs to be refreshed.
    */
   fun refresh(context: Context) {
+    Log.i(TAG, "[REFRESH] inicio (apiReady=${::musicApi.isInitialized})")
+
     // Clear all existing data
     treeNodes.clear()
     offlineNodes.clear()
@@ -162,15 +164,44 @@ object MediaItemTree {
     // Reset initialization flag so initializeMenu() rebuilds instead of short-circuiting.
     isInitialized = false
 
-    // Reconstruir el menú desde los archivos JSON (AUTO_NAVIGATION*). NO requiere
-    // musicApi: el menú y su contenido salen de los archivos que escribe el JS; musicApi
-    // solo hace falta para navegar HACIA ADENTRO del contenido remoto, y si ya se asignó
-    // se conserva (es lateinit, no se toca). Antes refresh() exigía musicApi y, como
-    // borraba el árbol ANTES de chequearlo, cuando el refresh llegaba antes de que la init
-    // async asignara musicApi (Auto conectado antes de que los datos estuvieran listos)
-    // dejaba el árbol vacío y sin menú. Esto es justo lo que permite que una escritura
-    // tardía del JS (con su notifyNativeRefresh) aparezca sin desconectar/reconectar.
+    // 1) MENÚ (pestañas) desde AUTO_NAVIGATION. NO requiere musicApi: el menú y el
+    //    contenido salen de los archivos que escribe el JS; musicApi solo hace falta para
+    //    navegar HACIA ADENTRO del contenido remoto (y si ya se asignó, se conserva).
+    //    Antes esto estaba gateado por musicApi y, como el árbol se borra ANTES del
+    //    chequeo, un refresh temprano dejaba a Auto sin menú.
     initializeMenu(context)
+
+    // El CONTENIDO de cada pestaña NO se precarga acá a propósito: hacerlo costaba 767 ms
+    // en el main thread (medido en un Xiaomi 12 Pro; en gama baja, segundos) porque parsea
+    // los archivos de las 4 pestañas de una. Ahora cada pestaña carga su archivo cuando el
+    // usuario la abre — ver ensureChildrenLoaded(), que onLoadChildren() llama fuera del
+    // main thread. Reconstruir solo el menú cuesta ~18 ms.
+    Log.i(TAG, "[REFRESH] fin: tabs=${treeNodes[ROOT_ID]?.getChildren()?.size ?: 0} nodos=${treeNodes.size}")
+  }
+
+  /**
+   * Carga bajo demanda el contenido de UNA pestaña (el resto del árbol no se toca).
+   *
+   * `mediaId` de una pestaña es siempre `<fileName>_MENU` (ver buildNavigationMenu), así que
+   * de ahí sale el archivo a leer. Idempotente: si ya tiene hijos, no relee nada.
+   *
+   * Corre fuera del main thread (onLoadChildren usa result.detach()): parsear el archivo de
+   * una pestaña es la parte cara, y es justo lo que no debe bloquear a Android Auto.
+   */
+  fun ensureChildrenLoaded(context: Context, menuMediaId: String): List<MediaBrowserCompat.MediaItem> {
+    val cached = treeNodes[menuMediaId]?.getChildren() ?: emptyList()
+    if (cached.isNotEmpty() || !menuMediaId.endsWith("_MENU")) {
+      return cached
+    }
+    val fileName = menuMediaId.removeSuffix("_MENU")
+    try {
+      loadNavigationDataChildren(context, fileName)
+    } catch (e: Exception) {
+      Log.e(TAG, "[LAZY] Error cargando $fileName: ${e.message}")
+    }
+    val loaded = treeNodes[menuMediaId]?.getChildren() ?: emptyList()
+    Log.i(TAG, "[LAZY] $fileName → ${loaded.size} items")
+    return loaded
   }
 
   private fun loadNavigationData(context: Context): List<NavigationData> {

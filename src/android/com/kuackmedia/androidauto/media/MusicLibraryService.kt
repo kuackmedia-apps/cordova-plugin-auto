@@ -236,23 +236,6 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
                 //    "SecurityException: create too many virtualDisplay".
                 MediaItemTree.preloadChildren(applicationContext, MediaItemTree.getNavigationData())
 
-                // 2b) AVISAR que el contenido ya está. onLoadChildren espera (awaitMenu) sólo
-                //     para el ROOT; para una pestaña devuelve getChildren() sin esperar, y Auto
-                //     CACHEA esa respuesta. Si el usuario entra a una pestaña durante los ~4,3 s
-                //     del preload, se queda con la lista vacía hasta reconectar — reproducido en
-                //     Xiaomi 12 Pro real: menú visible, todas las pestañas vacías. Notificar es
-                //     el mecanismo estándar de MediaBrowserService para contenido async.
-                withContext(Dispatchers.Main) {
-                    notifyChildrenChanged(ROOT_ID)
-                    MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
-                        mediaItem?.mediaId?.let {
-                            if (mediaItem.isBrowsable) {
-                                notifyChildrenChanged(it)
-                            }
-                        }
-                    }
-                }
-
                 // 3) API remota: solo hace falta al navegar contenido que no está cacheado.
                 val musicApi = ServiceFactory.create(applicationContext)
                 MediaItemTree.setMusicApi(musicApi)
@@ -377,6 +360,20 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
             localChildren = MediaItemTree.getChildren(parentId)
         }
 
+        // Contenido de una pestaña que todavía no se cargó (por ejemplo después de un
+        // refresh, que solo reconstruye el menú). Se lee su archivo FUERA del main thread:
+        // parsearlo es la parte cara (~750 ms para las 4 pestañas juntas) y bloquear acá
+        // es lo que producía el "THREAD WARNING" del 12/08. Mismo patrón detach/sendResult
+        // que ya usa el ROOT unas líneas más arriba.
+        if (parentId.endsWith("_MENU") && localChildren.isEmpty()) {
+            result.detach()
+            serviceScope.launch {
+                val children = MediaItemTree.ensureChildrenLoaded(applicationContext, parentId)
+                withContext(Dispatchers.Main) { result.sendResult(children.toMutableList()) }
+            }
+            return
+        }
+
         // ROOT level + offline: show offline entry point
         if (parentId == ROOT_ID && !isNetworkAvailable(this)) {
             val offlineMediaItem = MediaItemTree.getOfflineMediaItem(applicationContext)
@@ -429,8 +426,13 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
      * Reloads MediaItemTree and notifies Android Auto of changes.
      */
     private fun refreshNavigationInternal() {
+        // Sincrónico a propósito: refresh() ahora solo reconstruye el menú (~18 ms), el
+        // contenido de cada pestaña se carga bajo demanda en onLoadChildren (fuera del main
+        // thread). Mantenerlo en el hilo que llama —el main, vía el exec() de Cordova— es lo
+        // que garantiza que no se solape con las lecturas de onLoadChildren, que también
+        // corren en main: MediaItemTree usa mutableMapOf() sin ninguna sincronización, así
+        // que sacarlo a otro hilo abriría una carrera sobre el árbol.
         try {
-            // Refresh the MediaItemTree
             MediaItemTree.refresh(applicationContext)
 
             // Notify Android Auto that the root has changed
