@@ -4,6 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 module.exports = function(context) {
     console.log('Running add_siri_appdelegate hook...');
@@ -54,6 +55,13 @@ module.exports = function(context) {
     if (appleSignInEnabled) {
         addAppleSignInEntitlement(iosPath, projectName);
     }
+
+    // ========================================
+    // STEP 2c: Sync entitlements into the signed file (if redirected)
+    // ========================================
+    // Must run after every step that writes Entitlements-*.plist (CarPlay above;
+    // firebasex's aps-environment lands there during prepare).
+    syncSignedEntitlements(iosPath, projectName);
 
     // ========================================
     // STEP 3: Modify AppDelegate
@@ -168,6 +176,69 @@ function addAppleSignInEntitlement(iosPath, projectName) {
             }
         }
     }
+}
+
+// cordova-plugin-deeplinks points CODE_SIGN_ENTITLEMENTS at
+// Resources/<App>.entitlements, so Xcode stops reading Entitlements-Debug/Release.plist
+// — the files where cordova (config-file) and other plugins write: aps-environment
+// from firebasex, carplay-audio from this hook. Without this sync those
+// entitlements never reach the binary: an app with deeplinks shipped without push
+// and without CarPlay even with the capabilities enabled on the App ID.
+//
+// Copies every key missing from the signed file. Debug goes first on purpose: its
+// aps-environment is "development", which is what Xcode expects in the entitlements
+// file; the App Store export rewrites it to "production" from the distribution
+// profile. Apps without deeplinks don't have the redirected file: no-op.
+function syncSignedEntitlements(iosPath, projectName) {
+    const signedPath = [
+        path.join(iosPath, projectName, 'Resources', `${projectName}.entitlements`),
+        path.join(iosPath, projectName, `${projectName}.entitlements`)
+    ].find(p => fs.existsSync(p));
+
+    if (!signedPath) {
+        return;
+    }
+
+    const sources = [
+        path.join(iosPath, projectName, 'Entitlements-Debug.plist'),
+        path.join(iosPath, projectName, 'Entitlements-Release.plist')
+    ].filter(p => fs.existsSync(p));
+
+    let signed;
+    try {
+        signed = readPlistAsJson(signedPath);
+    } catch (error) {
+        console.error(`Error reading ${signedPath}:`, error.message);
+        return;
+    }
+
+    for (const sourcePath of sources) {
+        let source;
+        try {
+            source = readPlistAsJson(sourcePath);
+        } catch (error) {
+            console.error(`Error reading ${sourcePath}:`, error.message);
+            continue;
+        }
+        for (const key of Object.keys(source)) {
+            if (Object.prototype.hasOwnProperty.call(signed, key)) {
+                continue;
+            }
+            try {
+                // plutil keypaths split on '.', and entitlement keys are full of them.
+                const keyPath = key.replace(/\./g, '\\.');
+                execFileSync('plutil', ['-insert', keyPath, '-json', JSON.stringify(source[key]), signedPath]);
+                signed[key] = source[key];
+                console.log(`Synced ${key} from ${path.basename(sourcePath)} into ${path.basename(signedPath)}`);
+            } catch (error) {
+                console.error(`Error syncing ${key} into ${signedPath}:`, error.message);
+            }
+        }
+    }
+}
+
+function readPlistAsJson(plistPath) {
+    return JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', plistPath], { encoding: 'utf8' }));
 }
 
 function modifyAppDelegate(iosPath, projectName) {
