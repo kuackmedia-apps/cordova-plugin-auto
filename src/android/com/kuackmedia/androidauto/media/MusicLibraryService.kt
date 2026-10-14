@@ -89,6 +89,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
     private lateinit var mediaSession: MediaSessionCompat
     private lateinit var playerAdapter: IPlayerAdapter
+    // Referencia al callback para poder apagar sus publicaciones en onDestroy() (release()).
+    private var sessionCallback: MediaSessionCallback? = null
     private lateinit var networkCallback: ConnectivityManager.NetworkCallback
     private var networkAvailable: Boolean = false
     private var isAndroidAutoConnected: Boolean = false
@@ -132,19 +134,24 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         // Clear preloaded cache from previous session
         TrackPreloader.clearCache(applicationContext)
 
+        // Una notificación id 1 que exista a esta altura es de un proceso anterior que murió sin
+        // pasar por onDestroy() (LMK, kill del OEM): apunta a una sesión muerta y, si quedó en
+        // PLAYING, es ongoing. La de esta instancia todavía no se publicó. cancel() no pide permiso.
+        NotificationManagerCompat.from(this).cancel(1)
+
         if (!::mediaSession.isInitialized) {
             mediaSession = MediaSessionCompat(this, TAG)
             mediaSession.setFlags(
                 MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                         MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
             )
-            mediaSession.setCallback(
-                MediaSessionCallback(
-                    playerAdapter,
-                    mediaSession,
-                    applicationContext
-                )
+            val callback = MediaSessionCallback(
+                playerAdapter,
+                mediaSession,
+                applicationContext
             )
+            sessionCallback = callback
+            mediaSession.setCallback(callback)
 
             // Agrega acciones de voz/search al PlaybackStateCompat
             val actions = (PlaybackStateCompat.ACTION_PLAY or
@@ -454,6 +461,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     override fun onDestroy() {
         // Unregister this instance
         instance = null
+
+        // Primero: que ninguna corrutina pendiente vuelva a publicar el id 1 después del cancel(1) de abajo.
+        sessionCallback?.release()
 
         playerAdapter.stop()
         playerAdapter.reset()

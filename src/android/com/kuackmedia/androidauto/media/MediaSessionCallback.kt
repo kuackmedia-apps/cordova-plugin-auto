@@ -1,5 +1,6 @@
 package com.kuackmedia.androidauto.media
 
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -61,6 +62,14 @@ class MediaSessionCallback(
   private var isCalledFromOnPrepare: Boolean = false
   private var queueLoadingState: QueueLoadingState? = null
 
+  // Notificación de medios (id 1). Todo en el main thread. Cada showNotification() toma un número;
+  // la versión con carátula, que llega tarde desde IO, sólo se publica si sigue siendo la última y
+  // si el servicio no se destruyó (release()): si no, pisaba un estado nuevo con uno viejo o
+  // re-publicaba el id 1 después del cancel(1) de MusicLibraryService.onDestroy().
+  private var notificationSeq = 0
+  private var released = false
+  private var loggedNotificationPermission = false
+
   init {
     // This executes when a track ends playing
     mediaPlayer.setOnCompletionListener {
@@ -78,8 +87,14 @@ class MediaSessionCallback(
     }
 
     // This executes when audio focus changes
+    // El AudioFocusRequest no lleva Handler: no está garantizado que el aviso llegue en el main thread, y
+    // handleAudioFocusChange toca el player, la sesión y la notificación.
     mediaPlayer.setOnAudioFocusChangeListener { focusChange ->
-      handleAudioFocusChange(focusChange)
+      if (Looper.myLooper() == Looper.getMainLooper()) {
+        handleAudioFocusChange(focusChange)
+      } else {
+        handler.post { handleAudioFocusChange(focusChange) }
+      }
     }
   }
 
@@ -1268,6 +1283,9 @@ class MediaSessionCallback(
       // Track from app but no auto-play - just prepare and leave in STOPPED state
       mediaPlayer.currentTrackFromApp = false
       updateState(PlaybackStateCompat.STATE_STOPPED, mediaPlayer.currentPosition)
+      // Antes de llegar acá, onPlayFromMediaId / startPlaybackWithInitialTracks publicaron la notificación en
+      // PLAYING (ongoing, con "Pausa") sin que vaya a sonar nada: se la deja en pausa, lista para reproducir.
+      showNotification(PlaybackStateCompat.STATE_PAUSED)
     } else {
       // Normal playback from Android Auto (e.g., user clicked a song)
       // Request audio focus again right before starting playback
@@ -1357,6 +1375,8 @@ class MediaSessionCallback(
       .setActions(0) // No actions available when in error state
       .build()
     mediaSession.setPlaybackState(errorMessageState)
+    // La notificación seguía en PLAYING (ongoing, cronómetro) después del error.
+    showNotification(PlaybackStateCompat.STATE_PAUSED)
 
 
     // 4. (Optional) Inform the user in the main UI
@@ -1393,6 +1413,8 @@ class MediaSessionCallback(
           mediaPlayer.pause()
           updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
           handler.removeCallbacks(updatePlaybackPositionRunnable)
+          // Como onPause: si no, la notificación sigue diciendo "reproduciendo" con el auto en pausa.
+          showNotification(PlaybackStateCompat.STATE_PAUSED)
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
@@ -1402,6 +1424,8 @@ class MediaSessionCallback(
           mediaPlayer.pause()
           updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
           handler.removeCallbacks(updatePlaybackPositionRunnable)
+          // Como onPause: si no, la notificación sigue diciendo "reproduciendo" con el auto en pausa.
+          showNotification(PlaybackStateCompat.STATE_PAUSED)
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
@@ -1411,6 +1435,8 @@ class MediaSessionCallback(
           mediaPlayer.pause()
           updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
           handler.removeCallbacks(updatePlaybackPositionRunnable)
+          // Como onPause: si no, la notificación sigue diciendo "reproduciendo" con el auto en pausa.
+          showNotification(PlaybackStateCompat.STATE_PAUSED)
         }
       }
     }
@@ -1444,22 +1470,21 @@ class MediaSessionCallback(
   }
 
   private fun showNotification(state: Int) {
+    // Después de onDestroy no se publica nada (p. ej. la corrutina de onPlayFromMediaId que
+    // vuelve a Main tarde): el cancel(1) del servicio ya corrió y nadie más la sacaría.
+    if (released) return
+    val seq = ++notificationSeq
+
     val controller = mediaSession.controller
     val mediaMetadata = controller.metadata
     val description = mediaMetadata?.description
 
-    // Check for notification permission on Android 13+
-    val hasNotificationPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-      context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
-              android.content.pm.PackageManager.PERMISSION_GRANTED
-    } else {
-      true
-    }
-
-    if (!hasNotificationPermission) {
-      Log.w(TAG, "Notification permission not granted, not showing notification")
-      return
-    }
+    // Sin gate de POST_NOTIFICATIONS a propósito. Una notificación MediaStyle con el token de la
+    // sesión es una "notificación de medios" y Android 13+ la publica aunque el permiso esté
+    // denegado (NotificationManagerService: isMediaNotification()); el fork de music-controls hace
+    // lo mismo. El return que había acá dejaba al teléfono sin controles con Auto conectado en los
+    // binarios que nunca piden el permiso (Claro, demos, dev).
+    logNotificationPermissionOnce()
 
     // Create notification channel for API 26+
     val channelName = "Media Playback"
@@ -1550,19 +1575,25 @@ class MediaSessionCallback(
             }
           } else {
             // Remote image - load from URL
-            val url = URL(imageUrl)
-            BitmapFactory.decodeStream(url.openConnection().getInputStream())
+            val connection = URL(imageUrl).openConnection()
+            connection.connectTimeout = 5000
+            connection.readTimeout = 10000
+            connection.getInputStream().use { BitmapFactory.decodeStream(it) }
           }
 
           if (bitmap != null) {
             withContext(Dispatchers.Main) {
-              builder.setLargeIcon(bitmap)
-              safelyShowNotification(NOTIFICATION_ID, builder.build())
+              // Llegó tarde: ya hay una notificación más nueva, o el servicio se destruyó.
+              if (!released && seq == notificationSeq) {
+                builder.setLargeIcon(bitmap)
+                safelyShowNotification(NOTIFICATION_ID, builder.build())
+              }
             }
           } else {
             Log.w(TAG, "[NOTIFICATION_IMAGE_NULL] Bitmap is null, showing notification without image")
           }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+          // Throwable: un OutOfMemoryError al decodificar la carátula (equipos de 2 GB) no puede tirar el proceso.
           Log.e(TAG, "[NOTIFICATION_IMAGE_ERROR] Error loading notification image: ${e.message}", e)
           Log.e(TAG, "[NOTIFICATION_IMAGE_STACK_TRACE] ${e.stackTraceToString()}")
         }
@@ -1584,20 +1615,38 @@ class MediaSessionCallback(
   }
 
 
-  // Add this helper method to check permissions before showing notifications
+  // Publica o actualiza la notificación. Sin gate de permiso: ver showNotification(). Con el
+  // permiso denegado, Android 13+ igual la acepta por ser de medios; si algún OEM la rechazara,
+  // NotificationManagerService la descarta en silencio (no tira), y el try es sólo defensivo.
+  @SuppressLint("MissingPermission")
   private fun safelyShowNotification(notificationId: Int, notification: android.app.Notification) {
-    // Check for notification permission on Android 13+
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-      if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
-        android.content.pm.PackageManager.PERMISSION_GRANTED) {
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
-      } else {
-        Log.w(TAG, "Notification permission not granted")
-      }
-    } else {
-      // For Android 12 and below, no runtime permission needed
+    try {
       NotificationManagerCompat.from(context).notify(notificationId, notification)
+    } catch (e: Exception) {
+      Log.w(TAG, "[NOTIFICATION] notify falló: ${e.javaClass.name}: ${e.message}")
     }
+  }
+
+  // Una línea por instancia del servicio, para leer el logcat de QA sin adivinar el permiso.
+  private fun logNotificationPermissionOnce() {
+    if (loggedNotificationPermission) return
+    loggedNotificationPermission = true
+    val granted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+      context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+      android.content.pm.PackageManager.PERMISSION_GRANTED
+    Log.i(TAG, "[NOTIFICATION] POST_NOTIFICATIONS=${if (granted) "concedido" else "denegado (se publica igual: notificación de medios)"}")
+  }
+
+  /**
+   * Lo llama MusicLibraryService.onDestroy() ANTES de liberar la sesión y del cancel(1): después
+   * de esto nada vuelve a publicar el id 1 (carátula tardía, corrutinas de onPlayFromMediaId /
+   * playQueueItem que vuelven a Main) y se corta el runnable de posición, que se re-posteaba cada
+   * segundo para siempre reteniendo el callback muerto.
+   */
+  fun release() {
+    released = true
+    notificationSeq++
+    handler.removeCallbacks(updatePlaybackPositionRunnable)
   }
 
 }
