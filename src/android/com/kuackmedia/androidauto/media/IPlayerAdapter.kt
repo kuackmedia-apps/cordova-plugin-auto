@@ -24,6 +24,11 @@ interface IPlayerAdapter {
   fun setOnErrorListener(handleError: ( what: Int, extra: Int) -> Unit)
   fun setOnAudioFocusChangeListener(callback: (Int) -> Unit)
   fun requestAudioFocusForPlayback(): Boolean
+  // true si el último requestAudioFocusForPlayback quedó en AUDIOFOCUS_REQUEST_DELAYED (p. ej. durante una llamada):
+  // el foco llega más tarde con un AUDIOFOCUS_GAIN.
+  val lastFocusRequestDelayed: Boolean
+  // true entre onPrepared y el próximo reset/stop/release/error: start() es válido (sin MEDIA_ERROR -38).
+  val isPrepared: Boolean
   fun shouldIgnorePauseCommands(): Boolean
   val currentPosition: Long
   var currentTrackFromApp: Boolean

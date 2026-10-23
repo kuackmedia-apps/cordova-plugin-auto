@@ -5,9 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
@@ -22,6 +24,7 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.media.session.MediaButtonReceiver
 import com.kuackmedia.androidauto.CordovaEventBridge
 import com.kuackmedia.androidauto.CordovaEvents
@@ -69,6 +72,26 @@ class MediaSessionCallback(
   private var notificationSeq = 0
   private var released = false
   private var loggedNotificationPermission = false
+
+  // true sólo cuando una pérdida TRANSITORIA de foco (llamada, voz) pausó un tema que sonaba, o cuando un play quedó
+  // con el foco diferido: habilita reproducir en el próximo AUDIOFOCUS_GAIN. Lo apagan todo comando de la sesión
+  // (cancelFocusResume), una pérdida permanente, un error y release(). Sin timers: si el GAIN no llega, queda en pausa
+  // hasta que el usuario haga algo. Todo en el main thread (sesión y avisos de foco, ver init).
+  private var resumeOnFocusGain = false
+  // Salida de medios al armar la reanudación (sólo parlante o no): el GAIN la bloquea si cambió a sólo parlante.
+  private var speakerOnlyWhenArmed = false
+  private var noisyReceiverRegistered = false
+  // El audio se va a salir por el parlante (se desconectó el auto, un cable o un Bluetooth): nada de reanudar.
+  private val noisyReceiver = object : BroadcastReceiver() {
+    override fun onReceive(c: Context?, intent: Intent?) {
+      if (intent != null && intent.action == android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+        handler.post {
+          if (resumeOnFocusGain) Log.i(TAG, "[FOCUS] BECOMING_NOISY: se cancela la reanudación pendiente")
+          disarmFocusResume()
+        }
+      }
+    }
+  }
 
   init {
     // This executes when a track ends playing
@@ -209,6 +232,9 @@ class MediaSessionCallback(
       // Optionally reset state or ignore
       return
     }
+
+    // Otro tema (elegido en el auto, play_all/shuffle, prepare de la conexión, playCurrentTrack del app).
+    cancelFocusResume()
 
     // Handle play_all: and shuffle: action items from album/playlist drill-down
     if (mediaId != null && (mediaId.startsWith("play_all:") || mediaId.startsWith("shuffle:"))) {
@@ -813,6 +839,7 @@ class MediaSessionCallback(
   }
 
   override fun onPlay() {
+    cancelFocusResume()
     if(!mediaPlayer.isPreparing()) {
       // If the player is already playing, just update state and return
       if (mediaPlayer.isPlaying()) {
@@ -839,11 +866,15 @@ class MediaSessionCallback(
       } else {
         Log.w(TAG, "[ON_PLAY_NO_FOCUS] Could not gain audio focus, playback not started")
         updateState(PlaybackStateCompat.STATE_PAUSED)
+        // Sin este aviso el JS quedaba esperando un 'play' que no llega. Con el foco diferido (una llamada en curso),
+        // el usuario quiere que suene: arranca cuando llegue el GAIN.
+        emitPrepareWithoutFocus()
       }
     }
   }
 
   override fun onStop() {
+    cancelFocusResume()
     if(!mediaPlayer.isPreparing()) {
       mediaPlayer.stop()
       updateState(PlaybackStateCompat.STATE_STOPPED, 0)
@@ -856,14 +887,18 @@ class MediaSessionCallback(
   }
 
   override fun onPause() {
+    // Antes de la ventana de 500 ms: una pausa del usuario cancela la reanudación aunque después se descarte.
+    cancelFocusResume()
     // Check if we should ignore pause commands during audio focus stabilization period
     if (mediaPlayer.shouldIgnorePauseCommands()) {
       return
     }
 
     if(!mediaPlayer.isPreparing()) {
+      // La posición antes de pausar: con el player en pausa el adapter devuelve 0 y el auto mostraba 0:00.
+      val position = mediaPlayer.currentPosition
       mediaPlayer.pause()
-      updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+      updateState(PlaybackStateCompat.STATE_PAUSED, position)
       showNotification(PlaybackStateCompat.STATE_PAUSED)
       handler.removeCallbacks(updatePlaybackPositionRunnable)
       CordovaEventBridge.sendEvent(
@@ -873,6 +908,7 @@ class MediaSessionCallback(
   }
 
   override fun onSkipToNext() {
+    cancelFocusResume()
     if(!mediaPlayer.isPreparing()) {
       // Reset flags and enable auto-play for the next track
       mediaPlayer.currentTrackFromApp = false
@@ -889,6 +925,7 @@ class MediaSessionCallback(
   }
 
   override fun onSkipToPrevious() {
+    cancelFocusResume()
     if(!mediaPlayer.isPreparing()) {
       // Reset flags and enable auto-play for the previous track
       mediaPlayer.currentTrackFromApp = false
@@ -905,6 +942,7 @@ class MediaSessionCallback(
   }
 
   override fun onSeekTo(pos: Long) {
+    cancelFocusResume()
     if(!mediaPlayer.isPreparing()) {
       mediaPlayer.seekTo(pos)
 
@@ -924,6 +962,7 @@ class MediaSessionCallback(
   }
 
   override fun onSkipToQueueItem(id: Long) {
+    cancelFocusResume()
     if(!mediaPlayer.isPreparing()) {
       // Reset flags and enable auto-play for the selected track
       mediaPlayer.currentTrackFromApp = false
@@ -1274,10 +1313,12 @@ class MediaSessionCallback(
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
         showNotification(PlaybackStateCompat.STATE_PLAYING)
+        emitPlaybackState("play", "prepared")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS_AUTO] Could not gain audio focus for auto-play, setting to PAUSED")
         updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
         showNotification(PlaybackStateCompat.STATE_PAUSED)
+        emitPrepareWithoutFocus()
       }
     } else if(mediaPlayer.currentTrackFromApp) {
       // Track from app but no auto-play - just prepare and leave in STOPPED state
@@ -1286,6 +1327,8 @@ class MediaSessionCallback(
       // Antes de llegar acá, onPlayFromMediaId / startPlaybackWithInitialTracks publicaron la notificación en
       // PLAYING (ongoing, con "Pausa") sin que vaya a sonar nada: se la deja en pausa, lista para reproducir.
       showNotification(PlaybackStateCompat.STATE_PAUSED)
+      // 'pause' y no 'stop': el JS viejo sólo mueve el botón con play/pause.
+      emitPlaybackState("pause", "prepared_idle")
     } else {
       // Normal playback from Android Auto (e.g., user clicked a song)
       // Request audio focus again right before starting playback
@@ -1298,10 +1341,13 @@ class MediaSessionCallback(
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
         showNotification(PlaybackStateCompat.STATE_PLAYING)
+        // Como onPlay: sin este aviso el player del app no se enteraba de que el tema elegido en el auto sonaba.
+        emitPlaybackState("play", "prepared")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS] Could not gain audio focus, playback not started")
         updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
         showNotification(PlaybackStateCompat.STATE_PAUSED)
+        emitPrepareWithoutFocus()
       }
     }
   }
@@ -1377,6 +1423,9 @@ class MediaSessionCallback(
     mediaSession.setPlaybackState(errorMessageState)
     // La notificación seguía en PLAYING (ongoing, cronómetro) después del error.
     showNotification(PlaybackStateCompat.STATE_PAUSED)
+    cancelFocusResume()
+    // getCurrentPlaybackState da "unknown" (STATE_ERROR): el JS lo toma como pausa.
+    emitPlaybackState("pause", "error")
 
 
     // 4. (Optional) Inform the user in the main UI
@@ -1394,52 +1443,154 @@ class MediaSessionCallback(
   }
 
   private fun handleAudioFocusChange(focusChange: Int) {
+    // Una línea por aviso: es la única forma de saber qué pérdida manda cada fuente (voz de Auto, llamada, navegación).
+    Log.i(TAG, "[FOCUS] change=$focusChange playing=${mediaPlayer.isPlaying()} resumeOnGain=$resumeOnFocusGain " +
+      "auto=${MediaControlBridge.androidAutoConnected}")
     when (focusChange) {
       android.media.AudioManager.AUDIOFOCUS_GAIN -> {
-        // When we regain audio focus, immediately update the state to PLAYING
-        // This prevents Android Auto from auto-pausing after we regain focus
         if (mediaPlayer.isPlaying()) {
+          // When we regain audio focus, immediately update the state to PLAYING
+          // This prevents Android Auto from auto-pausing after we regain focus
           updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
-          // Ensure the periodic position updates are running
           handler.removeCallbacks(updatePlaybackPositionRunnable)
           handler.post(updatePlaybackPositionRunnable)
           mediaSession.isActive = true
+        } else if (resumeOnFocusGain) {
+          val speakerOnlyBefore = speakerOnlyWhenArmed
+          disarmFocusResume()
+          resumeAfterFocusGain(speakerOnlyBefore)
         }
       }
       android.media.AudioManager.AUDIOFOCUS_LOSS -> {
-        // Another app has taken audio focus permanently (e.g., user started playing in Spotify)
-        // We must pause immediately
+        // Permanente (otra app de música, YouTube, un GAIN de gearhead): no se reanuda nunca solo.
+        disarmFocusResume()
         if (mediaPlayer.isPlaying()) {
-          mediaPlayer.pause()
-          updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
-          handler.removeCallbacks(updatePlaybackPositionRunnable)
-          // Como onPause: si no, la notificación sigue diciendo "reproduciendo" con el auto en pausa.
-          showNotification(PlaybackStateCompat.STATE_PAUSED)
+          pauseForFocusLoss("focus_loss")
         }
       }
-      android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-        // Temporary interruption (e.g., notification, phone call)
-        // Pause but expect to resume when focus is regained
-        if (mediaPlayer.isPlaying()) {
-          mediaPlayer.pause()
-          updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
-          handler.removeCallbacks(updatePlaybackPositionRunnable)
-          // Como onPause: si no, la notificación sigue diciendo "reproduciendo" con el auto en pausa.
-          showNotification(PlaybackStateCompat.STATE_PAUSED)
-        }
-      }
+      android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
       android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-        // Can lower volume (duck) but in Android Auto context, it's better to pause
-        // to avoid multiple audio sources playing simultaneously
+        // Transitoria (llamada, voz). CAN_DUCK casi nunca llega (setWillPauseWhenDucked(false): el sistema baja el
+        // volumen solo); si llega, se pausa como antes. Sólo se marca si sonaba: pausa del usuario + llamada no reanuda.
         if (mediaPlayer.isPlaying()) {
-          mediaPlayer.pause()
-          updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
-          handler.removeCallbacks(updatePlaybackPositionRunnable)
-          // Como onPause: si no, la notificación sigue diciendo "reproduciendo" con el auto en pausa.
-          showNotification(PlaybackStateCompat.STATE_PAUSED)
+          armFocusResume()
+          pauseForFocusLoss(
+            if (focusChange == android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) "focus_loss_transient"
+            else "focus_loss_duck")
         }
       }
     }
+  }
+
+  // Pausa por pérdida de foco: igual que onPause (notificación en pausa y aviso al JS). La posición se lee antes de
+  // pausar: con el player en pausa el adapter devuelve 0 y el auto mostraría 0:00.
+  private fun pauseForFocusLoss(reason: String) {
+    val position = mediaPlayer.currentPosition
+    mediaPlayer.pause()
+    updateState(PlaybackStateCompat.STATE_PAUSED, position)
+    handler.removeCallbacks(updatePlaybackPositionRunnable)
+    showNotification(PlaybackStateCompat.STATE_PAUSED)
+    emitPlaybackState("pause", reason)
+  }
+
+  // GAIN = nuestra entrada volvió arriba de la pila: no se vuelve a pedir foco (Android 15 lo niega a un app que no
+  // está al frente ni tiene FGS, y no hace falta). No se reanuda si el auto ya no está o si la música saldría por el
+  // parlante del teléfono (el auto se desconectó durante la llamada).
+  private fun resumeAfterFocusGain(speakerOnlyBefore: Boolean) {
+    if (released || mediaPlayer.isPreparing() || !mediaPlayer.isPrepared || !MediaControlBridge.androidAutoConnected) {
+      Log.i(TAG, "[FOCUS] GAIN: no se reanuda (released=$released prepared=${mediaPlayer.isPrepared} " +
+        "auto=${MediaControlBridge.androidAutoConnected})")
+      return
+    }
+    // Sólo si la salida CAMBIÓ a parlante desde que se armó: un equipo que reporta parlante también durante la
+    // proyección de Auto no queda sin reanudar.
+    if (!speakerOnlyBefore && mediaRouteIsPhoneSpeaker()) {
+      Log.i(TAG, "[FOCUS] GAIN: no se reanuda, la salida de medios pasó al parlante del teléfono")
+      return
+    }
+    mediaPlayer.play()
+    if (!mediaPlayer.isPlaying()) {
+      Log.w(TAG, "[FOCUS] GAIN: play() no arrancó, queda en pausa")
+      return
+    }
+    Log.i(TAG, "[FOCUS] GAIN después de una pérdida transitoria o un foco diferido: se reanuda")
+    updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+    handler.removeCallbacks(updatePlaybackPositionRunnable)
+    handler.post(updatePlaybackPositionRunnable)
+    mediaSession.isActive = true
+    showNotification(PlaybackStateCompat.STATE_PLAYING)
+    emitPlaybackState("play", "focus_gain")
+  }
+
+  // API 33+: true si la música de esta app saldría sólo por el parlante del teléfono. Sin la API, o si falla, false:
+  // queda la guarda de androidAutoConnected.
+  private fun mediaRouteIsPhoneSpeaker(): Boolean {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return false
+    return try {
+      val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+      val attributes = android.media.AudioAttributes.Builder()
+        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+        .build()
+      val devices = audioManager.getAudioDevicesForAttributes(attributes)
+      Log.i(TAG, "[FOCUS] salida de medios: ${devices.map { it.type }}")
+      devices.isNotEmpty() && devices.all { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+    } catch (e: Exception) {
+      Log.w(TAG, "[FOCUS] no se pudo leer la salida de medios: ${e.message}")
+      false
+    }
+  }
+
+  private fun cancelFocusResume() {
+    if (resumeOnFocusGain) Log.i(TAG, "[FOCUS] reanudación pendiente cancelada por un comando")
+    disarmFocusResume()
+  }
+
+  private fun armFocusResume() {
+    resumeOnFocusGain = true
+    speakerOnlyWhenArmed = mediaRouteIsPhoneSpeaker()
+    if (!noisyReceiverRegistered) {
+      try {
+        ContextCompat.registerReceiver(
+          context, noisyReceiver,
+          IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+          ContextCompat.RECEIVER_NOT_EXPORTED)
+        noisyReceiverRegistered = true
+      } catch (e: Exception) {
+        Log.w(TAG, "[FOCUS] no se pudo registrar BECOMING_NOISY: ${e.message}")
+      }
+    }
+  }
+
+  private fun disarmFocusResume() {
+    resumeOnFocusGain = false
+    if (noisyReceiverRegistered) {
+      noisyReceiverRegistered = false
+      try {
+        context.unregisterReceiver(noisyReceiver)
+      } catch (e: Exception) {
+        Log.w(TAG, "[FOCUS] no se pudo desregistrar BECOMING_NOISY: ${e.message}")
+      }
+    }
+  }
+
+  // Sin foco (onPlay, handlePrepare). Con el foco diferido (una llamada en curso) el usuario quiere que suene:
+  // arranca cuando llegue el GAIN, si el player está listo para start(). Sin este aviso el JS quedaba esperando un
+  // 'play' que no llega.
+  private fun emitPrepareWithoutFocus() {
+    if (mediaPlayer.lastFocusRequestDelayed && mediaPlayer.isPrepared) {
+      armFocusResume()
+      emitPlaybackState("pause", "focus_delayed")
+    } else {
+      emitPlaybackState("pause", "no_focus")
+    }
+  }
+
+  // `reason` es sólo diagnóstico: el JS viejo y el nuevo ignoran los campos que no conocen.
+  private fun emitPlaybackState(action: String, reason: String) {
+    CordovaEventBridge.sendEvent(
+      CordovaEvents.ON_PLAYBACK_STATE_CHANGED,
+      JSONObject().put("action", action).put("reason", reason))
   }
 
   private fun handlePlaybackCompletion() {
@@ -1645,6 +1796,7 @@ class MediaSessionCallback(
    */
   fun release() {
     released = true
+    disarmFocusResume()
     notificationSeq++
     handler.removeCallbacks(updatePlaybackPositionRunnable)
   }

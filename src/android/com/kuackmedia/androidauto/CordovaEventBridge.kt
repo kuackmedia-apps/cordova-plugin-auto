@@ -22,7 +22,10 @@ object CordovaEventBridge {
             val result = PluginResult(PluginResult.Status.OK, payload)
             result.keepCallback = true
             callback.sendPluginResult(result)
-        } else {
+        } else if (event != CordovaEvents.ON_PLAYBACK_STATE_CHANGED) {
+            // ON_PLAYBACK_STATE_CHANGED no se encola: avisa un cambio, no es un estado. Guardado sin hora, llegaba al
+            // registrarse el JS aunque fuera de minutos antes y dejaba mal el botón del app. El estado vigente lo lee
+            // el JS de la sesión al registrarse (isConnected → syncCurrentTrackFromAuto → getCurrentPlaybackState).
             // Queue the event for delivery when the callback is registered
             pendingEvents[event.value] = payload
         }

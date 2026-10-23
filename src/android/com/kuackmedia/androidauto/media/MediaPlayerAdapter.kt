@@ -28,6 +28,14 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override var currentTrackFromApp: Boolean = false
   override var shouldAutoPlayOnPrepare: Boolean = false
+  override var lastFocusRequestDelayed: Boolean = false
+    private set
+  override var isPrepared: Boolean = false
+    private set
+  // Cada tema arma un AudioFocusRequest nuevo (otro clientId) sin soltar el anterior: los avisos de un request viejo
+  // (el LOSS que manda el sistema al pedir el nuevo, un GAIN tardío) se descartan. Sin esto, con el foco diferido de
+  // una llamada, el LOSS del request anterior cancelaba la reanudación del tema nuevo.
+  private var focusGeneration = 0
 
   override val currentPosition: Long
     get() = if (!isReleased && (mediaPlayer.isPlaying || isPreparing)) {
@@ -38,6 +46,8 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override fun release() {
     isReleased = true
+    isPrepared = false
+    focusGeneration++
 
     // Release audio focus before releasing the media player
     currentAudioFocusRequest?.let { request ->
@@ -51,6 +61,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
   override fun reset() {
     isReleased = false
+    isPrepared = false
     mediaPlayer.reset()
   }
 
@@ -68,6 +79,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   override fun setOnErrorListener(handleError: ( what: Int, extra: Int) -> Unit) {
    mediaPlayer.setOnErrorListener(object : MediaPlayer.OnErrorListener {
      override fun onError(mp: MediaPlayer?, what: Int, extra: Int): Boolean {
+       isPrepared = false
        handleError(what, extra)
        isPreparing = false
        return true
@@ -90,6 +102,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   override fun setOnPreparedListener(handlePrepare: () -> Unit) {
     mediaPlayer.setOnPreparedListener(object : OnPreparedListener {
       override fun onPrepared(mp: MediaPlayer?) {
+        isPrepared = true
         handlePrepare()
         isPreparing = false
 
@@ -156,6 +169,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
 
       // Create the focus request but DON'T request focus yet
       // We'll request it in handlePrepare() when the player is actually ready
+      val gen = ++focusGeneration
       val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(
           AudioAttributes.Builder()
@@ -166,6 +180,10 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         .setAcceptsDelayedFocusGain(true)
         .setWillPauseWhenDucked(false)
         .setOnAudioFocusChangeListener { focusChange ->
+          if (gen != focusGeneration) {
+            Log.i(TAG, "[FOCUS] aviso de un request anterior descartado: $focusChange")
+            return@setOnAudioFocusChangeListener
+          }
           when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> {
               // Always notify about GAIN events
@@ -196,6 +214,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         .build()
 
       this.currentAudioFocusRequest = focusRequest
+      isPrepared = false
 
       if (mediaPlayer.isPlaying) {
         mediaPlayer.stop()
@@ -241,6 +260,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   override fun stop() {
     if (mediaPlayer.isPlaying) {
       mediaPlayer.stop()
+      isPrepared = false
     }
   }
 
@@ -261,6 +281,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         shouldIgnoreAudioFocusLoss = true
 
         val result = manager.requestAudioFocus(request)
+        lastFocusRequestDelayed = result == AudioManager.AUDIOFOCUS_REQUEST_DELAYED
 
         val granted = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         if (!granted) {
@@ -272,6 +293,7 @@ class MediaPlayerAdapter() : IPlayerAdapter {
       }
     }
     Log.w(TAG, "[REQUEST_AUDIO_FOCUS_FAILED] No audio manager or focus request available")
+    lastFocusRequestDelayed = false
     return false
   }
 
