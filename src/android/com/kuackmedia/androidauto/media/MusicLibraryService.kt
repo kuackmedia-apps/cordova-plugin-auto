@@ -7,6 +7,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.os.SystemClock
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -272,6 +273,7 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         }
 
         // Recién acá sabemos que quien pregunta es Auto/Asistente y que el árbol hace falta.
+        Log.i(TAG, "[BIND] onGetRoot aceptado: $clientPackageName (ya conectado=$isAndroidAutoConnected)")
         ensureLibraryInitialized()
 
         val extras = Bundle()
@@ -302,13 +304,31 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         return BrowserRoot(ROOT_ID, extras)
     }
 
+    private fun sessionPositionMs(): Long {
+        return try {
+            val st = mediaSession.controller.playbackState ?: return 0L
+            var pos = st.position
+            if (st.state == PlaybackStateCompat.STATE_PLAYING && st.lastPositionUpdateTime > 0) {
+                pos += ((SystemClock.elapsedRealtime() - st.lastPositionUpdateTime) * st.playbackSpeed).toLong()
+            }
+            if (pos > 0) pos else 0L
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
     override fun onUnbind(intent: Intent?): Boolean {
+        Log.i(TAG, "[BIND] onUnbind (conectado=$isAndroidAutoConnected)")
         if (isAndroidAutoConnected) {
+            // Un tema que se estaba cargando ya no arranca: sonaría por el parlante del teléfono.
+            sessionCallback?.onAutoDisconnected()
             isAndroidAutoConnected = false
             MediaControlBridge.setConnected(false)
+            // positionMs: dónde quedó el tema, para que el app lo deje en pausa ahí (traspaso al teléfono). Sale del
+            // PlaybackState de la sesión, que vale también en pausa (el adapter devuelve 0 fuera de reproducción).
             CordovaEventBridge.sendEvent(
                 CordovaEvents.ON_CONNECTION_CHANGE,
-                JSONObject().put("connected", false)
+                JSONObject().put("connected", false).put("positionMs", sessionPositionMs())
             )
         }
         return super.onUnbind(intent)

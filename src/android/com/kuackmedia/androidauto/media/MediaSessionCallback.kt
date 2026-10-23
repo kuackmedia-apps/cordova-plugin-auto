@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
@@ -53,6 +54,7 @@ class MediaSessionCallback(
 ) : MediaSessionCompat.Callback() {
 
   companion object {
+    private const val LOAD_STALE_MS = 60000L
     private const val PLAYBACK_POSITION_UPDATE_INTERVAL: Long = 1000
     private const val TAG = "MediaSessionCallback"
     private const val NOTIFICATION_ID = 1
@@ -64,6 +66,19 @@ class MediaSessionCallback(
   private var currentTrack: MediaBrowserCompat.MediaItem? = null
   private var isCalledFromOnPrepare: Boolean = false
   private var queueLoadingState: QueueLoadingState? = null
+
+  // Pedidos de tema (prepare de la conexión o del app, elección en el auto, saltos). Cada uno resuelve la URL en IO y
+  // recién después llega al prepareAsync del player (isPreparing): en esa ventana no hay nada preparando ni preparado.
+  // - loadGeneration: el resultado de un pedido viejo se descarta (el prepare de la conexión que vuelve después de que
+  //   el usuario eligió otro tema ya no lo pisa).
+  // - loadPending: hay un pedido abierto. Un play en la ventana sólo pide que arranque al preparar, sin otro prepare
+  //   (Android Auto que se reinicia y manda play antes de que termine el prepare de la conexión).
+  // Todo en el main thread. Cada camino de un pedido termina en endTrackLoad o abandonTrackLoad; si alguno quedara
+  // abierto por un bug, pasados LOAD_STALE_MS (más que los timeouts de OkHttp) ya no se le cree: un timestamp, no
+  // un timer.
+  private var loadGeneration = 0
+  private var loadPending = false
+  private var loadStartedAt = 0L
 
   // Notificación de medios (id 1). Todo en el main thread. Cada showNotification() toma un número;
   // la versión con carátula, que llega tarde desde IO, sólo se publica si sigue siendo la última y
@@ -135,6 +150,8 @@ class MediaSessionCallback(
     }
 
     if (isPodcastSession) {
+      Log.i(TAG, "[ON_PREPARE] sesión de podcast autoplay=${mediaPlayer.shouldAutoPlayOnPrepare} " +
+        "preparing=${mediaPlayer.isPreparing()} prepared=${mediaPlayer.isPrepared} pending=$loadPending")
       // Podcast session: read current_episode file and play it
       val episodeRaw = CurrentMedia.readFileContent(context, "current_episode")
       if (episodeRaw != null) {
@@ -169,14 +186,23 @@ class MediaSessionCallback(
           this.onPlayFromMediaId(mediaId, extras)
         } catch (e: Exception) {
           Log.e(TAG, "[ON_PREPARE_PODCAST_ERROR] Failed to parse current_episode: ${e.message}", e)
+          if (mediaPlayer.shouldAutoPlayOnPrepare) endWithoutMedia()
         }
+      } else {
+        Log.i(TAG, "[ON_PREPARE] sesión de podcast sin current_episode: no se prepara nada")
+        if (mediaPlayer.shouldAutoPlayOnPrepare) endWithoutMedia()
       }
     } else {
       // Music session: standard queue-based prepare
       val prefs = this.context.getSharedPreferences("NativeStorage", MODE_PRIVATE)
+      val queueReadAt = SystemClock.elapsedRealtime()
       this.currentQueue = QueueManager.getCurrentQueue(this.context)
+      val queueReadMs = SystemClock.elapsedRealtime() - queueReadAt
 
-      if(currentQueue !== null) {
+      if(currentQueue === null) {
+        Log.i(TAG, "[ON_PREPARE] sin cola guardada ($queueReadMs ms): no se prepara nada")
+        if (mediaPlayer.shouldAutoPlayOnPrepare) endWithoutMedia()
+      } else {
         val savedTrackId = prefs.getString(CURRENT_TRACK_KEY, null).toString().replace("\"", "")
 
         this.currentTrack =
@@ -184,6 +210,18 @@ class MediaSessionCallback(
             savedTrackId,
             this.currentQueue
           )
+        // La lectura de la cola corre en el main thread (Moshi): el tiempo queda en el log para medirlo en gama baja.
+        Log.i(TAG, "[ON_PREPARE] cola=${currentQueue?.size} guardado=$savedTrackId " +
+          "encontrado=${currentTrack != null} ($queueReadMs ms) autoplay=${mediaPlayer.shouldAutoPlayOnPrepare} " +
+          "preparing=${mediaPlayer.isPreparing()} prepared=${mediaPlayer.isPrepared} pending=$loadPending")
+
+        if (currentTrack == null) {
+          // El tema guardado no está en la cola (p. ej. después de reinstalar). Antes se seguía con mediaId null: la
+          // URL salía null, quedaba BUFFERING con la notificación en "reproduciendo", se guardaba current_track="null"
+          // y currentTrackFromApp quedaba en true, así que el primer tema elegido en el auto no arrancaba.
+          if (mediaPlayer.shouldAutoPlayOnPrepare) endWithoutMedia()
+          return
+        }
 
         // When onPrepare is called (e.g., when Android Auto connects), we set a flag to prevent auto-play
         // This is not an explicit user action, so the track should be loaded but not played automatically
@@ -205,6 +243,7 @@ class MediaSessionCallback(
 
   override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
     val mediaSessionContext = extras?.getString("MEDIA_SESSION_SERVICE_CONTEXT")
+    val fromPrepare = isCalledFromOnPrepare
 
     // Check if this call is from onPrepare()
     if (isCalledFromOnPrepare) {
@@ -218,12 +257,11 @@ class MediaSessionCallback(
         mediaPlayer.currentTrackFromApp = true  // Mark to prevent auto-play in handlePrepare
       }
     } else {
-      // If this is called directly from Android Auto (not from skip methods which already set the flag),
-      // then enable auto-play
-      // Skip methods (onSkipToNext, onSkipToPrevious, onSkipToQueueItem) already set shouldAutoPlayOnPrepare
-      if (!mediaPlayer.shouldAutoPlayOnPrepare && !mediaPlayer.currentTrackFromApp) {
-        mediaPlayer.shouldAutoPlayOnPrepare = true
-      }
+      // Un tema elegido en el auto: siempre arranca. Los saltos no pasan por acá (van por playQueueItem).
+      // Antes el flag del prepare de la conexión (currentTrackFromApp) frenaba el autoplay: si ese prepare no llegaba a
+      // handlePrepare (el tema guardado no estaba en la cola, sin URL), el primer tema elegido quedaba en STOPPED.
+      mediaPlayer.currentTrackFromApp = false
+      mediaPlayer.shouldAutoPlayOnPrepare = true
     }
 
     fun getDurationStringLength(length: String?, filePath: String?): Long = getDuration(length, filePath)
@@ -232,6 +270,9 @@ class MediaSessionCallback(
       // Optionally reset state or ignore
       return
     }
+
+    // Desde acá el pedido reemplaza a cualquier otro abierto: el que vuelva después se descarta.
+    val gen = beginTrackLoad(if (fromPrepare) "prepare" else "elegido en el auto: $mediaId")
 
     // Otro tema (elegido en el auto, play_all/shuffle, prepare de la conexión, playCurrentTrack del app).
     cancelFocusResume()
@@ -274,10 +315,11 @@ class MediaSessionCallback(
                   currentOffset = tracks.size,
                   hasMore = false
                 )
-                startPlaybackWithInitialTracks(tracks, queueTitle, loadingState)
+                startPlaybackWithInitialTracks(tracks, queueTitle, loadingState, gen)
               }
             } catch (e: Exception) {
               Log.e(TAG, "[ACTION_SHUFFLE] Error: ${e.message}", e)
+              abandonTrackLoad(gen)
             }
           }
         } else {
@@ -299,10 +341,11 @@ class MediaSessionCallback(
                   parentData = parentData,
                   currentOffset = initialTracks.size
                 )
-                startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+                startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
               }
             } catch (e: Exception) {
               Log.e(TAG, "[ACTION_PLAY_ALL] Error: ${e.message}", e)
+              abandonTrackLoad(gen)
             }
           }
         }
@@ -344,10 +387,11 @@ class MediaSessionCallback(
               parentData = parentData,
               currentOffset = initialTracks.size
             )
-            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
           }
         } catch (e: Exception) {
           Log.e(TAG, "[ARTIST_PLAY] Error: ${e.message}", e)
+          abandonTrackLoad(gen)
         }
       }
       return
@@ -437,11 +481,14 @@ class MediaSessionCallback(
                       currentOffset = reorderedTracks.size,
                       hasMore = false
                     )
-                    startPlaybackWithInitialTracks(reorderedTracks, queueTitle!!, offlineLoadingState)
+                    startPlaybackWithInitialTracks(reorderedTracks, queueTitle!!, offlineLoadingState, gen)
                   }
+                } else {
+                  abandonTrackLoad(gen)
                 }
               } catch (e: Exception) {
                 Log.e(TAG, "[OFFLINE_TRACK_PLAY] Error loading offline tracks: ${e.message}", e)
+                abandonTrackLoad(gen)
               }
             }
             return
@@ -516,7 +563,7 @@ class MediaSessionCallback(
           }
         }
 
-        startPlaybackWithInitialTracks(initialQueue, queueTitle!!, loadingState)
+        startPlaybackWithInitialTracks(initialQueue, queueTitle!!, loadingState, gen)
         return
       }
     }
@@ -574,10 +621,11 @@ class MediaSessionCallback(
                 seedAlbumTrackIds = seedIds,
                 excludeAlbumTrackIds = excludeIds
               )
-              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
             }
           } catch (e: Exception) {
             Log.e(TAG, "[RADIO_TRACK_ERROR] Exception: ${e.message}", e)
+            abandonTrackLoad(gen)
           }
         }
         return
@@ -614,11 +662,14 @@ class MediaSessionCallback(
                 parentData = parentData,
                 lastIdAlbumTrack = lastIAT
               )
-              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
             }
+          } else {
+            abandonTrackLoad(gen)
           }
         } catch (e: Exception) {
           Log.e(TAG, "[TAG_RADIO_ERROR] Exception: ${e.message}", e)
+          abandonTrackLoad(gen)
         }
       }
       return
@@ -652,11 +703,14 @@ class MediaSessionCallback(
                 parentData = parentData,
                 currentOffset = initialTracks.size
               )
-              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+              startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
             }
+          } else {
+            abandonTrackLoad(gen)
           }
         } catch (e: Exception) {
           Log.e(TAG, "[ARTIST_RADIO_ERROR] Exception: ${e.message}", e)
+          abandonTrackLoad(gen)
         }
       }
       return
@@ -685,10 +739,11 @@ class MediaSessionCallback(
               parentData = parentData,
               currentOffset = initialTracks.size
             )
-            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
           }
         } catch (e: Exception) {
           Log.e(TAG, "[ALBUM_PLAY] Error: ${e.message}", e)
+          abandonTrackLoad(gen)
         }
       }
       return
@@ -718,10 +773,11 @@ class MediaSessionCallback(
               parentData = parentData,
               currentOffset = initialTracks.size
             )
-            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState)
+            startPlaybackWithInitialTracks(initialTracks, queueTitle, loadingState, gen)
           }
         } catch (e: Exception) {
           Log.e(TAG, "[PLAYLIST_PLAY] Error: ${e.message}", e)
+          abandonTrackLoad(gen)
         }
       }
       return
@@ -737,6 +793,7 @@ class MediaSessionCallback(
       val imageUrl = extras?.getString("image") ?: ""
 
       val episodeUri = LocalStorageUtils.getEpisodeUri(context, episodeId, enclosureUrl)
+      endTrackLoad(gen, episodeUri)
       if (episodeUri != null) {
         // Build a single-episode queue (podcast episodes play individually)
         val selectedItem = MediaItemTree.getItem(mediaId)
@@ -777,11 +834,17 @@ class MediaSessionCallback(
         QueueManager.setQueue(mediaSession, QueueManager.buildQueueTitle("PODCAST", showTitle))
       } else {
         Log.e(TAG, "[PODCAST_EPISODE_PLAY_ERROR] Could not resolve episode URI for episodeId=$episodeId")
+        if (mediaPlayer.shouldAutoPlayOnPrepare) endWithoutMedia()
+        else {
+          mediaPlayer.currentTrackFromApp = false
+        }
       }
       return
     }
 
-    if(!mediaPlayer.isPreparing()) {
+    // Siempre se lanza, también con otro tema en prepareAsync: playCurrentTrack resetea el player y la generación
+    // descarta lo viejo. Antes el pedido se ignoraba y, con los flags del pedido nuevo, sonaba el tema anterior.
+    run {
       val trackId = extras?.getString("idAlbumTrack")
 
       CoroutineScope(Dispatchers.IO).launch {
@@ -789,6 +852,8 @@ class MediaSessionCallback(
           val trackUrl: Uri? = LocalStorageUtils.getTrackUri(context, extras?.getString("id"),
             trackId)
           withContext(Dispatchers.Main) {
+            if (!isCurrentLoad(gen, "onPlayFromMediaId")) return@withContext
+            endTrackLoad(gen, trackUrl)
             // Build queue title from parentData if available
             val parentDataStr = extras?.getString("parentData")
             var queueTitle: String? = null
@@ -812,7 +877,7 @@ class MediaSessionCallback(
             mediaPlayer.setCurrentTrack(trackUrl)
             mediaPlayer.playCurrentTrack(context)
 
-            updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+            if (trackUrl != null) updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
             var durationText = extras?.getString("length", "0");
            val durationMs = getDurationStringLength(durationText, trackUrl.toString())
             val metadata = MediaMetadataCompat.Builder()
@@ -826,13 +891,16 @@ class MediaSessionCallback(
 
             mediaSession.setMetadata(metadata)
 
-            showNotification(PlaybackStateCompat.STATE_PLAYING)
+            // Sin URL: en pausa, pero la cola y current_track se guardan igual (como antes), así el app ve lo mismo
+            // que el auto.
+            if (trackUrl == null) endWithoutMedia() else showNotification(PlaybackStateCompat.STATE_PLAYING)
 
             //storeLocalData(extras, trackId)
             extras?.let { storeLocalData(it, trackId) }
           }
         } catch (e: Exception) {
           Log.e("MediaSession", "Failed to load track URI", e)
+          abandonTrackLoad(gen)
         }
       }
     }
@@ -840,6 +908,51 @@ class MediaSessionCallback(
 
   override fun onPlay() {
     cancelFocusResume()
+    // Hay un tema cargando (la URL en IO o el prepareAsync): el play sólo pide que arranque al terminar, sin un segundo
+    // prepare. Pasa cuando Android Auto se reinicia y manda play antes de que termine el prepare de la conexión: antes
+    // el play fallaba sin foco y el prepare terminaba en STOPPED.
+    val preparing = mediaPlayer.isPreparing()
+    val pending = loadPending && SystemClock.elapsedRealtime() - loadStartedAt < LOAD_STALE_MS
+    if (preparing || pending) {
+      mediaPlayer.shouldAutoPlayOnPrepare = true
+      mediaPlayer.currentTrackFromApp = false
+      Log.i(TAG, "[ON_PLAY] tema cargando (pedido $loadGeneration, preparing=$preparing): arranca al terminar")
+      // Que el auto muestre que tomó el play (si no, sigue en Play y el usuario vuelve a tocar).
+      if (!mediaPlayer.isPlaying()) updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+      return
+    }
+    if (loadPending) {
+      // Vencido: si el resultado llega igual, se descarta (otra generación) en lugar de aplicarse con flags ajenos.
+      Log.w(TAG, "[ON_PLAY] el pedido $loadGeneration lleva más de ${LOAD_STALE_MS / 1000} s abierto: se descarta")
+      loadGeneration++
+      loadPending = false
+      mediaPlayer.shouldAutoPlayOnPrepare = false
+    }
+    // Nada preparado ni cargando (un tema que quedó sin URL, un error, un stop): play() llamaría start() sobre un
+    // player sin preparar (error -38) o reanudaría el tema anterior con la metadata del nuevo. Con el auto conectado se
+    // vuelve a pedir el tema actual de la cola (reintento, por ejemplo cuando volvió la red); sin auto, sólo el aviso.
+    if (!mediaPlayer.isPlaying() && !mediaPlayer.isPrepared) {
+      // El tema que muestra el auto (la metadata), buscado en la cola de la sesión: el índice de QueueManager no siempre
+      // es el suyo (la rama genérica no lo sincroniza). Un episodio no se reintenta por acá: su URL no sale de
+      // getTrackUri.
+      val shownId = mediaSession.controller.metadata?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
+      val shown = if (shownId == null) null
+        else mediaSession.controller.queue?.firstOrNull { it.description.mediaId == shownId }
+      val shownExtras = shown?.description?.extras
+      val shownIsEpisode = shownExtras != null && (shownExtras.getString("isPodcast") == "true" ||
+        shownExtras.getString("media_type") == "podcast_episode" || shownExtras.getString("media_type") == "podcastEpisode")
+      val item = if (shown != null && !shownIsEpisode) QueueManager.getItem(mediaSession, shown.queueId) else null
+      if (item != null && MediaControlBridge.androidAutoConnected) {
+        Log.i(TAG, "[ON_PLAY] nada preparado: se vuelve a pedir el tema actual de la cola (${item.description.mediaId})")
+        mediaPlayer.currentTrackFromApp = false
+        mediaPlayer.shouldAutoPlayOnPrepare = true
+        playQueueItem(item)
+      } else {
+        Log.w(TAG, "[ON_PLAY] nada preparado y sin tema para pedir (auto=${MediaControlBridge.androidAutoConnected})")
+        endWithoutMedia()
+      }
+      return
+    }
     if(!mediaPlayer.isPreparing()) {
       // If the player is already playing, just update state and return
       if (mediaPlayer.isPlaying()) {
@@ -985,15 +1098,17 @@ class MediaSessionCallback(
   private fun startPlaybackWithInitialTracks(
     initialTracks: List<MediaBrowserCompat.MediaItem>,
     queueTitle: String,
-    loadingState: QueueLoadingState
+    loadingState: QueueLoadingState,
+    gen: Int
   ) {
+    // Antes de tocar la cola: la lista llegó por red y el usuario pudo haber elegido otra cosa mientras tanto.
+    if (!isCurrentLoad(gen, "startPlayback")) return
     if (initialTracks.isEmpty()) {
       Log.w(TAG, "[START_PLAYBACK] No initial tracks to play")
+      endTrackLoad(gen, null)
+      if (mediaPlayer.shouldAutoPlayOnPrepare) endWithoutMedia() else mediaPlayer.currentTrackFromApp = false
       return
     }
-
-    this.queueLoadingState = loadingState
-    QueueManager.buildQueue(initialTracks)
 
     CoroutineScope(Dispatchers.IO).launch {
       try {
@@ -1003,10 +1118,15 @@ class MediaSessionCallback(
         val uri = LocalStorageUtils.getTrackUri(context, fe.getString("id"), idAlbumTrack)
 
         withContext(Dispatchers.Main) {
+          if (!isCurrentLoad(gen, "startPlayback/url")) return@withContext
+          endTrackLoad(gen, uri)
+          // Recién acá, con el pedido vigente: uno descartado no deja la cola interna ni el estado de paginado.
+          this@MediaSessionCallback.queueLoadingState = loadingState
+          QueueManager.buildQueue(initialTracks)
           QueueManager.setQueue(mediaSession, queueTitle)
           mediaPlayer.setCurrentTrack(uri)
           mediaPlayer.playCurrentTrack(context)
-          updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+          if (uri != null) updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
           val duration = getDuration(fe.getString("length"), uri.toString())
 
           mediaSession.setMetadata(
@@ -1019,7 +1139,7 @@ class MediaSessionCallback(
               .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
               .build()
           )
-          showNotification(PlaybackStateCompat.STATE_PLAYING)
+          if (uri == null) endWithoutMedia() else showNotification(PlaybackStateCompat.STATE_PLAYING)
           storeLocalData(fe, idAlbumTrack)
           loadMore()
 
@@ -1028,6 +1148,7 @@ class MediaSessionCallback(
         }
       } catch (e: Exception) {
         Log.e(TAG, "[START_PLAYBACK] Error: ${e.message}", e)
+        abandonTrackLoad(gen)
       }
     }
   }
@@ -1117,6 +1238,12 @@ class MediaSessionCallback(
           }
 
           withContext(Dispatchers.Main) {
+            // Mientras cargaba, el usuario pudo haber elegido otra cosa (otro estado de paginado) o el servicio se
+            // liberó: la página ya no corresponde a la cola de la sesión.
+            if (released || state !== queueLoadingState) {
+              Log.i(TAG, "[LOAD_MORE] página descartada: la cola cambió mientras cargaba")
+              return@withContext
+            }
             val appended = QueueManager.appendQueue(newTracks, mediaSession)
             val currentMediaId = mediaSession.controller.metadata
               ?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
@@ -1154,14 +1281,17 @@ class MediaSessionCallback(
       return
     }
     val idAlbumTrack = extras.getString("idAlbumTrack")
+    val gen = beginTrackLoad("cola: ${queueItem.description.mediaId}")
 
     CoroutineScope(Dispatchers.IO).launch {
       try {
         val uri = LocalStorageUtils.getTrackUri(context, extras.getString("id"), idAlbumTrack)
         withContext(Dispatchers.Main) {
+          if (!isCurrentLoad(gen, "playQueueItem")) return@withContext
+          endTrackLoad(gen, uri)
           mediaPlayer.setCurrentTrack(uri)
           mediaPlayer.playCurrentTrack(context)
-          updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
+          if (uri != null) updateState(PlaybackStateCompat.STATE_BUFFERING, 0)
           val duration = getDuration(extras.getString("length"), uri.toString())
 
           mediaSession.setMetadata(
@@ -1174,7 +1304,7 @@ class MediaSessionCallback(
               .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
               .build()
           )
-          showNotification(PlaybackStateCompat.STATE_PLAYING)
+          if (uri == null) endWithoutMedia() else showNotification(PlaybackStateCompat.STATE_PLAYING)
           storeLocalData(extras, idAlbumTrack)
 
           // Check if we need to load more tracks
@@ -1187,6 +1317,7 @@ class MediaSessionCallback(
         }
       } catch (e: Exception) {
         Log.e(TAG, "[PLAY_QUEUE_ITEM] Error: ${e.message}", e)
+        abandonTrackLoad(gen)
       }
     }
   }
@@ -1299,10 +1430,28 @@ class MediaSessionCallback(
     // Sync the queue index with the current track
     val currentMediaId = mediaSession.controller.metadata?.getString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID)
     QueueManager.syncCurrentIndex(mediaSession, currentMediaId)
+    // Hay un pedido más nuevo resolviendo su URL: este tema es viejo (por ejemplo el del prepare de la conexión) y los
+    // flags son del pedido nuevo. Queda preparado sin sonar ni avisar; playCurrentTrack lo reemplaza al llegar la URL.
+    if (loadPending) {
+      Log.i(TAG, "[HANDLE_PREPARE] preparado un tema viejo con el pedido $loadGeneration abierto: no arranca")
+      return
+    }
+    // Sin Android Auto el player nativo no tiene que sonar (sería por el parlante del teléfono): por ejemplo un tema
+    // que terminó de prepararse después de la desconexión. Queda preparado y en pausa.
+    if (!MediaControlBridge.androidAutoConnected) {
+      mediaPlayer.shouldAutoPlayOnPrepare = false
+      mediaPlayer.currentTrackFromApp = true
+    }
+    Log.i(TAG, "[HANDLE_PREPARE] ${when {
+      mediaPlayer.shouldAutoPlayOnPrepare -> "autoplay"
+      mediaPlayer.currentTrackFromApp -> "en pausa (prepare de la conexión o sin Android Auto)"
+      else -> "elegido en el auto"
+    }} mediaId=$currentMediaId")
 
     // Check if we should auto-play (explicitly requested from app)
     if(mediaPlayer.shouldAutoPlayOnPrepare) {
       mediaPlayer.shouldAutoPlayOnPrepare = false
+      mediaPlayer.currentTrackFromApp = false
 
       // Request audio focus before starting playback
       val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
@@ -1424,6 +1573,12 @@ class MediaSessionCallback(
     // La notificación seguía en PLAYING (ongoing, cronómetro) después del error.
     showNotification(PlaybackStateCompat.STATE_PAUSED)
     cancelFocusResume()
+    // El tema que fallaba ya no se prepara: los flags no pasan al próximo prepare (el de una reconexión arrancaría solo).
+    // Con un pedido abierto los flags son de ese pedido y no se tocan.
+    if (!loadPending) {
+      mediaPlayer.shouldAutoPlayOnPrepare = false
+      mediaPlayer.currentTrackFromApp = false
+    }
     // getCurrentPlaybackState da "unknown" (STATE_ERROR): el JS lo toma como pausa.
     emitPlaybackState("pause", "error")
 
@@ -1598,6 +1753,11 @@ class MediaSessionCallback(
     mediaPlayer.reset()
     updateState(PlaybackStateCompat.STATE_STOPPED, 0)
     handler.removeCallbacks(updatePlaybackPositionRunnable)
+    // El usuario eligió otro tema y se está cargando: ése es el que sigue, no el siguiente de la cola vieja.
+    if (loadPending) {
+      Log.i(TAG, "[PREPARE] fin de tema con el pedido $loadGeneration abierto: no se salta")
+      return
+    }
     onSkipToNext()
   }
 
@@ -1798,7 +1958,83 @@ class MediaSessionCallback(
     released = true
     disarmFocusResume()
     notificationSeq++
+    loadGeneration++
+    loadPending = false
     handler.removeCallbacks(updatePlaybackPositionRunnable)
+  }
+
+  // Android Auto se desconectó: un tema que se estaba cargando ya no arranca (sonaría por el parlante del teléfono).
+  fun onAutoDisconnected() {
+    val hadPending = loadPending
+    if (loadPending || mediaPlayer.shouldAutoPlayOnPrepare) {
+      Log.i(TAG, "[PREPARE] desconexión con el pedido $loadGeneration abierto: no arranca")
+    }
+    loadGeneration++
+    loadPending = false
+    mediaPlayer.shouldAutoPlayOnPrepare = false
+    // Un prepareAsync en curso termina en pausa (handlePrepare sin auto conectado); un pedido descartado no deja la
+    // sesión en BUFFERING con la notificación en "reproduciendo".
+    if (hadPending && !mediaPlayer.isPlaying()) {
+      handler.removeCallbacks(updatePlaybackPositionRunnable)
+      updateState(PlaybackStateCompat.STATE_PAUSED, 0)
+      showNotification(PlaybackStateCompat.STATE_PAUSED)
+    }
+  }
+
+  private fun beginTrackLoad(source: String): Int {
+    val gen = ++loadGeneration
+    loadPending = true
+    loadStartedAt = SystemClock.elapsedRealtime()
+    Log.i(TAG, "[PREPARE] pedido $gen ($source) autoplay=${mediaPlayer.shouldAutoPlayOnPrepare} " +
+      "fromApp=${mediaPlayer.currentTrackFromApp}")
+    return gen
+  }
+
+  // En el main thread. false: un pedido más nuevo lo reemplazó (o se liberó el servicio) y no se aplica.
+  private fun isCurrentLoad(gen: Int, where: String): Boolean {
+    if (released || gen != loadGeneration) {
+      Log.i(TAG, "[PREPARE] pedido $gen descartado en $where: " +
+        if (released) "el servicio se liberó" else "hay uno más nuevo ($loadGeneration)")
+      return false
+    }
+    return true
+  }
+
+  // El pedido llegó al player: con URL, prepareAsync ya puso isPreparing; sin URL, queda en pausa.
+  private fun endTrackLoad(gen: Int, uri: Uri?) {
+    loadPending = false
+    Log.i(TAG, "[PREPARE] pedido $gen uri=${if (uri == null) "null" else "ok"} " +
+      "${SystemClock.elapsedRealtime() - loadStartedAt} ms autoplay=${mediaPlayer.shouldAutoPlayOnPrepare} " +
+      "fromApp=${mediaPlayer.currentTrackFromApp}")
+  }
+
+  // Sin URL (sin red y sin descarga, un id inválido, error del BE): en pausa y avisado, en lugar de BUFFERING con la
+  // notificación en "reproduciendo" sin que suene nada. Nadie lo va a preparar: los flags se apagan para que no
+  // arranque solo el próximo prepare (el de una reconexión).
+  private fun endWithoutMedia() {
+    mediaPlayer.shouldAutoPlayOnPrepare = false
+    // Con un prepareAsync anterior todavía en curso (el pedido nuevo murió antes de playCurrentTrack, que lo hubiera
+    // cancelado), ese tema termina en pausa en handlePrepare en lugar de sonar solo.
+    mediaPlayer.currentTrackFromApp = mediaPlayer.isPreparing()
+    // Si sigue sonando el tema anterior (el pedido murió antes de playCurrentTrack, que lo hubiera parado), la sesión
+    // no se pone en pausa con el audio saliendo: sólo se apagan los flags.
+    if (mediaPlayer.isPlaying()) return
+    handler.removeCallbacks(updatePlaybackPositionRunnable)
+    updateState(PlaybackStateCompat.STATE_PAUSED, 0)
+    showNotification(PlaybackStateCompat.STATE_PAUSED)
+    emitPlaybackState("pause", "no_media")
+  }
+
+  // El pedido murió antes de la URL (error de red al pedir la lista, lista vacía): deja de estar abierto. Se puede
+  // llamar desde IO. Si sigue sonando el tema anterior (playCurrentTrack no llegó a pararlo) sólo se apagan los flags.
+  private fun abandonTrackLoad(gen: Int) {
+    handler.post {
+      if (gen == loadGeneration && loadPending) {
+        Log.w(TAG, "[PREPARE] pedido $gen terminó sin tema (antes de la URL)")
+        loadPending = false
+        endWithoutMedia()
+      }
+    }
   }
 
 }

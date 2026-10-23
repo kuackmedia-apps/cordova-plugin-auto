@@ -32,12 +32,14 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "play" -> {
+        Log.i("AndroidAutoPlugin", "[JS_CMD] play")
         MediaControlBridge.play()
         callbackContext.success("Playing")
         return true
       }
 
       "pause" -> {
+        Log.i("AndroidAutoPlugin", "[JS_CMD] pause")
         MediaControlBridge.pause()
         callbackContext.success("pause")
         return true
@@ -68,6 +70,7 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "playCurrentTrack" -> {
+        Log.i("AndroidAutoPlugin", "[JS_CMD] playCurrentTrack")
         MediaControlBridge.playCurrentTrack()
         callbackContext.success("Playing current track")
         return true

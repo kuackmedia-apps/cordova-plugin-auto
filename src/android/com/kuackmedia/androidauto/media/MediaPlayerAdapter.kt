@@ -243,6 +243,12 @@ class MediaPlayerAdapter() : IPlayerAdapter {
         isPreparing = true
       } else {
         Log.w(TAG, "[PLAY_TRACK_NO_URI] currentTrackUri is null, cannot play")
+        // Cancela un prepareAsync del tema anterior que siga en curso: si no, su onPrepared llegaba después y sonaba
+        // ese tema con la metadata del nuevo.
+        if (isPreparing) {
+          mediaPlayer.reset()
+          isPreparing = false
+        }
       }
     } catch (e: Exception) {
       Log.e(TAG, "[PLAY_TRACK_ERROR] Error in playTrack: ${e.message}", e)
