@@ -80,6 +80,13 @@ class MediaSessionCallback(
   private var loadPending = false
   private var loadStartedAt = 0L
 
+  // Posición inicial del traspaso teléfono → auto (playCurrentTrack del app con startPositionMs). La toma onPrepare
+  // (prepareStartPositionMs), la ata onPlayFromMediaId a la generación de su pedido (startPositionGen) y la aplica
+  // handlePrepare antes del start sólo si esa generación sigue vigente. Main thread.
+  private var prepareStartPositionMs = 0L
+  private var startPositionMs = 0L
+  private var startPositionGen = -1
+
   // Notificación de medios (id 1). Todo en el main thread. Cada showNotification() toma un número;
   // la versión con carátula, que llega tarde desde IO, sólo se publica si sigue siendo la última y
   // si el servicio no se destruyó (release()): si no, pisaba un estado nuevo con uno viejo o
@@ -137,6 +144,9 @@ class MediaSessionCallback(
   }
 
   override fun onPrepare() {
+    // La posición inicial que mandó el app con playCurrentTrack (si este prepare es el suyo). Se toma siempre, así un
+    // prepare que termina antes de onPlayFromMediaId no se la deja a otro.
+    prepareStartPositionMs = MediaControlBridge.takePendingStartPosition()
     // Check PLAYLIST_DATA to determine if current session is podcast or music
     val playlistDataRaw = CurrentMedia.readFileContent(context, PLAYLIST_DATA)
     var isPodcastSession = false
@@ -273,6 +283,14 @@ class MediaSessionCallback(
 
     // Desde acá el pedido reemplaza a cualquier otro abierto: el que vuelva después se descarta.
     val gen = beginTrackLoad(if (fromPrepare) "prepare" else "elegido en el auto: $mediaId")
+
+    // Posición inicial del traspaso teléfono → auto (playCurrentTrack del app con startPositionMs): vale sólo para este
+    // pedido, con autoplay. Un pedido nuevo (un salto, un tema elegido en el auto, otro playCurrentTrack, la
+    // desconexión) sube la generación y la descarta.
+    val startPosition = if (fromPrepare && mediaPlayer.shouldAutoPlayOnPrepare) prepareStartPositionMs else 0L
+    prepareStartPositionMs = 0L
+    startPositionMs = startPosition
+    startPositionGen = if (startPosition > 0) gen else -1
 
     // Otro tema (elegido en el auto, play_all/shuffle, prepare de la conexión, playCurrentTrack del app).
     cancelFocusResume()
@@ -1441,6 +1459,7 @@ class MediaSessionCallback(
     if (!MediaControlBridge.androidAutoConnected) {
       mediaPlayer.shouldAutoPlayOnPrepare = false
       mediaPlayer.currentTrackFromApp = true
+      startPositionGen = -1
     }
     Log.i(TAG, "[HANDLE_PREPARE] ${when {
       mediaPlayer.shouldAutoPlayOnPrepare -> "autoplay"
@@ -1453,19 +1472,32 @@ class MediaSessionCallback(
       mediaPlayer.shouldAutoPlayOnPrepare = false
       mediaPlayer.currentTrackFromApp = false
 
+      // Posición inicial del traspaso, antes de arrancar (así no se oye el comienzo). También sin foco: el GAIN diferido
+      // reanuda desde ahí.
+      val startPosition = takeStartPosition()
+      if (startPosition > 0) {
+        mediaPlayer.seekTo(startPosition)
+      }
+
       // Request audio focus before starting playback
       val hasFocus = mediaPlayer.requestAudioFocusForPlayback()
 
       if (hasFocus) {
         mediaPlayer.start()
-        updateState(PlaybackStateCompat.STATE_PLAYING, mediaPlayer.currentPosition)
+        updateState(
+          PlaybackStateCompat.STATE_PLAYING,
+          if (startPosition > 0) startPosition else mediaPlayer.currentPosition
+        )
         handler.post(updatePlaybackPositionRunnable)
         mediaSession.isActive = true
         showNotification(PlaybackStateCompat.STATE_PLAYING)
         emitPlaybackState("play", "prepared")
       } else {
         Log.w(TAG, "[HANDLE_PREPARE_NO_FOCUS_AUTO] Could not gain audio focus for auto-play, setting to PAUSED")
-        updateState(PlaybackStateCompat.STATE_PAUSED, mediaPlayer.currentPosition)
+        updateState(
+          PlaybackStateCompat.STATE_PAUSED,
+          if (startPosition > 0) startPosition else mediaPlayer.currentPosition
+        )
         showNotification(PlaybackStateCompat.STATE_PAUSED)
         emitPrepareWithoutFocus()
       }
@@ -1981,6 +2013,18 @@ class MediaSessionCallback(
     }
   }
 
+  // La posición inicial del pedido vigente, una sola vez. Con otra generación (el pedido que la trajo fue reemplazado)
+  // vale 0.
+  private fun takeStartPosition(): Long {
+    val start = if (startPositionGen == loadGeneration) startPositionMs else 0L
+    startPositionMs = 0L
+    startPositionGen = -1
+    if (start > 0) {
+      Log.i(TAG, "[HANDLE_PREPARE] posición inicial $start ms (pedido $loadGeneration)")
+    }
+    return start
+  }
+
   private fun beginTrackLoad(source: String): Int {
     val gen = ++loadGeneration
     loadPending = true
@@ -2013,6 +2057,9 @@ class MediaSessionCallback(
   // arranque solo el próximo prepare (el de una reconexión).
   private fun endWithoutMedia() {
     mediaPlayer.shouldAutoPlayOnPrepare = false
+    // La posición inicial era de este pedido, que no llegó al player: un prepare anterior que siga en curso (y un play
+    // que lo arranque) no se la lleva.
+    startPositionGen = -1
     // Con un prepareAsync anterior todavía en curso (el pedido nuevo murió antes de playCurrentTrack, que lo hubiera
     // cancelado), ese tema termina en pausa en handlePrepare en lugar de sonar solo.
     mediaPlayer.currentTrackFromApp = mediaPlayer.isPreparing()

@@ -9,6 +9,7 @@ import org.apache.cordova.CordovaPlugin
 import org.apache.cordova.PluginResult
 import org.json.JSONArray
 import org.json.JSONException
+import org.json.JSONObject
 
 class AndroidAutoPlugin : CordovaPlugin() {
   @Throws(JSONException::class)
@@ -70,9 +71,28 @@ class AndroidAutoPlugin : CordovaPlugin() {
       }
 
       "playCurrentTrack" -> {
-        Log.i("AndroidAutoPlugin", "[JS_CMD] playCurrentTrack")
-        MediaControlBridge.playCurrentTrack()
+        // Opcional: [{ startPositionMs }], la posición del teléfono en el traspaso teléfono → auto (getCapabilities la
+        // declara como startPosition). El wrapper de myplugin.js manda [] y queda en 0.
+        val startPositionMs = args?.optJSONObject(0)?.optLong("startPositionMs", 0L) ?: 0L
+        Log.i("AndroidAutoPlugin", "[JS_CMD] playCurrentTrack startPositionMs=$startPositionMs")
+        MediaControlBridge.playCurrentTrack(if (startPositionMs > 0) startPositionMs else 0L)
         callbackContext.success("Playing current track")
+        return true
+      }
+
+      "getCapabilities" -> {
+        // Lo que este plugin le garantiza al JS, que llega por OTA también a binarios con plugins anteriores (ahí la
+        // acción no existe y Cordova responde INVALID_ACTION). loadGeneration: cada pedido de tema lleva generación
+        // (beginTrackLoad), así que un playCurrentTrack del JS no se cruza con el prepare de la conexión (el traspaso
+        // teléfono → auto de AutoSession lo exige). disconnectPosition: el aviso de desconexión trae positionMs.
+        // startPosition: playCurrentTrack acepta [{ startPositionMs }] y la aplica sólo a ese pedido.
+        callbackContext.success(
+          JSONObject()
+            .put("api", 1)
+            .put("loadGeneration", true)
+            .put("disconnectPosition", true)
+            .put("startPosition", true)
+        )
         return true
       }
 

@@ -271,7 +271,11 @@ class MediaPlayerAdapter() : IPlayerAdapter {
   }
 
   override fun seekTo(position: Long) {
-    if(!isPreparing) {
+    // Sólo en los estados en que MediaPlayer acepta el seek (Prepared, Started, Paused, PlaybackCompleted: isPrepared).
+    // Dentro de onPrepared isPreparing todavía es true y el seek ya vale (la posición inicial del traspaso se aplica
+    // ahí, antes del start). En Idle o Stopped (después de un reset, un stop o un error) MediaPlayer responde -38 y
+    // handleError publicaba STATE_ERROR.
+    if(isPrepared) {
       mediaPlayer.seekTo(position.toInt())
     }
   }
