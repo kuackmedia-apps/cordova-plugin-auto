@@ -37,8 +37,17 @@ object MediaItemTree {
   /** Cota para awaitApi(): la init async tarda ~5 s; 15 s deja margen en gama baja. */
   private const val API_WAIT_TIMEOUT_MS = 15_000L
   private var treeNodes: MutableMap<String, MediaItemNode> = mutableMapOf()
-  private var offlineNodes: MutableMap<String, MediaItemNode> = mutableMapOf()
-  private var offlineTitleMap: MutableMap<String, MediaItemNode> = mutableMapOf()
+  // Las descargas no son una pestaña: las lee ensureOfflineLoaded(), fuera del main thread, cada vez que cambia su
+  // archivo o hubo un refresh(). Los dos mapas se reemplazan enteros, nunca se modifican en el lugar: se leen desde IO
+  // ([offline_root], búsqueda sin red) mientras refresh() corre en main.
+  @Volatile private var offlineNodes: Map<String, MediaItemNode> = emptyMap()
+  @Volatile private var offlineTitleMap: Map<String, MediaItemNode> = emptyMap()
+  private const val OFFLINE_FILE = "AUTO_NAVIGATION_LIBRARY_OFFLINE"
+  private val offlineLock = Any()
+  private val offlineGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+  // Lo que se leyó la última vez (bajo offlineLock): la generación de refresh() y la marca del archivo.
+  private var offlineLoadedGeneration = -1
+  private var offlineLoadedFile: String? = null
   private var titleMap: MutableMap<String, MediaItemNode> = mutableMapOf()
   private var isInitialized = false
   private lateinit var assets: AssetManager
@@ -157,9 +166,9 @@ object MediaItemTree {
 
     // Clear all existing data
     treeNodes.clear()
-    offlineNodes.clear()
-    offlineTitleMap.clear()
     titleMap.clear()
+    // Las descargas no se vacían: se releen en el próximo pedido (ensureOfflineLoaded), fuera del main thread.
+    offlineGeneration.incrementAndGet()
 
     // Reset initialization flag so initializeMenu() rebuilds instead of short-circuiting.
     isInitialized = false
@@ -432,6 +441,7 @@ object MediaItemTree {
         }
       }
     "AUTO_NAVIGATION_LIBRARY_OFFLINE" -> {
+      // Sólo parsea: los mapas de las descargas los arma ensureOfflineLoaded().
       val listType = Types.newParameterizedType(List::class.java, MediaItem::class.java)
       val adapter: JsonAdapter<List<MediaItem>> = moshi.adapter(listType)
       val items: List<MediaItem>? = adapter.fromJson(jsonArray)
@@ -447,18 +457,6 @@ object MediaItemTree {
             null
           }
         }
-
-      //set all result items listStyle LIST
-      if (result != null && result.isNotEmpty()) {
-        result.forEach { item ->
-          val mediaId = item.mediaId ?: return@forEach
-          offlineNodes[mediaId] = MediaItemNode(item)
-          offlineNodes[mediaId]?.let { node ->
-            offlineTitleMap[item.description.title.toString()] = node
-          }
-          treeNodes["AUTO_NAVIGATION_LIBRARY_OFFLINE"]?.addChild(mediaId)
-        }
-      }
     }
 
       "AUTO_NAVIGATION_EXPLORER" -> {
@@ -575,6 +573,35 @@ object MediaItemTree {
     return isLoggedIn
   }
 
+  /**
+   * Lee las descargas (AUTO_NAVIGATION_LIBRARY_OFFLINE) si cambiaron desde la última lectura: hubo un refresh() o el
+   * archivo es otro (el JS lo reescribe al descargar o borrar, a veces sin pedir updateNavigation). Hasta el 30/10 se
+   * leían una sola vez por proceso, en preloadChildren(), y refresh() las vaciaba: lo descargado con el auto conectado
+   * no aparecía en la lista sin red (C14). Parsea con Moshi: llamarla fuera del main thread.
+   */
+  fun ensureOfflineLoaded(context: Context) {
+    synchronized(offlineLock) {
+      val generation = offlineGeneration.get()
+      val file = File(context.filesDir, OFFLINE_FILE)
+      val fileStamp = if (file.exists()) "${file.lastModified()}:${file.length()}" else null
+      if (generation == offlineLoadedGeneration && fileStamp == offlineLoadedFile) return
+
+      val nodes = LinkedHashMap<String, MediaItemNode>()
+      val titles = LinkedHashMap<String, MediaItemNode>()
+      loadNavigationDataChildren(context, OFFLINE_FILE).forEach { item ->
+        val mediaId = item.mediaId ?: return@forEach
+        val node = MediaItemNode(item)
+        nodes[mediaId] = node
+        titles[item.description.title.toString()] = node
+      }
+      offlineNodes = nodes
+      offlineTitleMap = titles
+      offlineLoadedGeneration = generation
+      offlineLoadedFile = fileStamp
+      Log.i(TAG, "[OFFLINE] ${nodes.size} items (generación $generation)")
+    }
+  }
+
   fun getOfflineItems(): List<MediaBrowserCompat.MediaItem> {
     val offlineItems = mutableListOf<MediaBrowserCompat.MediaItem>()
    // offlineItems.add(offlineItem)
@@ -635,7 +662,7 @@ object MediaItemTree {
       }
     }
     try {
-      loadNavigationDataChildren(context, "AUTO_NAVIGATION_LIBRARY_OFFLINE")
+      ensureOfflineLoaded(context)
     } catch (e: Exception) {
       Log.e(TAG, "Error loading offline navigation: ${e.message}")
     }
@@ -656,7 +683,9 @@ object MediaItemTree {
   fun getNavigationData(): List<NavigationData> = lastNavigationData
 
   fun getItem(id: String): MediaBrowserCompat.MediaItem? {
-    return treeNodes[id]?.item
+    // Una descarga que la pestaña Biblioteca no trae (se bajó después de cargarla) sólo está en offlineNodes: sin
+    // este respaldo, abrirla desde [offline_root] respondía «Sin conexión» y sus temas no sonaban.
+    return treeNodes[id]?.item ?: offlineNodes[id]?.item
   }
 
   fun getParentId(mediaId: String, parentId: String = ROOT_ID): String? {
@@ -682,6 +711,7 @@ object MediaItemTree {
     val normalizedQuery = normalizeSearchText(query)
     if (!MusicLibraryService.isNetworkEnabled(context)) {
       if (normalizedQuery.isNotEmpty()) {
+        ensureOfflineLoaded(context)
         offlineTitleMap.forEach { (title, node) ->
           // Log.d(TAG, "Searching in title: $title")
           if (normalizeSearchText(title).contains(normalizedQuery)) {
@@ -919,7 +949,12 @@ object MediaItemTree {
       return emptyList()
     }
 
-    val parent = getItem(parentId)
+    var parent = getItem(parentId)
+    if (parent == null && !MusicLibraryService.isNetworkEnabled(context)) {
+      // Sin red, el padre puede ser una descarga nueva que todavía no se releyó (cambió su archivo). Acá ya es IO.
+      ensureOfflineLoaded(context)
+      parent = getItem(parentId)
+    }
     val mediaType = parent?.description?.extras?.getString("media_type")
     var result: List<MediaBrowserCompat.MediaItem> = emptyList()
 

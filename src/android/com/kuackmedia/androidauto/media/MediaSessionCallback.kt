@@ -313,8 +313,9 @@ class MediaSessionCallback(
           put("name", parentName)
         }.toString()
 
-        if (shouldShuffle) {
-          // Shuffle: load ALL tracks, shuffle, then play. No incremental loading.
+        if (shouldShuffle || !MusicLibraryService.isNetworkEnabled(context)) {
+          // Aleatorio, y «▶ Reproducir» sin red (en orden): todos los temas de una vez, sin carga por páginas. Sin red
+          // la carga por páginas iba a la API y una descarga no sonaba.
           CoroutineScope(Dispatchers.IO).launch {
             try {
               val browsableMediaId = "item_${actionMediaType}_${actionItemId}"
@@ -322,7 +323,7 @@ class MediaSessionCallback(
               val tracks = allItems.filter { item ->
                 val mid = item.mediaId ?: ""
                 !mid.startsWith("play_all:") && !mid.startsWith("shuffle:")
-              }.shuffled()
+              }.let { if (shouldShuffle) it.shuffled() else it }
 
               withContext(Dispatchers.Main) {
                 val loadingState = QueueLoadingState(

@@ -93,7 +93,10 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
     // Referencia al callback para poder apagar sus publicaciones en onDestroy() (release()).
     private var sessionCallback: MediaSessionCallback? = null
     private lateinit var networkCallback: ConnectivityManager.NetworkCallback
-    private var networkAvailable: Boolean = false
+    // Red por defecto según el callback, no según activeNetwork: en los milisegundos de un corte, activeNetwork todavía
+    // devuelve la red que se cae. Lo escribe el hilo del callback y lo lee onLoadChildren en main.
+    @Volatile private var networkAvailable: Boolean = false
+    @Volatile private var defaultNetwork: Network? = null
     private var isAndroidAutoConnected: Boolean = false
 
     // Guarda de idempotencia para ensureLibraryInitialized(). onGetRoot() puede llamarse
@@ -187,8 +190,9 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                val newNetworkAvailability = isNetworkAvailable(applicationContext)
+                defaultNetwork = network
                 networkAvailable = true
+                Log.i(TAG, "[NET] available $network")
                 notifyChildrenChanged(ROOT_ID)
                 MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
                     mediaItem?.mediaId?.let {
@@ -200,8 +204,20 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
             }
 
             override fun onLost(network: Network) {
-                val newNetworkAvailability = isNetworkAvailable(applicationContext)
+                // Un aviso tardío de una red que ya no es la por defecto (ya llegó onAvailable de otra) no corta nada.
+                if (network != defaultNetwork) {
+                    Log.i(TAG, "[NET] lost $network ignorado (por defecto: $defaultNetwork)")
+                    return
+                }
+                defaultNetwork = null
+                // Con otra red con internet validada (los datos móviles, en un corte brusco de la Wi-Fi) no se corta:
+                // su onAvailable llega enseguida y el ROOT no tiene por qué pasar un instante por «Sin conexión».
+                if (hasOtherInternet(network)) {
+                    Log.i(TAG, "[NET] lost $network con otra red con internet: se espera su onAvailable")
+                    return
+                }
                 networkAvailable = false
+                Log.i(TAG, "[NET] lost $network")
                 notifyChildrenChanged(ROOT_ID)
                 MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
                     mediaItem?.mediaId?.let {
@@ -304,6 +320,21 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         return BrowserRoot(ROOT_ID, extras)
     }
 
+    /** ¿Queda otra red con internet validada además de [lost]? La que se pierde sigue listada mientras llega onLost. */
+    private fun hasOtherInternet(lost: Network): Boolean {
+        return try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            cm.allNetworks.any { n ->
+                n != lost && cm.getNetworkCapabilities(n)?.let { c ->
+                    c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                } == true
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun sessionPositionMs(): Long {
         return try {
             val st = mediaSession.controller.playbackState ?: return 0L
@@ -344,8 +375,18 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         ensureLibraryInitialized()
 
         if (parentId == OFFLINE_ROOT) {
-            //OFFLINE ITEMS
-            result.sendResult(MediaItemTree.getOfflineItems())
+            // Las descargas se releen si cambiaron (ensureOfflineLoaded), FUERA del main thread: su archivo se parsea
+            // con Moshi. Antes se devolvía lo leído al iniciar el proceso y lo descargado después no aparecía (C14).
+            result.detach()
+            serviceScope.launch {
+                try {
+                    MediaItemTree.ensureOfflineLoaded(applicationContext)
+                } catch (e: Exception) {
+                    Log.e(TAG, "[OFFLINE] Error releyendo las descargas: ${e.message}")
+                }
+                val items = MediaItemTree.getOfflineItems()
+                withContext(Dispatchers.Main) { result.sendResult(items) }
+            }
             return
         }
 
@@ -402,7 +443,10 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
         }
 
         // ROOT level + offline: show offline entry point
-        if (parentId == ROOT_ID && !isNetworkAvailable(this)) {
+        // Sin red si lo dice cualquiera de los dos. El callback: el ROOT que se recalcula por el aviso de onLost veía
+        // todavía en activeNetwork la Wi-Fi que se caía y entregaba las pestañas (C14, 30/10). activeNetwork: una VPN
+        // sin red debajo o una red bloqueada para el app no avisan onLost.
+        if (parentId == ROOT_ID && !(networkAvailable && isNetworkAvailable(this))) {
             val offlineMediaItem = MediaItemTree.getOfflineMediaItem(applicationContext)
             result.sendResult(mutableListOf(offlineMediaItem))
             return
@@ -464,6 +508,8 @@ class MusicLibraryService : MediaBrowserServiceCompat() {
 
             // Notify Android Auto that the root has changed
             notifyChildrenChanged(ROOT_ID)
+            // La lista de descargas no cuelga del ROOT: sin esto, si está abierta en el auto no se actualiza.
+            notifyChildrenChanged(OFFLINE_ROOT)
 
             // Notify all browsable children that they have changed
             MediaItemTree.getChildren(ROOT_ID).forEach { mediaItem ->
